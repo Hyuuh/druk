@@ -1,0 +1,67 @@
+{
+  "name": "druk",
+  "displayName": "Druk",
+  "version": "0.1.0",
+  "private": false,
+  "description": "A terminal code editor — file tree, tabs, tree-sitter syntax highlighting and autocompletion; keyboard and mouse driven.",
+  "keywords": [
+    "autocompletion",
+    "bun",
+    "cli",
+    "code-editor",
+    "editor",
+    "opentui",
+    "syntax-highlighting",
+    "terminal",
+    "tree-sitter",
+    "tui"
+  ],
+  "homepage": "https://github.com/letstri/druk",
+  "bugs": {
+    "url": "https://github.com/letstri/druk/issues"
+  },
+  "license": "MIT",
+  "author": "Valerii Strilets",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/letstri/druk.git"
+  },
+  "funding": "https://github.com/sponsors/letstri",
+  "bin": {
+    "druk": "./dist/index.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.tsx",
+    "dev": "bun run --watch src/index.tsx",
+    "build": "tsdown",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "prepublishOnly": "bun run check-types && bun run lint && bun run build"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.4.5",
+    "@opentui/react": "^0.4.5",
+    "react": "^19.2.6",
+    "tree-sitter-wasms": "^0.1.13"
+  },
+  "devDependencies": {
+    "@letstri/oxlint-config": "^1.2.2",
+    "@types/bun": "latest",
+    "@types/react": "^19",
+    "oxfmt": "^0.60.0",
+    "oxlint": "^1.75.0",
+    "tsdown": "^0.22",
+    "typescript": "^5"
+  },
+  "engines": {
+    "bun": ">=1.1"
+  },
+  "packageManager": "pnpm@11.5.0"
+}
