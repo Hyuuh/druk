@@ -43,7 +43,7 @@
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepublishOnly": "bun run check-types && bun run lint && bun run build"
+    "prepublishOnly": "pnpm run check-types && pnpm run lint && pnpm run build"
   },
   "dependencies": {
     "@opentui/core": "^0.4.5",
