@@ -33,7 +33,13 @@ export function FileTree({
       <box height={1} backgroundColor={ui.panelBg} paddingLeft={1}>
         <text fg={focused ? ui.text : ui.dim} bg={ui.panelBg} content={`EXPLORER — ${rootName}`} />
       </box>
-      <scrollbox flexGrow={1} backgroundColor={ui.panelBg}>
+      <scrollbox
+        flexGrow={1}
+        backgroundColor={ui.panelBg}
+        scrollbarOptions={{
+          trackOptions: { foregroundColor: ui.scrollbar, backgroundColor: ui.panelBg },
+        }}
+      >
         {nodes.map(node => {
           const selected = node.path === selectedPath
           const bg = selected ? (focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.panelBg

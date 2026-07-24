@@ -14,6 +14,7 @@ export interface EditorPaneProps {
   filetype?: string
   focused: boolean
   theme: ThemeName
+  reloadKey: number
   onChange: (text: string) => void
   onCursor: (pos: { line: number; col: number }) => void
   onFocus: () => void
@@ -37,6 +38,7 @@ export function EditorPane({
   filetype,
   focused,
   theme,
+  reloadKey,
   onChange,
   onCursor,
   onFocus,
@@ -159,6 +161,18 @@ export function EditorPane({
     if (ref.current) ref.current.syntaxStyle = getSyntaxStyle()
   }, [theme])
 
+  // External change: the file was reloaded from disk. Push it into the buffer
+  // (keyed on reloadKey, never on content, so typing is never interrupted).
+  useEffect(() => {
+    const el = ref.current
+    if (el && content !== el.plainText) {
+      el.setText(content)
+      applied.current = ''
+      void highlight(content, path)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey])
+
   if (path == null) {
     return (
       <box flexGrow={1} backgroundColor={ui.bg} alignItems="center" justifyContent="center">
@@ -179,6 +193,7 @@ export function EditorPane({
         textColor={ui.text}
         focusedBackgroundColor={ui.bg}
         focusedTextColor={ui.text}
+        cursorColor={ui.cursor}
         flexGrow={1}
         onContentChange={() => {
           const el = ref.current

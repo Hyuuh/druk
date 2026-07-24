@@ -1,7 +1,7 @@
 {
   "name": "druk",
   "displayName": "Druk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "A terminal code editor — file tree, tabs, tree-sitter syntax highlighting and autocompletion; keyboard and mouse driven.",
   "keywords": [

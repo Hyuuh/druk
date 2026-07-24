@@ -8,6 +8,27 @@ export interface TreeNode {
   depth: number
 }
 
+/**
+ * Watch `root` recursively and call `onChange` (debounced) on any file event.
+ * Returns a stop function. Best-effort — returns a no-op if watching fails.
+ */
+export function watchTree(root: string, onChange: () => void): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let watcher: fs.FSWatcher
+  try {
+    watcher = fs.watch(root, { recursive: true }, () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(onChange, 80) // coalesce bursts of events
+    })
+  } catch {
+    return () => {}
+  }
+  return () => {
+    if (timer) clearTimeout(timer)
+    watcher.close()
+  }
+}
+
 /** Directory entries, folders first then files, each alphabetical. */
 export function listDir(dir: string, depth = 0): TreeNode[] {
   let entries: fs.Dirent[]

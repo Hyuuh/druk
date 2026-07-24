@@ -10,17 +10,24 @@ let clientDead = false
 let initPromise: Promise<TreeSitterClient | null> | null = null
 let syntaxStyle: SyntaxStyle | null = null
 
-// JavaScript, TypeScript, Markdown and Zig grammars ship with OpenTUI. JSON does
-// not, so register a vendored grammar + query. (Markdown works out of the box.)
+// JavaScript, TypeScript, Markdown and Zig grammars ship with OpenTUI. These do
+// not, so register vendored grammars (tree-sitter-wasms) + queries (./grammars).
+const EXTRA_GRAMMARS = [
+  { filetype: 'json', wasm: 'tree-sitter-wasms/out/tree-sitter-json.wasm', query: 'json.scm' },
+  { filetype: 'html', wasm: 'tree-sitter-wasms/out/tree-sitter-html.wasm', query: 'html.scm' },
+]
+
 function registerExtraParsers(client: TreeSitterClient): void {
-  try {
-    client.addFiletypeParser({
-      filetype: 'json',
-      wasm: fileURLToPath(import.meta.resolve('tree-sitter-wasms/out/tree-sitter-json.wasm')),
-      queries: { highlights: [fileURLToPath(new URL('./grammars/json.scm', import.meta.url))] },
-    })
-  } catch {
-    // best-effort: JSON just stays unhighlighted
+  for (const g of EXTRA_GRAMMARS) {
+    try {
+      client.addFiletypeParser({
+        filetype: g.filetype,
+        wasm: fileURLToPath(import.meta.resolve(g.wasm)),
+        queries: { highlights: [fileURLToPath(new URL(`./grammars/${g.query}`, import.meta.url))] },
+      })
+    } catch {
+      // best-effort: the language just stays unhighlighted
+    }
   }
 }
 

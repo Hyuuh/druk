@@ -19,6 +19,8 @@ export interface ThemeUi {
   dirty: string
   error: string
   folder: string
+  cursor: string
+  scrollbar: string
 }
 
 export interface Theme {
@@ -46,6 +48,8 @@ const githubDark: Theme = {
     dirty: '#d29922',
     error: '#f85149',
     folder: '#58a6ff',
+    cursor: '#e6edf3',
+    scrollbar: '#484f58',
   },
   syntax: {
     'comment': { fg: '#8b949e', italic: true },
@@ -104,6 +108,8 @@ const githubLight: Theme = {
     dirty: '#9a6700',
     error: '#cf222e',
     folder: '#0969da',
+    cursor: '#1f2328',
+    scrollbar: '#afb8c1',
   },
   syntax: {
     'comment': { fg: '#6e7781', italic: true },

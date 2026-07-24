@@ -2,7 +2,7 @@ import { basename, dirname, join } from 'node:path'
 
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useRenderer } from '@opentui/react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { CommandPalette } from './components/CommandPalette'
 import type { Command } from './components/CommandPalette'
@@ -13,6 +13,7 @@ import { HelpOverlay } from './components/HelpOverlay'
 import { PromptModal } from './components/PromptModal'
 import { StatusBar } from './components/StatusBar'
 import { Tabs } from './components/Tabs'
+import { saveConfig } from './config'
 import type { TreeNode } from './fs'
 import {
   createDir,
@@ -22,6 +23,7 @@ import {
   readFile,
   remove,
   rename,
+  watchTree,
   writeFile,
 } from './fs'
 import { filetypeForPath, invalidateSyntaxStyle } from './highlight'
@@ -47,7 +49,7 @@ const PROMPT_TITLES: Record<'newFile' | 'newFolder' | 'rename', string> = {
   rename: 'Rename to',
 }
 
-export function App({ rootDir }: { rootDir: string }) {
+export function App({ rootDir, initialTheme }: { rootDir: string; initialTheme: ThemeName }) {
   const renderer = useRenderer()
 
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -60,12 +62,18 @@ export function App({ rootDir }: { rootDir: string }) {
   const [help, setHelp] = useState(false)
   const [palette, setPalette] = useState(false)
   const [completing, setCompleting] = useState(false)
-  const [theme, setThemeState] = useState<ThemeName>('dark')
+  const [theme, setThemeState] = useState<ThemeName>(initialTheme)
+  const [reloadKey, setReloadKey] = useState(0)
   const [cursor, setCursor] = useState({ line: 0, col: 0 })
   const [status, setStatusState] = useState({ msg: 'Ready — Ctrl+P for commands', error: false })
 
   const nodes = useMemo(() => flattenVisible(rootDir, expanded), [rootDir, expanded])
   const activeBuffer = activePath ? buffers[activePath] : undefined
+
+  // Mirror for the watcher callback, which is created once and would otherwise
+  // capture a stale buffers snapshot.
+  const buffersRef = useRef(buffers)
+  buffersRef.current = buffers
 
   const setStatus = (msg: string, error = false) => setStatusState({ msg, error })
   // Bump the Set identity so `nodes` recomputes and re-reads the filesystem.
@@ -219,6 +227,7 @@ export function App({ rootDir }: { rootDir: string }) {
     setTheme(name)
     invalidateSyntaxStyle()
     setThemeState(name)
+    saveConfig({ theme: name })
     setStatus(`Theme: ${themeLabels[name]}`)
   }
 
@@ -283,6 +292,32 @@ export function App({ rootDir }: { rootDir: string }) {
     setPalette(false)
     commands.find(c => c.id === id)?.run()
   }
+
+  // ---- watch disk ----------------------------------------------------------
+  // Reload clean open buffers and refresh the tree when files change externally.
+  useEffect(() => {
+    const reload = () => {
+      const cur = buffersRef.current
+      const updates: Record<string, Buffer> = {}
+      for (const path in cur) {
+        const buf = cur[path]!
+        if (buf.dirty) continue // never clobber unsaved edits
+        try {
+          const disk = readFile(path)
+          if (disk !== buf.content) updates[path] = { content: disk, dirty: false }
+        } catch {
+          // file gone — the tree refresh below reflects it
+        }
+      }
+      if (Object.keys(updates).length > 0) {
+        setBuffers(prev => ({ ...prev, ...updates }))
+        setReloadKey(k => k + 1)
+      }
+      refreshTree()
+    }
+    return watchTree(rootDir, reload)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootDir])
 
   // ---- keyboard ------------------------------------------------------------
   useKeyboard((key: KeyEvent) => {
@@ -376,6 +411,7 @@ export function App({ rootDir }: { rootDir: string }) {
           filetype={activePath ? filetypeForPath(activePath) : undefined}
           focused={focus === 'editor'}
           theme={theme}
+          reloadKey={reloadKey}
           onChange={onEditorChange}
           onCursor={setCursor}
           onFocus={() => setFocus('editor')}
