@@ -29,8 +29,7 @@ export function watchTree(root: string, onChange: () => void): () => void {
   }
 }
 
-/** Noise that is never worth showing in the tree. */
-/** Noise hidden by default; `showHidden` in the config brings it back. */
+/** Noise hidden when `showHidden` is off. */
 export const HIDDEN = new Set(['.DS_Store', '.git', '.svn', '.hg', 'Thumbs.db', 'desktop.ini'])
 
 /** Directory entries, folders first then files, each alphabetical. */
@@ -55,7 +54,6 @@ export function listDir(dir: string, depth = 0, showHidden = false): TreeNode[] 
     })
 }
 
-/** Flatten the tree into the currently visible rows given expanded folders. */
 export function flattenVisible(
   root: string,
   expanded: Set<string>,
@@ -72,11 +70,6 @@ export function flattenVisible(
   return out
 }
 
-/**
- * Read a text file. Throws on binary content (a NUL byte in the first 8 KB is
- * the same heuristic git uses) so we never load an image or a .DS_Store into
- * the editor as mojibake.
- */
 export class BinaryFileError extends Error {
   constructor() {
     super('binary file')
@@ -84,10 +77,24 @@ export class BinaryFileError extends Error {
   }
 }
 
+/**
+ * Read a text file, refusing binary content — a NUL byte in the first 8 KB, the
+ * same heuristic git uses.
+ *
+ * The sniff is a positional read rather than a slice of the whole file: the tree
+ * happily offers a 2 GB video, and reading it before rejecting it would allocate
+ * all of it and throw ERR_FS_FILE_TOO_LARGE instead of BinaryFileError.
+ */
 export function readFile(path: string): string {
-  const buf = fs.readFileSync(path)
-  if (buf.subarray(0, 8192).includes(0)) throw new BinaryFileError()
-  return buf.toString('utf8')
+  const fd = fs.openSync(path, 'r')
+  try {
+    const head = Buffer.alloc(8192)
+    const read = fs.readSync(fd, head, 0, 8192, 0)
+    if (head.subarray(0, read).includes(0)) throw new BinaryFileError()
+  } finally {
+    fs.closeSync(fd)
+  }
+  return fs.readFileSync(path, 'utf8')
 }
 
 /** Human-readable size, for the "cannot display" notice. */
@@ -126,53 +133,40 @@ export function exists(path: string): boolean {
 /** Result helper: `null` on success, otherwise a human-readable message. */
 export type FsResult = string | null
 
-export function writeFile(path: string, content: string): FsResult {
+const attempt = (run: () => void): FsResult => {
   try {
+    run()
+    return null
+  } catch (e) {
+    return (e as Error).message
+  }
+}
+
+const taken = (path: string): FsResult =>
+  fs.existsSync(path) ? `already exists: ${basename(path)}` : null
+
+export const writeFile = (path: string, content: string): FsResult =>
+  attempt(() => {
     fs.mkdirSync(dirname(path), { recursive: true })
     fs.writeFileSync(path, content, 'utf8')
-    return null
-  } catch (e) {
-    return (e as Error).message
-  }
-}
+  })
 
-export function createFile(path: string): FsResult {
-  try {
-    if (fs.existsSync(path)) return `already exists: ${basename(path)}`
+export const createFile = (path: string): FsResult =>
+  taken(path) ??
+  attempt(() => {
     fs.mkdirSync(dirname(path), { recursive: true })
     fs.writeFileSync(path, '', 'utf8')
-    return null
-  } catch (e) {
-    return (e as Error).message
-  }
-}
+  })
 
-export function createDir(path: string): FsResult {
-  try {
-    if (fs.existsSync(path)) return `already exists: ${basename(path)}`
-    fs.mkdirSync(path, { recursive: true })
-    return null
-  } catch (e) {
-    return (e as Error).message
-  }
-}
+export const createDir = (path: string): FsResult =>
+  taken(path) ?? attempt(() => void fs.mkdirSync(path, { recursive: true }))
 
-export function remove(path: string): FsResult {
-  try {
-    fs.rmSync(path, { recursive: true, force: true })
-    return null
-  } catch (e) {
-    return (e as Error).message
-  }
-}
+export const remove = (path: string): FsResult =>
+  attempt(() => fs.rmSync(path, { recursive: true, force: true }))
 
-export function rename(from: string, to: string): FsResult {
-  try {
-    if (fs.existsSync(to)) return `already exists: ${basename(to)}`
+export const rename = (from: string, to: string): FsResult =>
+  taken(to) ??
+  attempt(() => {
     fs.mkdirSync(dirname(to), { recursive: true })
     fs.renameSync(from, to)
-    return null
-  } catch (e) {
-    return (e as Error).message
-  }
-}
+  })

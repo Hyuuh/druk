@@ -87,7 +87,7 @@ test('switching a branch from the palette reloads the open file', async () => {
 
   expect(currentBranch(dir)).toBe('other')
   expect(t.captureCharFrame()).toContain('const other = 2')
-  expect(t.captureCharFrame()).toContain('other')
+  expect(t.captureCharFrame().split('\n').at(-2)!).toContain('⎇ other')
 })
 
 test('Esc closes the branch list without switching', async () => {

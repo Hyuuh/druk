@@ -14,9 +14,15 @@ export interface UpdateBannerProps {
 export function UpdateBanner(props: UpdateBannerProps) {
   useKeyboard((key: KeyEvent) => {
     const k = key.name
-    key.preventDefault()
-    if (k === 'escape' || k === 'return' || k === 'enter') props.onClose()
-    else if (k === 's') props.onSkip()
+    // The banner arrives asynchronously, possibly mid-keystroke: claim only the
+    // keys it acts on rather than eating whatever the user was in the middle of.
+    if (k === 'escape' || k === 'return' || k === 'enter') {
+      key.preventDefault()
+      props.onClose()
+    } else if (k === 's') {
+      key.preventDefault()
+      props.onSkip()
+    }
   })
 
   return (

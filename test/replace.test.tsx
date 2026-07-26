@@ -11,6 +11,20 @@ test('replaceAll swaps every occurrence, ignoring case', () => {
   expect(replaceAll('abc', '', 'x')).toBe('abc')
 })
 
+test('the query is matched literally, not as a regex', () => {
+  expect(replaceAll('a.b axb', 'a.b', 'Z')).toBe('Z axb')
+  expect(replaceAll('cost $5', '$5', 'free')).toBe('cost free')
+})
+
+test('the replacement is inserted literally', () => {
+  expect(replaceAll('foo', 'foo', '$&$1')).toBe('$&$1')
+})
+
+test('a character that changes length when lowercased does not shift the match', () => {
+  // U+0130 lowercases to two code units, so offsets from a lowercased copy drift.
+  expect(replaceAll('İstanbul FOO', 'foo', 'BAR')).toBe('İstanbul BAR')
+})
+
 test('replace all rewrites the open file', async () => {
   const dir = fixture({ 'a.ts': 'const old = 1\nconst old2 = old + 1\n' })
   const t = await launch(dir)

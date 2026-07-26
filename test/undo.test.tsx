@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { buildCommands, flattenCommands } from '../src/app/commands'
 import { fixture, launch, press } from './helpers'
 
 async function openedFile(dir: string) {
@@ -42,18 +41,16 @@ describe('undo and redo', () => {
     expect(t.captureCharFrame()).toContain('start')
   })
 
-  test('the palette exposes both', () => {
-    const ids = flattenCommands(
-      buildCommands({} as never, {
-        vimEnabled: false,
-        activeTheme: 'dark',
-        tabSize: 2,
-        showHidden: true,
-        wordWrap: false,
-      }),
-    ).map(entry => entry.command.id)
+  test('the palette runs undo too', async () => {
+    const t = await openedFile(fixture({ 'a.ts': 'start\n' }))
+    await press(t, input => void input.typeText('typed'))
+    expect(t.captureCharFrame()).toContain('typedstart')
 
-    expect(ids).toContain('undo')
-    expect(ids).toContain('redo')
+    await press(t, input => input.pressKey('p', { ctrl: true }))
+    await press(t, input => void input.typeText('Undo'))
+    await press(t, input => input.pressEnter())
+
+    expect(t.captureCharFrame()).not.toContain('typedstart')
+    expect(t.captureCharFrame()).toContain('start')
   })
 })

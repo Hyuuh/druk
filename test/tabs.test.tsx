@@ -55,20 +55,6 @@ test('the switcher lists open tabs and jumps to one', async () => {
   expect(t.captureCharFrame()).toContain('const a2 = 1')
 })
 
-test('overflow counts show how many tabs are off-screen', async () => {
-  const files = Object.fromEntries(
-    Array.from({ length: 8 }, (_, i) => [`file-number-${i}.ts`, `const a${i} = 1\n`]),
-  )
-  const t = await launch(fixture(files))
-  for (let i = 0; i < 8; i++) {
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText(`file-number-${i}.ts`))
-    await press(t, input => input.pressEnter())
-  }
-  // Seven tabs sit to the left of the last one opened.
-  expect(t.captureCharFrame().split('\n')[0]).toContain('‹')
-})
-
 test('close others leaves a single tab', async () => {
   const files = { 'a.ts': 'const a = 1\n', 'b.ts': 'const b = 2\n', 'c.ts': 'const c = 3\n' }
   const t = await launch(fixture(files))

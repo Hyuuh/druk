@@ -1,12 +1,13 @@
 import { TextAttributes } from '@opentui/core'
 import type { KeyEvent, MouseEvent, TextareaRenderable } from '@opentui/core'
-import { useKeyboard, useRenderer } from '@opentui/solid'
-import { createEffect, createSignal, on, onCleanup, Show } from 'solid-js'
+import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid'
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js'
 
 import { copyToClipboard, readClipboard } from '../core/clipboard'
 import type { LineChange } from '../core/git'
 import { History } from '../editor/history'
-import { editAtCursors, nextOccurrence, wordAtCursor } from '../editor/multicursor'
+import { deleteRanges, nextMatch, replaceRanges, wordRangeAt } from '../editor/multicursor'
+import type { Range } from '../editor/multicursor'
 import { handleTyping } from '../editor/typing'
 import { handleVimKey, initialVimState } from '../editor/vim'
 import type { VimMode } from '../editor/vim'
@@ -51,6 +52,8 @@ export interface EditorPaneProps {
 const DEBOUNCE_MS = 80
 /** Lines kept highlighted above and below the viewport, so small scrolls are free. */
 const OVERSCAN = 60
+
+const SIGN_GLYPH: Record<LineChange, string> = { added: '▎', modified: '▎', deleted: '▁' }
 
 /** Per renderer, the one renderable a mouse selection may start in. */
 const selectionHosts = new WeakMap<object, unknown>()
@@ -97,6 +100,7 @@ export function ignoreScrollOutsideBounds(el: TextareaRenderable) {
 }
 
 export function EditorPane(props: EditorPaneProps) {
+  const dimensions = useTerminalDimensions()
   /** LineNumberRenderable takes `minWidth` in its constructor only, and Solid's
    * reconciler builds elements bare, so the width has to be poked in by hand. */
   interface GutterHost {
@@ -119,8 +123,31 @@ export function EditorPane(props: EditorPaneProps) {
 
   const [editorEl, setEditorEl] = createSignal<TextareaRenderable | null>(null)
   const [cursorLine, setCursorLine] = createSignal(0)
-  /** Extra carets (character offsets) added with Ctrl+D. */
-  const [extraCursors, setExtraCursors] = createSignal<number[]>([])
+  /** Scroll position of the textarea, mirrored so the scrollbar can react to it. */
+  const [viewport, setViewport] = createSignal({ top: 0, height: 0, total: 0 })
+  /**
+   * Every occurrence Ctrl+D has picked up, in the order they were added. The
+   * last one owns the buffer's real selection; the rest are painted.
+   */
+  const [matches, setMatches] = createSignal<Range[]>([])
+  /**
+   * One entry per visible row: true where the thumb sits. Empty when the file
+   * fits, so a short file shows no track at all.
+   */
+  const scrollbar = createMemo(() => {
+    const measured = viewport()
+    // The textarea reports height 0 until the first layout, so until then fall
+    // back to the terminal minus the tab bar and status bar.
+    const height = measured.height || dimensions().height - 2
+    const total = measured.total || props.content.split('\n').length
+    const top = measured.top
+    if (height <= 0 || total <= height) return []
+    const size = Math.max(1, Math.round((height * height) / total))
+    const span = height - size
+    const at = Math.min(span, Math.round((top / (total - height)) * span))
+    return Array.from({ length: height }, (_, row) => row >= at && row < at + size)
+  })
+
   const gutterWidth = () => String(props.content.split('\n').length).length + 2
 
   createEffect(() => {
@@ -130,34 +157,42 @@ export function EditorPane(props: EditorPaneProps) {
 
   // Line signs are a method, not a settable prop, so Solid cannot bind them.
   createEffect(() => {
-    const changes = props.gitLines
+    // The colors are read inside the effect because `ui` is a store: a table built
+    // at module scope would hold the first theme's palette forever.
+    const signColor: Record<LineChange, string> = {
+      added: ui.gitAdded,
+      modified: ui.gitModified,
+      deleted: ui.gitDeleted,
+    }
     gutter?.setLineSigns?.(
       new Map(
-        [...changes].map(([line, change]) => [
+        [...props.gitLines].map(([line, change]) => [
           line,
-          {
-            before: change === 'deleted' ? '▁' : '▎',
-            beforeColor:
-              change === 'added'
-                ? ui.gitAdded
-                : change === 'modified'
-                  ? ui.gitModified
-                  : ui.gitDeleted,
-          },
+          { before: SIGN_GLYPH[change], beforeColor: signColor[change] },
         ]),
       ),
     )
   })
 
-  /** Extra carets are highlights: the buffer only renders one real cursor. */
-  const drawExtraCursors = () => {
-    const cursors = extraCursors()
-    if (!editor || cursors.length === 0) return
+  const syncViewport = () => {
+    if (!editor) return
+    setViewport({ top: editor.scrollY, height: editor.height, total: editor.lineCount })
+  }
+
+  /**
+   * The buffer paints one selection, so the other matches are drawn as
+   * highlights. A zero-width caret still needs a cell to be visible.
+   */
+  const drawMatches = () => {
+    const all = matches()
+    if (!editor || all.length === 0) return
     const styleId = styleIdForGroup(CURSOR_MARK)
     if (styleId == null) return
-    for (const offset of cursors) {
-      const at = editor.editBuffer.offsetToPosition(offset)
-      if (at) editor.addHighlight(at.row, { start: at.col, end: at.col + 1, styleId })
+    for (const range of all.slice(0, -1)) {
+      const from = editor.editBuffer.offsetToPosition(range.start)
+      const to = editor.editBuffer.offsetToPosition(Math.max(range.end, range.start + 1))
+      if (!from || !to || to.row !== from.row) continue
+      editor.addHighlight(from.row, { start: from.col, end: to.col, styleId })
     }
   }
 
@@ -167,7 +202,11 @@ export function EditorPane(props: EditorPaneProps) {
    * tick after every key rather than from the event payload.
    */
   const syncCursor = () => {
-    const at = editor?.visualCursor
+    if (!editor) return
+    // Height is still zero while the first frame lays out, so the scrollbar has
+    // to be measured again once the editor is on screen.
+    syncViewport()
+    const at = editor.visualCursor
     if (!at) return
     if (at.logicalRow === cursor.line && at.logicalCol === cursor.col) return
     cursor.line = at.logicalRow
@@ -176,24 +215,10 @@ export function EditorPane(props: EditorPaneProps) {
     props.onCursor({ ...cursor })
   }
 
-  let cursorSync: ReturnType<typeof setTimeout> | null = null
-  const scheduleCursorSync = () => {
-    if (cursorSync) return
-    cursorSync = setTimeout(() => {
-      cursorSync = null
-      syncCursor()
-    }, 0)
-  }
-
-  const applyLine = (line: number) => {
-    if (appliedLines.has(line)) return
-    appliedLines.add(line)
-    for (const segment of byLine.get(line) ?? []) editor!.addHighlight(line, segment)
-  }
-
   /** Keep the viewport (plus overscan) highlighted, touching only what changed. */
   const applyWindow = (force = false) => {
     if (!editor) return
+    syncViewport()
     if (force) {
       editor.clearAllHighlights()
       appliedLines.clear()
@@ -207,15 +232,32 @@ export function EditorPane(props: EditorPaneProps) {
         appliedLines.delete(line)
       }
     }
-    for (let line = from; line <= to; line++) applyLine(line)
-    drawExtraCursors()
+    for (let line = from; line <= to; line++) {
+      if (appliedLines.has(line)) continue
+      appliedLines.add(line)
+      for (const segment of byLine.get(line) ?? []) editor.addHighlight(line, segment)
+    }
+    drawMatches()
+  }
+
+  let cursorSync: ReturnType<typeof setTimeout> | null = null
+  const scheduleCursorSync = () => {
+    if (cursorSync) return
+    cursorSync = setTimeout(() => {
+      cursorSync = null
+      // ↑/↓ emit no cursor-change event, so this tick is also the only chance to
+      // move the highlight window with a scroll they caused. Without it the
+      // window stays wherever the file opened and deep lines render unstyled.
+      applyWindow()
+      syncCursor()
+    }, 0)
   }
 
   createEffect(
     on(
-      () => extraCursors(),
+      () => matches(),
       cursors => {
-        props.onMultiCursor(cursors.length)
+        props.onMultiCursor(Math.max(0, cursors.length - 1))
         applyWindow(true)
       },
       { defer: true },
@@ -237,18 +279,23 @@ export function EditorPane(props: EditorPaneProps) {
     applyWindow(true)
   }
 
+  /** The text changed: drop the stale segments before re-highlighting the new text. */
+  const rehighlight = (text: string) => {
+    byLine = new Map()
+    void highlight(text, props.path)
+  }
+
   const stepHistory = (kind: 'undo' | 'redo') => {
     if (!editor) return
     const at = kind === 'undo' ? history.undo() : history.redo()
     if (!at) return
-    setExtraCursors([])
+    setMatches([])
     // setText resets the buffer's own history, which is fine — `history` is the
     // one being stepped, and its entries are whole edit bursts.
     editor.setText(at.content)
     editor.cursorOffset = Math.min(at.cursor, at.content.length)
     props.onChange(at.content)
-    byLine = new Map()
-    void highlight(at.content, props.path)
+    rehighlight(at.content)
     scheduleCursorSync()
   }
 
@@ -270,10 +317,21 @@ export function EditorPane(props: EditorPaneProps) {
     }, DEBOUNCE_MS)
   }
 
-  onCleanup(() => {
+  /**
+   * Closing the last tab swaps the textarea for the fallback and destroys the
+   * native buffer while `editor` still points at it. Both pending timers touch
+   * it, so they have to die with the renderable, not with the whole pane.
+   */
+  const releaseEditor = () => {
+    editor = undefined
+    setEditorEl(null)
     if (highlightTimer) clearTimeout(highlightTimer)
     if (cursorSync) clearTimeout(cursorSync)
-  })
+    highlightTimer = null
+    cursorSync = null
+  }
+
+  onCleanup(releaseEditor)
 
   // Clipboard and typing helpers, ahead of the textarea's own handling.
   useKeyboard((key: KeyEvent) => {
@@ -298,45 +356,77 @@ export function EditorPane(props: EditorPaneProps) {
 
     if (key.ctrl && key.name === 'd') {
       key.preventDefault()
-      const word = wordAtCursor(editor)
+      const text = editor.plainText
+      const all = matches()
+
+      // First press selects the word under the cursor; each next one adds the
+      // following occurrence, so typing replaces every selection at once.
+      if (all.length === 0) {
+        const word = wordRangeAt(text, editor.cursorOffset)
+        if (!word) return
+        setMatches([word])
+        editor.setSelection(word.start, word.end)
+        applyWindow(true)
+        return
+      }
+
+      const last = all.at(-1)!
+      const word = text.slice(last.start, last.end)
       if (!word) return
-      const cursors = extraCursors()
-      const searchFrom = (cursors.at(-1) ?? editor.cursorOffset) + word.length
-      const found = nextOccurrence(editor.plainText, word, searchFrom)
-      if (found !== null && !cursors.includes(found)) setExtraCursors([...cursors, found])
+      const found = nextMatch(text, word, last.end)
+      if (!found || all.some(range => range.start === found.start)) return
+      setMatches([...all, found])
+      editor.setSelection(found.start, found.end)
+      applyWindow(true)
       return
     }
-    if (key.name === 'escape' && extraCursors().length > 0) {
+    if (key.name === 'escape' && matches().length > 0) {
       key.preventDefault()
-      setExtraCursors([])
+      // Collapse to the end of the last match: clearSelection alone drops the
+      // caret back to the top of the buffer.
+      const last = matches().at(-1)
+      setMatches([])
+      editor.clearSelection()
+      if (last) editor.cursorOffset = last.end
+      applyWindow(true)
       return
     }
 
-    // With extra carets every edit is replayed at each of them.
-    if (extraCursors().length > 0) {
-      const primary = editor.cursorOffset
-      const all = [primary, ...extraCursors()]
+    // With several matches live, an edit is applied to all of them.
+    if (matches().length > 0) {
       const typed = key.sequence
+      const buffer = editor
+      const edit = (next: Range[]) => {
+        setMatches(next)
+        const last = next.at(-1)
+        if (last) buffer.cursorOffset = last.start
+        props.onChange(buffer.plainText)
+        scheduleHighlight()
+        applyWindow(true)
+      }
       if (key.name === 'backspace') {
         key.preventDefault()
-        const moved = editAtCursors(editor, all, e => e.deleteCharBackward(), -1)
-        setExtraCursors(moved.filter(o => o !== moved[all.indexOf(primary)]).map(o => o - 1))
-        editor.cursorOffset = primary - 1
+        edit(deleteRanges(editor, matches()))
         return
       }
       if (typed && typed.length === 1 && !key.ctrl && !key.meta) {
         key.preventDefault()
-        const moved = editAtCursors(editor, all, e => e.insertText(typed), 1)
-        const primaryIndex = [...new Set(all)].toSorted((a, b) => a - b).indexOf(primary)
-        setExtraCursors(moved.filter((_, i) => i !== primaryIndex))
-        editor.cursorOffset = moved[primaryIndex]! + 1
+        edit(replaceRanges(editor, matches(), typed))
         return
       }
+      // Anything else (arrows, Enter, a shortcut) ends multi-cursor editing.
+      setMatches([])
+      editor.clearSelection()
     }
 
     if (key.ctrl && (key.name === 'c' || key.name === 'x')) {
+      // Nothing selected: swallow it anyway. The renderer no longer exits on
+      // Ctrl+C, and letting it through would type a control character.
       const selected = editor.getSelectedText()
-      if (!selected) return
+      if (!selected) {
+        key.preventDefault()
+        return
+      }
       key.preventDefault()
       copyToClipboard(selected)
       if (key.name === 'x') editor.deleteSelection()
@@ -362,8 +452,10 @@ export function EditorPane(props: EditorPaneProps) {
     const before = vimState.mode
     if (handleVimKey(editor, key, vimState)) key.preventDefault()
     if (vimState.mode !== before) {
-      // Block cursor while commanding, bar while inserting — like vim.
-      editor.cursorStyle = { style: vimState.mode === 'insert' ? 'line' : 'block', blinking: true }
+      editor.cursorStyle = {
+        style: vimState.mode === 'insert' ? 'line' : 'block',
+        blinking: true,
+      }
       props.onVimMode(vimState.mode)
     }
   })
@@ -375,13 +467,13 @@ export function EditorPane(props: EditorPaneProps) {
       () => props.path,
       path => {
         if (!editor) return
-        setExtraCursors([])
+        setMatches([])
+        scheduleCursorSync()
         if (editor.plainText !== props.content) editor.setText(props.content)
         editor.setCursor(0, 0)
         history.reset({ content: props.content, cursor: 0 })
         editor.syntaxStyle = getSyntaxStyle()
-        byLine = new Map()
-        void highlight(props.content, path)
+        rehighlight(props.content)
       },
     ),
   )
@@ -392,6 +484,19 @@ export function EditorPane(props: EditorPaneProps) {
       focused => {
         if (focused) editor?.focus()
       },
+    ),
+  )
+
+  // Every overlay mounts its own focused input, which takes renderer focus away.
+  // Nothing hands it back when the overlay closes — `focused` never changed — so
+  // without this the editor silently drops every key until focus is cycled.
+  createEffect(
+    on(
+      () => props.blocked,
+      blocked => {
+        if (!blocked && props.focused) editor?.focus()
+      },
+      { defer: true },
     ),
   )
 
@@ -426,8 +531,7 @@ export function EditorPane(props: EditorPaneProps) {
         if (editor && props.content !== editor.plainText) {
           editor.setText(props.content)
           history.reset({ content: props.content, cursor: editor.cursorOffset })
-          byLine = new Map()
-          void highlight(props.content, props.path)
+          rehighlight(props.content)
         }
       },
       { defer: true },
@@ -494,6 +598,7 @@ export function EditorPane(props: EditorPaneProps) {
               setEditorEl(el)
               ignoreScrollOutsideBounds(el)
               allowSelectionOnlyInEditor(el)
+              onCleanup(releaseEditor)
             }}
             initialValue={props.content}
             focused={props.focused}
@@ -521,6 +626,15 @@ export function EditorPane(props: EditorPaneProps) {
             }}
           />
         </line_number>
+        <Show when={scrollbar().length > 0}>
+          <box width={1} flexShrink={0} backgroundColor={ui.bg}>
+            <For each={scrollbar()}>
+              {filled => (
+                <text fg={filled ? ui.scrollbar : ui.bg} bg={ui.bg} content={filled ? '█' : '│'} />
+              )}
+            </For>
+          </box>
+        </Show>
         <Show when={props.notice}>
           {(notice: () => string) => (
             <box

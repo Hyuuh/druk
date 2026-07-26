@@ -1,6 +1,5 @@
 import type { JSX } from '@opentui/solid'
 
-/** Full-screen centered layer for modals and overlays. */
 export function Overlay(props: { zIndex?: number; children: JSX.Element }) {
   return (
     <box

@@ -17,7 +17,7 @@ export interface SearchOptions {
 
 const DEFAULT_LIMIT = 200
 
-/** Directories never worth walking for a project-wide search. */
+/** Directories never worth walking, for both the search and the fuzzy finder. */
 const SKIPPED_DIRS = new Set([
   'node_modules',
   'dist',
@@ -25,7 +25,6 @@ const SKIPPED_DIRS = new Set([
   'out',
   'coverage',
   'target',
-  '.next',
   '.turbo',
   '.cache',
 ])
@@ -106,7 +105,7 @@ export function fuzzyScore(text: string, query: string): number | null {
   return score + text.length - at
 }
 
-/** Every file under `root`, for the fuzzy finder. */
+/** Every file under `root`, breadth-first, so the nearest ones survive the limit. */
 export function listFiles(root: string, limit = 5000, showHidden = false): string[] {
   const files: string[] = []
   const queue: string[] = [root]
@@ -123,18 +122,16 @@ export function listFiles(root: string, limit = 5000, showHidden = false): strin
   return files
 }
 
-/** Case-insensitive replace of every occurrence, mirroring searchText. */
+/**
+ * Case-insensitive replace of every occurrence, mirroring searchText.
+ *
+ * Matched by regex against the original text, never by indexing it with offsets
+ * taken from a lowercased copy: `toLowerCase` is not length-preserving (U+0130
+ * becomes two code units), so those offsets drift and eat characters.
+ */
 export function replaceAll(text: string, query: string, replacement: string): string {
   if (!query) return text
-  const needle = query.toLowerCase()
-  const haystack = text.toLowerCase()
-  let out = ''
-  let at = 0
-  for (;;) {
-    const found = haystack.indexOf(needle, at)
-    if (found < 0) break
-    out += text.slice(at, found) + replacement
-    at = found + needle.length
-  }
-  return out + text.slice(at)
+  const escaped = query.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
+  // Function form, so `$&` and `$1` in the replacement are inserted literally.
+  return text.replace(new RegExp(escaped, 'gi'), () => replacement)
 }

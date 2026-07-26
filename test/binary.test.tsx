@@ -13,11 +13,6 @@ function project() {
   return dir
 }
 
-test('system files are listed in the tree', async () => {
-  const t = await launch(project())
-  expect(t.captureCharFrame()).toContain('.DS_Store')
-})
-
 test('opening a binary file explains why it cannot be shown', async () => {
   const t = await launch(project())
   await press(t, i => i.pressArrow('down')) // .DS_Store sorts first

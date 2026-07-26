@@ -20,10 +20,6 @@ function repo(committed: string) {
   return dir
 }
 
-test('reports the branch', () => {
-  expect(currentBranch(repo('one\n'))).toBe('main')
-})
-
 test('marks modified and added lines', () => {
   const dir = repo('one\ntwo\nthree\n')
   writeFileSync(join(dir, 'a.ts'), 'one\nCHANGED\nthree\nfour\n')
@@ -50,11 +46,16 @@ test('is empty outside a repository', () => {
   expect(currentBranch(dir)).toBeNull()
 })
 
-test('the branch shows in the status bar', async () => {
+// A repo with no remote at all, which the gitremote footer tests cannot cover.
+test('a branch with no upstream shows without ahead/behind arrows', async () => {
   const t = await launch(repo('one\n'))
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
-  expect(t.captureCharFrame()).toContain('main')
+
+  const footer = t.captureCharFrame().split('\n').at(-2)!
+  expect(footer).toContain('⎇ main')
+  expect(footer).not.toContain('↑')
+  expect(footer).not.toContain('↓')
 })
 
 test('status marks reach the file tree', async () => {
@@ -70,13 +71,40 @@ test('status marks reach the file tree', async () => {
   expect(row('fresh.ts')).toContain('U')
 })
 
-test('a folder inherits the status of its contents', () => {
+test('a folder inherits the status of its contents', async () => {
   const dir = repo('one\n')
   mkdirSync(join(dir, 'sub'))
   writeFileSync(join(dir, 'sub/deep.ts'), 'new\n')
 
+  // Rendered, not just statusMap()'d: the inheritance lives in FileTree.statusOf,
+  // and git reports `?? sub/` on its own, so the map alone proves nothing.
+  const t = await launch(dir)
+  const row = t
+    .captureCharFrame()
+    .split('\n')
+    .find(line => line.includes('sub'))!
+  expect(row).toContain('U')
+})
+
+test('a path git has to quote still gets its mark', () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, 'ümlaut.ts'), 'new\n')
+  writeFileSync(join(dir, 'two words.ts'), 'new\n')
+
+  // `git status --porcelain` C-quotes and octal-escapes both of these names; the
+  // keys have to come back as real paths or the tree shows no mark for them.
   const statuses = statusMap(dir)
-  // git reports the directory for untracked trees; either shape must mark it.
-  const marked = [...statuses.keys()].some(path => path.includes('sub'))
-  expect(marked).toBe(true)
+  expect(statuses.get(join(dir, 'ümlaut.ts'))).toBe('untracked')
+  expect(statuses.get(join(dir, 'two words.ts'))).toBe('untracked')
+})
+
+test('a rename is keyed by the path that exists on disk', () => {
+  const dir = repo('one\n')
+  execFileSync('git', ['mv', 'a.ts', 'renamed.ts'], { cwd: dir })
+
+  // `-z` emits `R  new\0old\0`, so the second field must be skipped rather than
+  // read as its own entry — otherwise the mark lands on the path that is gone.
+  const statuses = statusMap(dir)
+  expect(statuses.get(join(dir, 'renamed.ts'))).toBe('modified')
+  expect(statuses.has(join(dir, 'a.ts'))).toBe(false)
 })

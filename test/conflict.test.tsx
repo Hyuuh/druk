@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { ui } from '../src/themes'
 import { fixture, launch, press, settle } from './helpers'
 import type { Harness } from './helpers'
 
@@ -39,6 +40,28 @@ describe('saving a file that changed underneath', () => {
     expect(frame).toContain('Overwrite')
     expect(frame).toContain('Reload')
     expect(readFileSync(file, 'utf8')).toBe('theirs from outside\n')
+  })
+
+  test('the warning goes away once the files agree again', async () => {
+    const { t, file } = await clash()
+    expect(t.captureCharFrame()).toContain('unsaved edits')
+
+    // Someone puts the file back to what the buffer holds.
+    writeFileSync(file, 'EDITmine\n')
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await settle(t)
+
+    expect(t.captureCharFrame()).not.toContain('unsaved edits')
+  })
+
+  test('saving clears the warning too', async () => {
+    const { t } = await clash()
+    await save(t)
+    await choose(t, 0) // overwrite with my version
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await settle(t)
+
+    expect(t.captureCharFrame()).not.toContain('unsaved edits')
   })
 
   test('the unsaved buffer survives the outside write until the choice is made', async () => {
@@ -93,5 +116,24 @@ describe('saving a file that was deleted underneath', () => {
     await choose(t, 0)
 
     expect(readFileSync(file, 'utf8')).toBe('EDITmine\n')
+  })
+})
+
+describe('how the warning is coloured', () => {
+  test('a clash is amber, not the red kept for failures', async () => {
+    const { t } = await clash()
+
+    const spans = t.captureSpans() as unknown as {
+      lines: { spans: { text: string; fg?: { buffer: Uint8Array } }[] }[]
+    }
+    const message = spans.lines.at(-1)!.spans.find(span => span.text.includes('unsaved edits'))
+    const hex = (fg?: { buffer: Uint8Array }) =>
+      fg
+        ? `#${Array.from(fg.buffer.slice(0, 3), v => v.toString(16).padStart(2, '0')).join('')}`
+        : ''
+
+    expect(message).toBeDefined()
+    expect(hex(message!.fg)).toBe(ui.dirty.toLowerCase())
+    expect(hex(message!.fg)).not.toBe(ui.error.toLowerCase())
   })
 })

@@ -17,9 +17,7 @@ export interface Command {
   label: string
   /** Keybinding shown right-aligned, e.g. "Ctrl+S". Leaves only. */
   hint?: string
-  /** Leaf action. */
   run?: () => void
-  /** Submenu. A command with children is never runnable itself. */
   children?: Command[]
 }
 
@@ -48,6 +46,12 @@ export interface CommandActions {
   setShowHidden: (show: boolean) => void
   setWordWrap: (wrap: boolean) => void
   commit: () => void
+  diffFile: () => void
+  diffAll: () => void
+  push: () => void
+  pull: () => void
+  fetch: () => void
+  discardChanges: () => void
   undoCommit: () => void
   stash: () => void
   popStash: () => void
@@ -88,7 +92,7 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         {
           id: 'find.project',
           label: 'In project',
-          hint: 'Ctrl+Shift+F',
+          hint: 'Ctrl+R',
           run: actions.findInProject,
         },
       ],
@@ -98,7 +102,7 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       label: 'File',
       children: [
         { id: 'file.new', label: 'New file', hint: 'Ctrl+N', run: actions.newFile },
-        { id: 'file.newDir', label: 'New folder', hint: 'Ctrl+Shift+N', run: actions.newFolder },
+        { id: 'file.newDir', label: 'New folder', hint: 'Ctrl+Opt+N', run: actions.newFolder },
         { id: 'file.rename', label: 'Rename…', hint: 'r', run: actions.rename },
         { id: 'file.delete', label: 'Delete…', hint: 'd', run: actions.remove },
       ],
@@ -131,10 +135,20 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       id: 'git',
       label: 'Git',
       children: [
+        { id: 'git.diffFile', label: 'Diff this file', run: actions.diffFile },
+        { id: 'git.diffAll', label: 'Diff all changes', run: actions.diffAll },
         { id: 'git.commit', label: 'Commit all changes…', run: actions.commit },
+        { id: 'git.push', label: 'Push…', run: actions.push },
+        { id: 'git.pull', label: 'Pull (fast-forward)', run: actions.pull },
+        { id: 'git.fetch', label: 'Fetch all', run: actions.fetch },
         { id: 'git.undoCommit', label: 'Undo last commit…', run: actions.undoCommit },
         { id: 'git.stash', label: 'Stash all changes', run: actions.stash },
         { id: 'git.popStash', label: 'Pop latest stash', run: actions.popStash },
+        {
+          id: 'git.discard',
+          label: 'Discard changes in this file…',
+          run: actions.discardChanges,
+        },
         { id: 'git.switch', label: 'Switch branch…', run: actions.switchBranch },
         { id: 'git.new', label: 'New branch from current…', run: actions.newBranch },
         { id: 'git.newFrom', label: 'New branch from…', run: actions.newBranchFrom },

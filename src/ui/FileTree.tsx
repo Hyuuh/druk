@@ -29,6 +29,13 @@ const MARKS: Record<FileStatus, string> = {
   deleted: 'D',
 }
 
+const statusColor = (status: FileStatus) =>
+  status === 'untracked' || status === 'added'
+    ? ui.gitAdded
+    : status === 'deleted'
+      ? ui.gitDeleted
+      : ui.gitModified
+
 export function FileTree(props: FileTreeProps) {
   /** A folder inherits the status of whatever changed inside it. */
   const statusOf = (node: TreeNode): FileStatus | undefined => {
@@ -41,22 +48,16 @@ export function FileTree(props: FileTreeProps) {
     return undefined
   }
 
-  const statusColor = (status: FileStatus) =>
-    status === 'untracked' || status === 'added'
-      ? ui.gitAdded
-      : status === 'deleted'
-        ? ui.gitDeleted
-        : ui.gitModified
-
   let box: ScrollBoxRenderable | undefined
 
-  // Keyboard selection would otherwise walk out of view and the tree would look
-  // like it lost its highlight. Deliberately keyed on the selection alone: `nodes`
-  // is a fresh array on every git refresh, and tracking it would yank a
+  // The selection moves for reasons the tree cannot see — arrow keys, but also a
+  // tab switch or a jump from search — and a highlight scrolled out of view reads
+  // as no highlight at all. Deliberately keyed on the selection alone: `nodes` is
+  // a fresh array on every git refresh, and tracking it would yank a
   // mouse-scrolled tree back to the selected row every few seconds.
   createEffect(
-    on([() => props.selectedPath, () => props.focused], ([path, focused]) => {
-      if (!focused || !box) return
+    on([() => props.selectedPath, () => props.focused], ([path]) => {
+      if (!box) return
       const row = props.nodes.findIndex(node => node.path === path)
       if (row < 0) return
       const height = box.viewport.height
@@ -73,6 +74,9 @@ export function FileTree(props: FileTreeProps) {
     const isDouble = lastClick.path === node.path && now - lastClick.at < DOUBLE_CLICK_MS
     lastClick = { path: node.path, at: now }
     props.onFocus()
+    // Activating a folder toggles it, so the second click of a double-click would
+    // close what the first one opened and the folder would look inert.
+    if (isDouble && node.isDir) return
     props.onActivate(node)
     if (isDouble) props.onPin(node)
   }

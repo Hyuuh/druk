@@ -28,22 +28,14 @@ export function currentVersion(): string {
   return '0.0.0'
 }
 
-function versionParts(v: string): number[] {
-  return v
-    .split('-')[0]!
-    .split('.')
-    .map(n => Number.parseInt(n, 10) || 0)
-}
-
-/** True when `latest` is newer than `current` (semver-ish, numeric compare). */
+/** True when `latest` is newer than `current`. */
 export function isNewer(latest: string, current: string): boolean {
-  const [a, b] = [versionParts(latest), versionParts(current)]
-  for (let i = 0; i < 3; i++) {
-    const l = a[i] ?? 0
-    const c = b[i] ?? 0
-    if (l !== c) return l > c
+  try {
+    return Bun.semver.order(latest, current) === 1
+  } catch {
+    // `order` throws on anything unparseable, and `latest` comes off the network.
+    return false
   }
-  return false
 }
 
 /**

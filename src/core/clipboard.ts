@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 
-/** Copy/paste helpers backed by whatever the platform provides. */
+/** Tried in order; the first one that exists on this machine wins. */
 const COPY: [string, string[]][] = [
   ['pbcopy', []],
   ['wl-copy', []],

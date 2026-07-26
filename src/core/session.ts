@@ -45,7 +45,6 @@ function readAll(): SessionFile {
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter(item => typeof item === 'string') : []
 
-/** Restore a project's session, dropping anything that no longer exists on disk. */
 export function loadSession(rootDir: string): Session {
   const entry = readAll()[rootDir]
   if (!entry) return { ...EMPTY_SESSION }

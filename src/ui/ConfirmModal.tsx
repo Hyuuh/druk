@@ -6,6 +6,11 @@ import { Overlay } from './Overlay'
 
 export interface ConfirmModalProps {
   message: string
+  title: string
+  /** Verb for the footer, e.g. "push" renders "Enter to push". */
+  verb: string
+  /** Red border and title, for anything that throws work away. */
+  danger?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
@@ -21,6 +26,8 @@ export function ConfirmModal(props: ConfirmModalProps) {
     }
   })
 
+  const accent = () => (props.danger ? ui.error : ui.accent)
+
   return (
     <Overlay>
       <box
@@ -29,14 +36,14 @@ export function ConfirmModal(props: ConfirmModalProps) {
         backgroundColor={ui.panelBg}
         border
         borderStyle="rounded"
-        borderColor={ui.error}
-        title=" Delete "
-        titleColor={ui.error}
+        borderColor={accent()}
+        title={` ${props.title} `}
+        titleColor={accent()}
         paddingLeft={1}
         paddingRight={1}
       >
         <text fg={ui.text} bg={ui.panelBg} content={props.message} />
-        <text fg={ui.dim} bg={ui.panelBg} content="Enter to delete · Esc to cancel" />
+        <text fg={ui.dim} bg={ui.panelBg} content={`Enter to ${props.verb} · Esc to cancel`} />
       </box>
     </Overlay>
   )

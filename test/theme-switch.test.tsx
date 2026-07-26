@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { afterAll, expect, test } from 'bun:test'
 
 import { computeSegments, getSyntaxStyle, invalidateSyntaxStyle } from '../src/languages/highlight'
 import { setTheme, syntaxTheme, THEMES } from '../src/themes'
@@ -28,6 +28,13 @@ function colors(t: Harness) {
   }
   return seen
 }
+
+// These tests drive the module-global theme; leaving it changed would make every
+// later test file depend on the order bun happened to run them in.
+afterAll(() => {
+  setTheme('dark')
+  invalidateSyntaxStyle()
+})
 
 const hexToRgb = (hex: string) => {
   const h = hex.replace('#', '')

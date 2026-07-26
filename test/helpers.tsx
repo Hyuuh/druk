@@ -31,7 +31,7 @@ export async function launch(dir: string, config: Partial<Config> = {}) {
 }
 
 /**
- * React's scheduler runs on a macrotask, so a frame captured immediately after
+ * The reconciler flushes on a macrotask, so a frame captured immediately after
  * an event still shows the previous state. Yield before rendering.
  */
 export async function settle(t: { flush: () => Promise<void> }): Promise<void> {
@@ -39,7 +39,7 @@ export async function settle(t: { flush: () => Promise<void> }): Promise<void> {
   await t.flush()
 }
 
-/** Send keys, then let React catch up. */
+/** Send keys, then let the reconciler catch up. */
 export async function press(t: Harness, action: (input: Harness['mockInput']) => void) {
   action(t.mockInput)
   await settle(t)

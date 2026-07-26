@@ -41,7 +41,6 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | `src/languages/index.ts` + a query in `src/languages/queries/` |
-| theme | a file in `src/themes/` + register in `src/themes/index.ts` |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) |
 | command | `src/app/commands.ts` + implement the action in `src/app/App.tsx` |
@@ -110,7 +109,7 @@ expect(t.captureCharFrame()).toContain('const a = 1')
 `test/helpers.tsx` has `fixture()` (temp project), `launch()` (renders `<App/>`),
 `press()` and `pressEscape()`. Two rules the harness exists to encode:
 
-- **Yield before capturing.** React's scheduler runs on a macrotask; a frame captured
+- **Yield before capturing.** The reconciler flushes on a macrotask; a frame captured
   straight after a key still shows the previous state. `press()`/`settle()` handle it.
 - **Escape needs a gap.** Esc is the prefix of every arrow/function-key sequence, so the
   parser holds it until it knows nothing follows. Use `pressEscape()`, not

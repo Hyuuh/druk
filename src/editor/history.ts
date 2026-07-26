@@ -49,7 +49,6 @@ export class History {
     this.redoStack.length = 0
   }
 
-  /** State to restore, or null when there is nothing to undo. */
   undo(): Snapshot | null {
     this.commit()
     const previous = this.undoStack.pop()

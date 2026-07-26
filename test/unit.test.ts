@@ -53,6 +53,16 @@ describe('updates', () => {
     expect(isNewer('0.2.0', '0.2.0')).toBe(false)
     expect(isNewer('0.2.0', '0.3.0')).toBe(false)
   })
+
+  test('a release is newer than its own prereleases', () => {
+    expect(isNewer('1.0.0', '1.0.0-beta.1')).toBe(true)
+    expect(isNewer('1.0.0-beta.1', '1.0.0')).toBe(false)
+    expect(isNewer('1.0.0-beta.2', '1.0.0-beta.1')).toBe(true)
+  })
+
+  test('garbage from the registry is not an update', () => {
+    expect(isNewer('not-a-version', '0.2.0')).toBe(false)
+  })
 })
 
 describe('registries', () => {
@@ -81,11 +91,16 @@ describe('registries', () => {
     expect(ran.length).toBe(leaves.length)
   })
 
-  test('themes define every ui key', () => {
-    const keys = Object.keys(THEMES.dark.ui).toSorted()
-    for (const theme of Object.values(THEMES)) {
-      expect(Object.keys(theme.ui).toSorted()).toEqual(keys)
-      expect(theme.name.length).toBeGreaterThan(0)
+  // Missing/extra ui keys are a tsc error, so only the values are worth asserting.
+  test('every theme tints the current line instead of filling it', () => {
+    const channels = (hex: string) =>
+      [0, 2, 4].map(i => Number.parseInt(hex.replace('#', '').slice(i, i + 2), 16))
+
+    for (const [id, theme] of Object.entries(THEMES)) {
+      const [bg, line] = [channels(theme.ui.bg), channels(theme.ui.currentLine)]
+      const delta = Math.max(...bg.map((v, i) => Math.abs(v - line[i]!)))
+      // Visible as a band, never a block that competes with the code on it.
+      expect(`${id}:${delta > 0 && delta <= 20}`).toBe(`${id}:true`)
     }
   })
 })

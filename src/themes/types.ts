@@ -11,9 +11,7 @@ export interface ThemeUi {
   dim: string
   faint: string
   accent: string
-  activeTabBg: string
   activeTabFg: string
-  inactiveTabBg: string
   inactiveTabFg: string
   treeSelectedBg: string
   treeFocusBg: string
@@ -22,16 +20,12 @@ export interface ThemeUi {
   folder: string
   cursor: string
   scrollbar: string
-  /** Panel/pane separators and modal borders. */
-  border: string
   /** Line-number gutter foreground. */
   gutter: string
   /** Background fill behind the line the cursor is on. Keep it near `bg`. */
   currentLine: string
   /** Indent guide column. Barely off `bg` — it should read as a hint, not a rule. */
   indentGuide: string
-  /** Accent used on the active tab's underline. */
-  tabAccent: string
   /** Git gutter marks. */
   gitAdded: string
   gitModified: string

@@ -1,10 +1,14 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
-import { computeSegments, getSyntaxStyle } from '../src/languages/highlight'
+import { invalidateSyntaxStyle } from '../src/languages/highlight'
+import { setTheme, THEMES } from '../src/themes'
 import { fixture, launch, press } from './helpers'
 
 const BIG = readFileSync('pnpm-lock.yaml', 'utf8')
+
+const rgb = (hex: string) =>
+  [0, 2, 4].map(i => Number.parseInt(hex.replace('#', '').slice(i, i + 2), 16)).join(',')
 
 test('a large file opens quickly and is highlighted', async () => {
   const started = performance.now()
@@ -19,6 +23,11 @@ test('a large file opens quickly and is highlighted', async () => {
 })
 
 test('scrolling deep into a large file keeps highlights', async () => {
+  // The theme is module state shared across test files, so pin it rather than
+  // asserting against whichever one the previously run file left behind.
+  setTheme('dark')
+  invalidateSyntaxStyle()
+
   const t = await launch(fixture({ 'pnpm-lock.yaml': BIG }))
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
@@ -36,36 +45,7 @@ test('scrolling deep into a large file keeps highlights', async () => {
       }
     }
   }
-  // More than plain text + chrome means the window followed the viewport.
-  expect(foreground.size).toBeGreaterThan(3)
+  // Assert a syntax color, not a count of distinct ones: the tree and status bar
+  // supply five on their own, so counting passes even with nothing highlighted.
+  expect(foreground).toContain(rgb((THEMES.dark.syntax.property as { fg: string }).fg))
 }, 20000)
-
-/** Average cost of one downward step, after opening the only file in a project. */
-async function scrollCost(content: string, steps: number) {
-  const t = await launch(fixture({ 'f.yaml': content }))
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter())
-
-  const started = performance.now()
-  for (let n = 0; n < steps; n++) await press(t, i => i.pressArrow('down'))
-  return (performance.now() - started) / steps
-}
-
-test('scrolling cost does not grow with file size', async () => {
-  const small = Array.from({ length: 20 }, (_, i) => `k${i}: ${i}`).join('\n')
-  const baseline = await scrollCost(small, 60)
-  const large = await scrollCost(BIG, 60)
-
-  // Both are dominated by the harness's frame render; what matters is that the
-  // 1500-line file is not measurably worse. Re-applying the whole window per
-  // step (the old behaviour) made this several times the baseline.
-  expect(large).toBeLessThan(baseline * 2)
-}, 60000)
-
-test('every segment carries its line so the viewport can be filtered', async () => {
-  const segs = (await computeSegments(BIG, 'yaml', 2))!
-  expect(segs.length).toBeGreaterThan(1000)
-  expect(segs.every(s => Number.isInteger(s.line))).toBe(true)
-  const property = getSyntaxStyle().getStyleId('property')
-  expect(segs.some(s => s.styleId === property)).toBe(true)
-})

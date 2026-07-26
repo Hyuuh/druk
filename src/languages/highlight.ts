@@ -18,7 +18,6 @@ let clientDead = false
 let initPromise: Promise<TreeSitterClient | null> | null = null
 let syntaxStyle: SyntaxStyle | null = null
 
-/** Register the grammars we vendor ourselves (see ./index.ts for the list). */
 function registerVendoredParsers(client: TreeSitterClient): void {
   for (const lang of VENDORED_LANGUAGES) {
     try {
@@ -47,7 +46,7 @@ export function getSyntaxStyle(): SyntaxStyle {
   return syntaxStyle
 }
 
-/** Drop the cached style table so the next getSyntaxStyle() rebuilds it (theme switch). */
+/** Called on a theme switch: the next getSyntaxStyle() rebuilds from the new palette. */
 export function invalidateSyntaxStyle(): void {
   syntaxStyle = null
 }

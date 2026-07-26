@@ -19,6 +19,8 @@ await render(() => <App rootDir={rootDir} initialConfig={config} />, {
   // Without motion reporting the terminal never hands drags to the app, so every
   // click-drag paints the terminal's own selection over the UI instead.
   enableMouseMovement: true,
-  exitOnCtrlC: true,
+  // Ctrl+C copies here; quitting is Ctrl+Q. Leaving this on would drop unsaved
+  // buffers the moment someone copies out of habit.
+  exitOnCtrlC: false,
   targetFps: 30,
 })

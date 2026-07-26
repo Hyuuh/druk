@@ -19,12 +19,13 @@ interface Row {
   trail: string[]
 }
 
+const VISIBLE_ROWS = 12
+
 export function CommandPalette(props: CommandPaletteProps) {
   const [query, setQuery] = createSignal('')
   const [trail, setTrail] = createSignal<Command[]>([])
   const [index, setIndex] = createSignal(0)
 
-  // Typing searches every leaf in the tree; otherwise browse the current level.
   const rows = createMemo<Row[]>(() => {
     const q = query().trim().toLowerCase()
     if (!q) {
@@ -38,6 +39,13 @@ export function CommandPalette(props: CommandPaletteProps) {
   })
 
   const selected = () => Math.min(index(), Math.max(0, rows().length - 1))
+
+  // A filter can match every leaf in the tree; rendering them all pushes the
+  // input and the footer off an 80x24 screen, so only a window is drawn.
+  const windowed = createMemo(() => {
+    const start = Math.max(0, Math.min(selected() - VISIBLE_ROWS + 1, rows().length - VISIBLE_ROWS))
+    return { start, rows: rows().slice(start, start + VISIBLE_ROWS) }
+  })
 
   const enter = (row: Row) => {
     if (row.command.children) {
@@ -109,9 +117,9 @@ export function CommandPalette(props: CommandPaletteProps) {
           when={rows().length > 0}
           fallback={<text fg={ui.dim} bg={ui.panelBg} content=" No matching commands" />}
         >
-          <For each={rows()}>
+          <For each={windowed().rows}>
             {(row, i) => {
-              const active = () => i() === selected()
+              const active = () => windowed().start + i() === selected()
               const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
               const prefix = row.trail.length > 0 ? `${row.trail.join(' > ')} > ` : ''
               return (
@@ -137,7 +145,7 @@ export function CommandPalette(props: CommandPaletteProps) {
           fg={ui.dim}
           bg={ui.panelBg}
           content={
-            trail().length > 0 ? ' Left back · Enter run · Esc close' : ' Enter open · Esc close'
+            trail().length > 0 ? ' ←/Esc back · Enter run' : ' ↑↓ move · Enter open · Esc close'
           }
         />
       </box>

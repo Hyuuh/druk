@@ -69,7 +69,6 @@ function motion(editor: Editor, k: string, state: VimState, count: number): bool
   }
 }
 
-/** Yank the current selection into the register. */
 function yankSelection(editor: Editor, state: VimState): void {
   const text = editor.getSelectedText()
   if (text) {
@@ -78,13 +77,34 @@ function yankSelection(editor: Editor, state: VimState): void {
   }
 }
 
-/** Delete the whole current line into the register (dd). */
-function deleteLine(editor: Editor, state: VimState, count: number): void {
-  const { row: line } = editor.logicalCursor
-  const lines = editor.plainText.split('\n')
-  state.register = `${lines.slice(line, line + count).join('\n')}\n`
+/**
+ * Copy `count` whole lines from the cursor into the register (yy, and the first
+ * half of dd). The trailing newline is load-bearing — `paste` strips it back off.
+ */
+function yankLines(editor: Editor, state: VimState, count: number): void {
+  const { row } = editor.logicalCursor
+  state.register = `${editor.plainText
+    .split('\n')
+    .slice(row, row + count)
+    .join('\n')}\n`
   state.registerLinewise = true
+}
+
+function deleteLine(editor: Editor, state: VimState, count: number): void {
+  yankLines(editor, state, count)
   for (let i = 0; i < count; i++) editor.deleteLine()
+}
+
+/** What `d` and `c` delete, by the key that follows the operator. */
+const OPERATOR_TARGETS: Record<string, (editor: Editor, count: number) => void> = {
+  w: (e, n) => {
+    for (let i = 0; i < n; i++) e.deleteWordForward()
+  },
+  b: (e, n) => {
+    for (let i = 0; i < n; i++) e.deleteWordBackward()
+  },
+  $: e => e.deleteToLineEnd(),
+  0: e => e.deleteToLineStart(),
 }
 
 function paste(editor: Editor, state: VimState, before: boolean): void {
@@ -144,72 +164,42 @@ export function handleVimKey(editor: Editor, key: KeyEvent, state: VimState): bo
     state.count += k
     return true
   }
-  const count = Math.max(1, Number.parseInt(state.count || '1', 10))
-  const consumeCount = () => {
-    state.count = ''
-  }
+  // Every path below consumes the count; only the operator setter puts it back,
+  // so that `3dd` still reaches the operator with its 3.
+  const digits = state.count
+  state.count = ''
+  const count = Math.max(1, Number.parseInt(digits || '1', 10))
 
   if (state.pending) {
     const op = state.pending
     state.pending = ''
     if (op === 'g') {
-      if (k === 'g') {
-        editor.gotoBufferHome({ select: isSelecting(state) })
-        consumeCount()
-        return true
-      }
-      consumeCount()
+      if (k === 'g') editor.gotoBufferHome({ select: isSelecting(state) })
       return true
     }
     if (k === op) {
       // dd / yy / cc — linewise
       if (op === 'd') deleteLine(editor, state, count)
-      else if (op === 'y') {
-        const { row: line } = editor.logicalCursor
-        const lines = editor.plainText.split('\n')
-        state.register = `${lines.slice(line, line + count).join('\n')}\n`
-        state.registerLinewise = true
-      } else if (op === 'c') {
+      else if (op === 'y') yankLines(editor, state, count)
+      else if (op === 'c') {
         editor.gotoLineStart()
         editor.deleteToLineEnd()
         state.mode = 'insert'
       }
-      consumeCount()
       return true
     }
-    if (k === 'w' && (op === 'd' || op === 'c')) {
-      for (let i = 0; i < count; i++) editor.deleteWordForward()
-      if (op === 'c') state.mode = 'insert'
-      consumeCount()
-      return true
+    if (op === 'd' || op === 'c') {
+      const cut = OPERATOR_TARGETS[k]
+      if (cut) {
+        cut(editor, count)
+        if (op === 'c') state.mode = 'insert'
+      }
     }
-    if (k === 'b' && (op === 'd' || op === 'c')) {
-      for (let i = 0; i < count; i++) editor.deleteWordBackward()
-      if (op === 'c') state.mode = 'insert'
-      consumeCount()
-      return true
-    }
-    if (k === '$' && (op === 'd' || op === 'c')) {
-      editor.deleteToLineEnd()
-      if (op === 'c') state.mode = 'insert'
-      consumeCount()
-      return true
-    }
-    if (k === '0' && (op === 'd' || op === 'c')) {
-      editor.deleteToLineStart()
-      if (op === 'c') state.mode = 'insert'
-      consumeCount()
-      return true
-    }
-    consumeCount()
-    return true // unknown operator target: swallow it
+    return true // an unknown operator target is swallowed, never passed on
   }
 
   // Motions run before the mode switches below so visual mode extends the selection.
-  if (motion(editor, k, state, count)) {
-    consumeCount()
-    return true
-  }
+  if (motion(editor, k, state, count)) return true
 
   if (state.mode === 'visual') {
     switch (k) {
@@ -234,7 +224,6 @@ export function handleVimKey(editor: Editor, key: KeyEvent, state: VimState): bo
         state.mode = 'insert'
         break
     }
-    consumeCount()
     return true
   }
 
@@ -292,13 +281,12 @@ export function handleVimKey(editor: Editor, key: KeyEvent, state: VimState): bo
     case 'y':
     case 'g':
       state.pending = k
-      return true // keep the count for the operator
+      state.count = digits // the motion after the operator still needs it
+      return true
     case 'escape':
       break
     default:
-      consumeCount()
       return true // swallow unknown keys so they never reach the buffer
   }
-  consumeCount()
   return true
 }

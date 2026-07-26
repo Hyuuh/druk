@@ -30,7 +30,6 @@ export interface Config {
   showHidden: boolean
   /** Wrap long lines instead of scrolling horizontally. */
   wordWrap: boolean
-  /** Run the project's formatter (biome, prettier) before writing. */
   /** Check npm for a newer druk on startup. */
   checkUpdates: boolean
   /** Version whose update notice was dismissed; suppresses the banner for it. */
