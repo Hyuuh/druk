@@ -1,0 +1,304 @@
+import type { KeyEvent, TextareaRenderable } from '@opentui/core'
+
+export type VimMode = 'normal' | 'insert' | 'visual'
+
+export const MODE_LABELS: Record<VimMode, string> = {
+  normal: 'NORMAL',
+  insert: 'INSERT',
+  visual: 'VISUAL',
+}
+
+/** Mutable state a vim session carries between keystrokes. */
+export interface VimState {
+  mode: VimMode
+  pending: string // partial operator, e.g. "d" waiting for a motion, or "g"
+  count: string // numeric prefix, e.g. "12" in 12j
+  register: string // last yanked/deleted text
+  registerLinewise: boolean
+}
+
+export function initialVimState(): VimState {
+  return { mode: 'normal', pending: '', count: '', register: '', registerLinewise: false }
+}
+
+type Editor = TextareaRenderable
+
+const isSelecting = (state: VimState) => state.mode === 'visual'
+
+/** Motions shared by normal and visual mode. Returns true if `k` was a motion. */
+function motion(editor: Editor, k: string, state: VimState, count: number): boolean {
+  const select = isSelecting(state)
+  const repeat = (fn: () => void) => {
+    for (let i = 0; i < count; i++) fn()
+  }
+
+  switch (k) {
+    case 'h':
+    case 'left':
+      repeat(() => editor.moveCursorLeft({ select }))
+      return true
+    case 'l':
+    case 'right':
+      repeat(() => editor.moveCursorRight({ select }))
+      return true
+    case 'j':
+    case 'down':
+      repeat(() => editor.moveCursorDown({ select }))
+      return true
+    case 'k':
+    case 'up':
+      repeat(() => editor.moveCursorUp({ select }))
+      return true
+    case 'w':
+      repeat(() => editor.moveWordForward({ select }))
+      return true
+    case 'b':
+      repeat(() => editor.moveWordBackward({ select }))
+      return true
+    case '0':
+      editor.gotoLineHome({ select })
+      return true
+    case '$':
+      editor.gotoLineEnd({ select })
+      return true
+    case 'G':
+      editor.gotoBufferEnd({ select })
+      return true
+    default:
+      return false
+  }
+}
+
+/** Yank the current selection into the register. */
+function yankSelection(editor: Editor, state: VimState): void {
+  const text = editor.getSelectedText()
+  if (text) {
+    state.register = text
+    state.registerLinewise = false
+  }
+}
+
+/** Delete the whole current line into the register (dd). */
+function deleteLine(editor: Editor, state: VimState, count: number): void {
+  const { row: line } = editor.logicalCursor
+  const lines = editor.plainText.split('\n')
+  state.register = `${lines.slice(line, line + count).join('\n')}\n`
+  state.registerLinewise = true
+  for (let i = 0; i < count; i++) editor.deleteLine()
+}
+
+function paste(editor: Editor, state: VimState, before: boolean): void {
+  if (!state.register) return
+  if (state.registerLinewise) {
+    if (before) editor.gotoLineStart()
+    else {
+      editor.gotoLineEnd()
+      editor.newLine()
+    }
+    // The register already ends in a newline; drop it so we don't add a blank line.
+    editor.insertText(state.register.replace(/\n$/, ''))
+    if (before) {
+      editor.newLine()
+      editor.moveCursorUp()
+    }
+  } else {
+    if (!before) editor.moveCursorRight()
+    editor.insertText(state.register)
+  }
+}
+
+/**
+ * Handle one key in vim mode. Returns true when the key was consumed (the
+ * caller should `preventDefault()` so the textarea never sees it).
+ */
+export function handleVimKey(editor: Editor, key: KeyEvent, state: VimState): boolean {
+  // Shifted letters arrive as the lowercase name plus `shift`, so restore the
+  // uppercase form the commands below are written against (A, O, G, …).
+  const k = key.shift && /^[a-z]$/.test(key.name) ? key.name.toUpperCase() : key.name
+  if (state.mode === 'insert') {
+    if (k === 'escape') {
+      state.mode = 'normal'
+      editor.moveCursorLeft()
+      return true
+    }
+    return false
+  }
+
+  if (key.ctrl) {
+    if (k === 'r') {
+      editor.redo()
+      return true
+    }
+    if (k === 'd' || k === 'u') {
+      for (let i = 0; i < 10; i++) {
+        if (k === 'd') editor.moveCursorDown()
+        else editor.moveCursorUp()
+      }
+      return true
+    }
+    return false
+  }
+
+  // A leading "0" is the line-start motion, not the start of a count.
+  if (/^\d$/.test(k) && !(k === '0' && state.count === '')) {
+    state.count += k
+    return true
+  }
+  const count = Math.max(1, Number.parseInt(state.count || '1', 10))
+  const consumeCount = () => {
+    state.count = ''
+  }
+
+  if (state.pending) {
+    const op = state.pending
+    state.pending = ''
+    if (op === 'g') {
+      if (k === 'g') {
+        editor.gotoBufferHome({ select: isSelecting(state) })
+        consumeCount()
+        return true
+      }
+      consumeCount()
+      return true
+    }
+    if (k === op) {
+      // dd / yy / cc — linewise
+      if (op === 'd') deleteLine(editor, state, count)
+      else if (op === 'y') {
+        const { row: line } = editor.logicalCursor
+        const lines = editor.plainText.split('\n')
+        state.register = `${lines.slice(line, line + count).join('\n')}\n`
+        state.registerLinewise = true
+      } else if (op === 'c') {
+        editor.gotoLineStart()
+        editor.deleteToLineEnd()
+        state.mode = 'insert'
+      }
+      consumeCount()
+      return true
+    }
+    if (k === 'w' && (op === 'd' || op === 'c')) {
+      for (let i = 0; i < count; i++) editor.deleteWordForward()
+      if (op === 'c') state.mode = 'insert'
+      consumeCount()
+      return true
+    }
+    if (k === 'b' && (op === 'd' || op === 'c')) {
+      for (let i = 0; i < count; i++) editor.deleteWordBackward()
+      if (op === 'c') state.mode = 'insert'
+      consumeCount()
+      return true
+    }
+    if (k === '$' && (op === 'd' || op === 'c')) {
+      editor.deleteToLineEnd()
+      if (op === 'c') state.mode = 'insert'
+      consumeCount()
+      return true
+    }
+    if (k === '0' && (op === 'd' || op === 'c')) {
+      editor.deleteToLineStart()
+      if (op === 'c') state.mode = 'insert'
+      consumeCount()
+      return true
+    }
+    consumeCount()
+    return true // unknown operator target: swallow it
+  }
+
+  // Motions run before the mode switches below so visual mode extends the selection.
+  if (motion(editor, k, state, count)) {
+    consumeCount()
+    return true
+  }
+
+  if (state.mode === 'visual') {
+    switch (k) {
+      case 'escape':
+        editor.clearSelection()
+        state.mode = 'normal'
+        break
+      case 'd':
+      case 'x':
+        yankSelection(editor, state)
+        editor.deleteSelection()
+        state.mode = 'normal'
+        break
+      case 'y':
+        yankSelection(editor, state)
+        editor.clearSelection()
+        state.mode = 'normal'
+        break
+      case 'c':
+        yankSelection(editor, state)
+        editor.deleteSelection()
+        state.mode = 'insert'
+        break
+    }
+    consumeCount()
+    return true
+  }
+
+  switch (k) {
+    case 'i':
+      state.mode = 'insert'
+      break
+    case 'a':
+      editor.moveCursorRight()
+      state.mode = 'insert'
+      break
+    case 'I':
+      editor.gotoLineStart()
+      state.mode = 'insert'
+      break
+    case 'A':
+      editor.gotoLineEnd()
+      state.mode = 'insert'
+      break
+    case 'o':
+      editor.gotoLineEnd()
+      editor.newLine()
+      state.mode = 'insert'
+      break
+    case 'O':
+      editor.gotoLineStart()
+      editor.newLine()
+      editor.moveCursorUp()
+      state.mode = 'insert'
+      break
+    case 'v':
+      state.mode = 'visual'
+      break
+    case 'x':
+      for (let i = 0; i < count; i++) editor.deleteChar()
+      break
+    case 'D':
+      editor.deleteToLineEnd()
+      break
+    case 'C':
+      editor.deleteToLineEnd()
+      state.mode = 'insert'
+      break
+    case 'u':
+      for (let i = 0; i < count; i++) editor.undo()
+      break
+    case 'p':
+      paste(editor, state, false)
+      break
+    case 'P':
+      paste(editor, state, true)
+      break
+    case 'd':
+    case 'c':
+    case 'y':
+    case 'g':
+      state.pending = k
+      return true // keep the count for the operator
+    case 'escape':
+      break
+    default:
+      consumeCount()
+      return true // swallow unknown keys so they never reach the buffer
+  }
+  consumeCount()
+  return true
+}

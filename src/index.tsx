@@ -1,25 +1,24 @@
 #!/usr/bin/env bun
-import './assets'
+import './core/assets'
 import { resolve } from 'node:path'
 
-import { createCliRenderer } from '@opentui/core'
-import { createRoot } from '@opentui/react'
+import { render } from '@opentui/solid'
 
-import { App } from './App'
-import { loadConfig } from './config'
-import { setTheme } from './theme'
+import { App } from './app/App'
+import { loadConfig } from './core/config'
+import { setTheme } from './themes'
 
-const arg = process.argv[2]
-const rootDir = resolve(arg ?? process.cwd())
+const rootDir = resolve(process.argv[2] ?? process.cwd())
 
 // Apply the saved theme before the first render.
 const config = loadConfig()
 setTheme(config.theme)
 
-const renderer = await createCliRenderer({
+await render(() => <App rootDir={rootDir} initialConfig={config} />, {
   useMouse: true,
+  // Without motion reporting the terminal never hands drags to the app, so every
+  // click-drag paints the terminal's own selection over the UI instead.
+  enableMouseMovement: true,
   exitOnCtrlC: true,
   targetFps: 30,
 })
-
-createRoot(renderer).render(<App rootDir={rootDir} initialTheme={config.theme} />)

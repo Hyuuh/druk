@@ -1,0 +1,60 @@
+/**
+ * Theme registry — the single place to add a color scheme.
+ *
+ * To add one: copy `github-dark.ts`, adjust the colors, then register it in
+ * `THEMES` below. It shows up in the command palette automatically.
+ */
+import type { StyleDefinitionInput } from '@opentui/core'
+import { createStore } from 'solid-js/store'
+
+import { catppuccinLatte } from './catppuccin-latte'
+import { catppuccinMocha } from './catppuccin-mocha'
+import { dracula } from './dracula'
+import { githubDark } from './github-dark'
+import { githubLight } from './github-light'
+import { gruvboxDark } from './gruvbox-dark'
+import { nord } from './nord'
+import { tokyoNight } from './tokyo-night'
+import type { Theme, ThemeUi } from './types'
+
+export type { Theme, ThemeUi }
+
+export const THEMES = {
+  'dark': githubDark,
+  'light': githubLight,
+  'catppuccin-mocha': catppuccinMocha,
+  'catppuccin-latte': catppuccinLatte,
+  dracula,
+  nord,
+  'gruvbox': gruvboxDark,
+  'tokyo-night': tokyoNight,
+}
+
+export type ThemeName = keyof typeof THEMES
+
+export const themeLabels = Object.fromEntries(
+  Object.entries(THEMES).map(([id, theme]) => [id, theme.name]),
+) as Record<ThemeName, string>
+
+const DEFAULT: ThemeName = 'dark'
+
+// `ui` is a store, not a plain object: Solid components never re-render, so a
+// mutated object would leave every color on screen stale after a theme switch.
+// Reading `ui.bg` inside JSX subscribes that spot to the change.
+const [ui, setUi] = createStore<ThemeUi>({ ...THEMES[DEFAULT].ui })
+export { ui }
+
+// Read imperatively when the syntax style table is rebuilt, so a plain object is fine.
+export const syntaxTheme: Record<string, StyleDefinitionInput> = { ...THEMES[DEFAULT].syntax }
+
+export function isThemeName(value: unknown): value is ThemeName {
+  return typeof value === 'string' && value in THEMES
+}
+
+export function setTheme(name: ThemeName): void {
+  setUi(THEMES[name].ui)
+  // Replace, never merge: a group the new theme omits would otherwise keep the
+  // previous theme's color and render invisible when light/dark flips.
+  for (const group of Object.keys(syntaxTheme)) delete syntaxTheme[group]
+  Object.assign(syntaxTheme, THEMES[name].syntax)
+}

@@ -1,0 +1,59 @@
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { buildCommands, flattenCommands } from '../src/app/commands'
+import { fixture, launch, press } from './helpers'
+
+async function openedFile(dir: string) {
+  const t = await launch(dir)
+  await press(t, input => input.pressArrow('down'))
+  await press(t, input => input.pressEnter())
+  return t
+}
+
+describe('undo and redo', () => {
+  test('Ctrl+Z takes back a whole typing burst, Ctrl+Y puts it back', async () => {
+    const t = await openedFile(fixture({ 'a.ts': 'start\n' }))
+    await press(t, input => void input.typeText('hello'))
+    expect(t.captureCharFrame()).toContain('hellostart')
+
+    await press(t, input => input.pressKey('z', { ctrl: true }))
+    expect(t.captureCharFrame()).not.toContain('hellostart')
+    expect(t.captureCharFrame()).toContain('start')
+
+    await press(t, input => input.pressKey('y', { ctrl: true }))
+    expect(t.captureCharFrame()).toContain('hellostart')
+  })
+
+  test('undoing to the original text then saving writes the original', async () => {
+    const dir = fixture({ 'a.ts': 'start\n' })
+    const t = await openedFile(dir)
+    await press(t, input => void input.typeText('junk'))
+    await press(t, input => input.pressKey('z', { ctrl: true }))
+    await press(t, input => input.pressKey('s', { ctrl: true }))
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('start\n')
+  })
+
+  test('Ctrl+Z with nothing to undo leaves the buffer alone', async () => {
+    const t = await openedFile(fixture({ 'a.ts': 'start\n' }))
+    await press(t, input => input.pressKey('z', { ctrl: true }))
+    expect(t.captureCharFrame()).toContain('start')
+  })
+
+  test('the palette exposes both', () => {
+    const ids = flattenCommands(
+      buildCommands({} as never, {
+        vimEnabled: false,
+        activeTheme: 'dark',
+        tabSize: 2,
+        showHidden: true,
+        wordWrap: false,
+      }),
+    ).map(entry => entry.command.id)
+
+    expect(ids).toContain('undo')
+    expect(ids).toContain('redo')
+  })
+})
