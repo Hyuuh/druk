@@ -21,8 +21,9 @@ bun add -g druk
 
 The install script drops the binary in `~/.druk/bin` and adds it to your `PATH`; take a
 specific version with `| bash -s -- --version 0.2.0`, or leave your shell config alone with
-`--no-modify-path`. The npm and bun packages are a small launcher that pulls in the one
-binary for your platform. Prebuilt for macOS (arm64, x64), Linux (arm64, x64) and Windows
+`--no-modify-path`. The npm and bun packages are a small launcher that downloads the one
+binary for your platform from the GitHub release — set `DRUK_DOWNLOAD_BASE` to point that
+at a mirror if your network cannot reach GitHub. Prebuilt for macOS (arm64, x64), Linux (arm64, x64) and Windows
 (x64) — the binaries are also on the
 [releases page](https://github.com/letstri/druk/releases).
 

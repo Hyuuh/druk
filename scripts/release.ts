@@ -6,20 +6,25 @@ import type { TargetName } from '../build'
 
 /**
  * Packages the binaries built by build.ts:
- *   dist/npm/druk-<target>/     one npm package per platform, holding one executable
- *   dist/npm/druk/              the package users install, a shim plus optional deps
- *   dist/release/druk-<target>.{zip,tar.gz}   release assets the install script pulls
+ *   dist/npm/druk/              the one package published, a shim holding no binary
+ *   dist/release/druk-<target>.{zip,tar.gz}   the binaries themselves
  *
- * The platform packages must be published *before* the root package: npm resolves
- * optional dependencies at install time, and a root package pointing at versions that
- * do not exist yet installs cleanly and then fails to run.
+ * The archives are the only place a binary is distributed: both the install script and
+ * the npm shim pull them from the GitHub release. There used to be an npm package per
+ * platform, listed as optional dependencies, which is the usual arrangement — but
+ * publishing those needs a credential that can create new packages, while the release
+ * workflow authenticates as GitHub and may only publish to `druk`. One package means
+ * the whole release runs unattended.
+ *
+ * So the release must be uploaded *before* npm is published: an install landing in the
+ * gap would find no asset to fetch.
  *
  * Run after `bun run build <targets>`; only targets with a built binary are packaged.
  */
 const NPM_DIR = './dist/npm'
 const RELEASE_DIR = './dist/release'
 
-const { version, homepage, license, author, repository } = await Bun.file('./package.json').json()
+const { version } = await Bun.file('./package.json').json()
 
 const ALL_TARGETS: TargetName[] = [
   'darwin-arm64',
@@ -45,32 +50,12 @@ await rm(NPM_DIR, { recursive: true, force: true })
 await rm(RELEASE_DIR, { recursive: true, force: true })
 await mkdir(RELEASE_DIR, { recursive: true })
 
-const common = { version, license, author, homepage, repository }
-
 for (const target of targets) {
-  const [os, cpu] = target.split('-') as [string, string]
+  const [os] = target.split('-') as [string, string]
   const exe = binaryName(target)
-  const dir = `${NPM_DIR}/druk-${target}`
-
-  await mkdir(`${dir}/bin`, { recursive: true })
-  await cp(`./dist/${target}/${exe}`, `${dir}/bin/${exe}`)
-  await Bun.write(
-    `${dir}/package.json`,
-    `${JSON.stringify(
-      {
-        name: `druk-${target}`,
-        description: `${target} binary for druk`,
-        ...common,
-        os: [os === 'windows' ? 'win32' : os],
-        cpu: [cpu],
-      },
-      null,
-      2,
-    )}\n`,
-  )
 
   const archive = `${RELEASE_DIR}/druk-${target}.${os === 'linux' ? 'tar.gz' : 'zip'}`
-  const from = `${dir}/bin`
+  const from = `./dist/${target}`
   if (os === 'linux') {
     await Bun.$`tar -czf ${archive} -C ${from} ${exe}`
   } else if (Bun.which('zip')) {
@@ -79,13 +64,14 @@ for (const target of targets) {
     // Windows has no `zip`, but its bsdtar picks the format from the extension.
     await Bun.$`tar -a -cf ${archive} -C ${from} ${exe}`
   }
-  process.stdout.write(`packaged ${target} -> ${dir}, ${archive}\n`)
+  process.stdout.write(`packaged ${target} -> ${archive}\n`)
 }
 
 const rootDir = `${NPM_DIR}/druk`
 await mkdir(`${rootDir}/bin`, { recursive: true })
 await cp('./bin/druk.js', `${rootDir}/bin/druk.js`)
 await cp('./bin/postinstall.mjs', `${rootDir}/bin/postinstall.mjs`)
+await cp('./bin/binary.mjs', `${rootDir}/bin/binary.mjs`)
 await cp('./README.md', `${rootDir}/README.md`)
 
 const rootPkg = await Bun.file('./package.json').json()
@@ -100,18 +86,17 @@ await Bun.write(
       'private': undefined,
       'bin': { druk: './bin/druk.js' },
       'files': ['bin'],
-      // Nothing to build or check here — the one script repairs an install whose
-      // optional dependency was skipped, which is common enough to be worth it.
+      // Nothing to build or check here; the one script fetches the binary so that
+      // the first run does not have to.
       'scripts': { postinstall: 'node ./bin/postinstall.mjs' },
+      // Node ships `fetch` from 18, which is what pulls the binary down.
+      'engines': { node: '>=18' },
+      'os': ['darwin', 'linux', 'win32'],
+      'cpu': ['arm64', 'x64'],
       'devDependencies': undefined,
-      // Every dependency is compiled into the binaries; all that is left to fetch is
-      // the one platform package for the machine doing the installing.
+      // Every dependency is compiled into the binary, and the binary comes from the
+      // GitHub release — so the published package holds nothing but the shim.
       'dependencies': undefined,
-      // Bun is a build-time requirement now, not something the installer needs.
-      'engines': undefined,
-      'optionalDependencies': Object.fromEntries(
-        targets.map(target => [`druk-${target}`, version]),
-      ),
     },
     null,
     2,
@@ -133,23 +118,13 @@ if (publish) {
   const tag = /-([a-z][\da-z]*)/i.exec(version)?.[1] ?? 'latest'
 
   /**
-   * A version already on the registry is skipped rather than retried.
-   *
-   * npm forbids republishing a version, and this publishes seven packages in a row:
-   * without the check, anything that fails partway can never be finished — the rerun
-   * dies on the first package that did go out, and the ones after it stay missing.
+   * A version already on the registry is skipped rather than retried: npm forbids
+   * republishing, so without this a rerun of a release that got as far as npm — to
+   * fix a later step — could never succeed.
    */
   const onRegistry = async (name: string) =>
     (await Bun.$`npm view ${name}@${version} version`.quiet().nothrow()).exitCode === 0
 
-  for (const target of targets) {
-    const name = `druk-${target}`
-    if (await onRegistry(name)) {
-      process.stdout.write(`${name}@${version} is already published — skipped\n`)
-      continue
-    }
-    await Bun.$`npm publish --access public --tag ${tag}`.cwd(`${NPM_DIR}/druk-${target}`)
-  }
   if (await onRegistry('druk')) {
     process.stdout.write(`druk@${version} is already published — skipped\n`)
   } else {

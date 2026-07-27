@@ -68,15 +68,19 @@ writes to your real `~/.config/druk`.
 - **Cross-compiling needs the target's `@opentui/core-<platform>` package**, and
   `bun install` fetches the host's alone. That is why the release workflow uses one native
   runner per platform instead of five `--target` flags on one machine.
-- **Platform packages publish before the root package.** npm resolves optional
-  dependencies at install time, so a root package naming versions that do not exist yet
-  installs cleanly and then cannot run.
+- **The GitHub release is uploaded before npm.** One package is published, `druk`, and it
+  holds no binary: `bin/binary.mjs` fetches the archive for the machine from the release.
+  Publishing npm first would leave a window where an install finds no asset.
+- **There is deliberately no package per platform.** That is the usual arrangement, and
+  it is what druk used to do, but creating a package needs a credential that can create
+  packages — while the release authenticates as GitHub through OIDC and may only publish
+  to `druk` itself. One package is what makes the release run unattended.
 
 The repo's own `package.json` is `private`: what npm publishes is staged into
-`dist/npm/druk` by `scripts/release.ts`, with the shim from `bin/druk.js` and the
-`optionalDependencies` for every platform. Versions come from `package.json` — bump it,
-tag `v<version>`, and `.github/workflows/release.yml` builds every platform, publishes to
-npm and attaches the archives the `install` script downloads.
+`dist/npm/druk` by `scripts/release.ts` — the shim, the postinstall and nothing else.
+Versions come from `package.json` — bump it, tag `v<version>`, and
+`.github/workflows/release.yml` builds every platform, uploads the archives to the
+release and publishes to npm, with no manual step.
 
 Homebrew is not wired up yet. `scripts/formula.ts` generates a working formula from the
 archives in `dist/release/`, but nothing publishes it: that needs a `letstri/homebrew-tap`

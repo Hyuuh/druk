@@ -10,10 +10,12 @@ src/
   index.tsx          entry: flags → load config → apply theme → render <App/>
   assets.d.ts        types for `with { type: 'file' }` imports (wasm, .scm)
 build.ts             compiles a standalone binary per platform (Bun.build + Solid plugin)
-bin/druk.js          npm launcher: runs the platform binary from the optional dependency
+bin/druk.js          npm launcher: runs the binary, fetching it first if it is missing
+bin/binary.mjs       finds or downloads the platform binary from the GitHub release
+bin/postinstall.mjs  fetches it at install time, so the first run does not have to
 install              curl | bash installer, served at druk.letstri.dev/install
 scripts/
-  release.ts         stages npm packages + release archives from dist/
+  release.ts         stages the npm package + release archives from dist/
   formula.ts         Homebrew formula for the current version's archives
   app/
     App.tsx          all application state + keybindings

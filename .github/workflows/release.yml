@@ -63,17 +63,22 @@ jobs:
           cd dist
           for dir in druk-*; do mv "$dir" "${dir#druk-}"; done
           chmod +x */druk || true
-      # No NODE_AUTH_TOKEN: npm authenticates through OIDC, using the trusted
-      # publisher configured for each package. An empty token would be worse than
-      # none — setup-node writes it into .npmrc and npm then fails with ENEEDAUTH
-      # before it ever reaches the OIDC exchange.
-      - run: bun run release --publish
-        env:
-          NPM_CONFIG_PROVENANCE: true
-      # The install script downloads these by name, so the release has to carry them
-      # before anyone can be told to curl it.
-      - name: Attach binaries to the release
+      - run: bun run release
+      # Before npm, not after: the published package holds no binary and fetches one
+      # from this release, so an install landing between the two would find nothing.
+      - name: Publish the release with the binaries
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release upload "${GITHUB_REF_NAME}" dist/release/* --clobber
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes
+          gh release upload "${GITHUB_REF_NAME}" dist/release/* --clobber
         env:
           GH_TOKEN: ${{ github.token }}
+      # No NODE_AUTH_TOKEN: npm authenticates through OIDC, using the trusted publisher
+      # configured for `druk`. An empty token would be worse than none — setup-node
+      # writes it into .npmrc and npm then fails with ENEEDAUTH before it ever reaches
+      # the OIDC exchange.
+      - name: Publish to npm
+        run: bun run release --publish
+        env:
+          NPM_CONFIG_PROVENANCE: true
