@@ -7,7 +7,8 @@ Instructions for AI agents working on **druk**, a terminal code editor.
 ## What this project is
 
 A TUI code editor built on [OpenTUI](https://github.com/anomalyco/opentui) (Solid
-reconciler on a native Zig core). Published to npm as `druk`, run as a CLI.
+reconciler on a native Zig core). Shipped as a standalone binary — npm, Homebrew, a curl
+installer — and run as a CLI.
 
 Features: file tree, preview/pinned tabs, tree-sitter syntax highlighting, search
 (current file and project-wide), command palette, themes, vim mode, file watching with
@@ -15,23 +16,72 @@ conflict prompts, per-project session restore, and a startup update check.
 
 ## Runtime and tooling
 
-- **Bun is required to run** — OpenTUI's native core loads through Bun's FFI. Node has no
-  FFI and cannot start the app. Never "fix" this by switching the runtime.
-- **pnpm manages dependencies and scripts.** Do not use npm or bun for installs.
+- **Bun is required to develop** — OpenTUI's native core loads through Bun's FFI. Node
+  cannot start the app from source (its `node:ffi` is not in any shipping release), so
+  never "fix" a Bun dependency by switching the runtime. Users need nothing installed:
+  `bun build --compile` bakes the Bun runtime, the native library and every grammar into
+  one executable.
+- **bun manages dependencies and scripts.** Do not use npm or pnpm for installs — the
+  lockfile is `bun.lock`.
+- **Say `bun run <script>`, not `bun <script>`.** `build` collides with Bun's own bundler
+  subcommand, so `bun build` silently bundles nothing instead of running the script. This
+  now includes `test`: bare `bun test` works, but the whole suite runs in one process and
+  takes four times as long — `--parallel` lives in the script and cannot be set from
+  `bunfig.toml` (the key is accepted there and silently ignored).
 
 ```bash
-pnpm install
-pnpm start            # run from source, opens the current directory
-pnpm start ./some/dir # run from source against a directory
-pnpm build            # bundle to dist/ with Bun.build + the Solid plugin
-pnpm test             # bun test (unit + UI)
-pnpm check-types      # tsc --noEmit
-pnpm lint             # oxlint
-pnpm format           # oxfmt (writes); format:check to verify
+bun install
+bun run start            # run from source, opens the current directory
+bun run start ./some/dir # run from source against a directory
+bun run build            # compile a binary for this machine into dist/<target>/
+./dist/*/druk .          # run what you just built (bin/druk.js finds it too)
+bun run build linux-x64  # …or for a named target, if its native package is installed
+bun run release          # package dist/ for npm + release archives (--publish to ship)
+bun run formula          # Homebrew formula for those archives (not published anywhere yet)
+bun run test             # unit + UI, one worker per core (~20s; 87s without --parallel)
+bun test test/foo.tsx    # a single file, where the flag buys nothing
+bun run check-types      # tsc --noEmit
+bun run lint             # oxlint
+bun run format           # oxfmt (writes); format:check to verify
 ```
 
-Always run `pnpm check-types`, `pnpm lint`, `pnpm format` and `pnpm test` before
-considering a change done. `prepublishOnly` runs types + lint + test + build.
+Always run `bun run check-types`, `bun run lint`, `bun run format` and `bun run test`
+before considering a change done — `bun run check` is all four.
+
+`--parallel` runs each *file* in its own worker process, so nothing may depend on state
+shared between files. `test/setup.ts` is preloaded to give every worker its own
+`XDG_CONFIG_HOME`; without it the workers fight over one `sessions.json` — and the suite
+writes to your real `~/.config/druk`.
+
+## Shipping
+
+`bun run build` produces one executable; `bun run release` turns the executables in
+`dist/` into npm packages and release archives. Four things about that are easy to break:
+
+- **Assets must be static `with { type: 'file' }` imports.** Bun embeds only what it can
+  see at build time, so a computed specifier or an `import.meta.resolve` call leaves the
+  binary without that file. Every grammar and query goes through
+  `src/languages/grammars.ts` for this reason.
+- **The binary must not autoload `bunfig.toml`.** druk is opened inside other people's
+  projects, and a standalone Bun binary otherwise reads the `bunfig.toml` it finds there —
+  whose `preload` fails to resolve and kills startup. `build.ts` turns that off.
+- **Cross-compiling needs the target's `@opentui/core-<platform>` package**, and
+  `bun install` fetches the host's alone. That is why the release workflow uses one native
+  runner per platform instead of five `--target` flags on one machine.
+- **Platform packages publish before the root package.** npm resolves optional
+  dependencies at install time, so a root package naming versions that do not exist yet
+  installs cleanly and then cannot run.
+
+The repo's own `package.json` is `private`: what npm publishes is staged into
+`dist/npm/druk` by `scripts/release.ts`, with the shim from `bin/druk.js` and the
+`optionalDependencies` for every platform. Versions come from `package.json` — bump it,
+tag `v<version>`, and `.github/workflows/release.yml` builds every platform, publishes to
+npm and attaches the archives the `install` script downloads.
+
+Homebrew is not wired up yet. `scripts/formula.ts` generates a working formula from the
+archives in `dist/release/`, but nothing publishes it: that needs a `letstri/homebrew-tap`
+repository and a `TAP_TOKEN` secret, then a step in the release workflow to commit the
+formula there.
 
 ## Architecture
 
@@ -40,7 +90,7 @@ dependency rule, and recipes for the extension points:
 
 | Want to add a… | Edit |
 | --- | --- |
-| language | `src/languages/index.ts` + a query in `src/languages/queries/` |
+| language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts` |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) |
 | command | `src/app/commands.ts` + implement the action in `src/app/App.tsx` |
@@ -106,8 +156,11 @@ await press(t, i => i.pressEnter())          // opens the file
 expect(t.captureCharFrame()).toContain('const a = 1')
 ```
 
-`test/helpers.tsx` has `fixture()` (temp project), `launch()` (renders `<App/>`),
-`press()` and `pressEscape()`. Two rules the harness exists to encode:
+`test/helpers.tsx` has `fixture()` (temp project), `launch()` (renders `<App/>`, and takes
+a config and a terminal size), `press()`, `settle()`, `pressEscape()` and `runCommand()`.
+Highlight helpers live in `test/syntax.ts` instead — `parseHighlights()` and
+`allSegments()` — so a unit test can use them without pulling in `<App/>`. Two rules the
+harness exists to encode:
 
 - **Yield before capturing.** The reconciler flushes on a macrotask; a frame captured
   straight after a key still shows the previous state. `press()`/`settle()` handle it.

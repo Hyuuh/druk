@@ -1,10 +1,11 @@
 import { afterAll, expect, test } from 'bun:test'
 
-import { computeSegments, getSyntaxStyle, invalidateSyntaxStyle } from '../src/languages/highlight'
+import { getSyntaxStyle, invalidateSyntaxStyle } from '../src/languages/highlight'
 import { setTheme, syntaxTheme, THEMES } from '../src/themes'
 import type { ThemeName } from '../src/themes'
 import { fixture, launch, press } from './helpers'
 import type { Harness } from './helpers'
+import { allSegments } from './syntax'
 
 /** Every distinct background/foreground currently on screen, as "r,g,b". */
 function colors(t: Harness) {
@@ -84,7 +85,7 @@ test('plain identifiers stay readable against the background in every theme', as
   for (const name of Object.keys(THEMES) as ThemeName[]) {
     setTheme(name)
     invalidateSyntaxStyle()
-    const segments = (await computeSegments(source, 'typescript', 2))!
+    const segments = await allSegments(source, 'typescript', 2)
     const style = getSyntaxStyle()
     const groups = [
       ...(style as unknown as { getAllStyles: () => Map<string, unknown> }).getAllStyles().keys(),

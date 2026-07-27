@@ -1,8 +1,9 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
+import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createSignal, For } from 'solid-js'
 
 import { ui } from '../themes'
+import { modalWidth, PAD, wrapText } from './modal'
 import { Overlay } from './Overlay'
 
 export interface Choice {
@@ -19,7 +20,11 @@ export interface ChoiceModalProps {
 }
 
 export function ChoiceModal(props: ChoiceModalProps) {
+  const dimensions = useTerminalDimensions()
   const [index, setIndex] = createSignal(0)
+
+  const width = () => modalWidth(dimensions().width, 0.54, 64, 88)
+  const lines = () => wrapText(props.message, width() - PAD * 2)
 
   useKeyboard((key: KeyEvent) => {
     const k = key.name
@@ -41,7 +46,7 @@ export function ChoiceModal(props: ChoiceModalProps) {
   return (
     <Overlay zIndex={160}>
       <box
-        width={64}
+        width={width()}
         flexDirection="column"
         backgroundColor={ui.panelBg}
         border
@@ -49,19 +54,24 @@ export function ChoiceModal(props: ChoiceModalProps) {
         borderColor={ui.dirty}
         title={` ${props.title} `}
         titleColor={ui.dirty}
-        paddingLeft={1}
-        paddingRight={1}
+        paddingLeft={PAD}
+        paddingRight={PAD}
       >
-        <text fg={ui.text} bg={ui.panelBg} content={props.message} />
+        <For each={lines()}>{line => <text fg={ui.text} bg={ui.panelBg} content={line} />}</For>
         <text fg={ui.dim} bg={ui.panelBg} content="" />
         <For each={props.choices}>
-          {(choice, i) => (
-            <text
-              fg={i() === index() ? ui.text : ui.dim}
-              bg={i() === index() ? ui.treeSelectedBg : ui.panelBg}
-              content={` ${i() === index() ? '›' : ' '} ${choice.label}`}
-            />
-          )}
+          {(choice, i) => {
+            const active = () => i() === index()
+            const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
+            return (
+              <box flexDirection="row" backgroundColor={bg()}>
+                <text fg={ui.dirty} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
+                <box flexGrow={1} backgroundColor={bg()}>
+                  <text fg={active() ? ui.text : ui.dim} bg={bg()} content={choice.label} />
+                </box>
+              </box>
+            )
+          }}
         </For>
         <text fg={ui.dim} bg={ui.panelBg} content="" />
         <text fg={ui.dim} bg={ui.panelBg} content="↑↓ choose · Enter confirm · Esc cancel" />

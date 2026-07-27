@@ -7,23 +7,30 @@ around it.
 
 ```
 src/
-  index.tsx          entry: load config → apply theme → render <App/>
-build.ts             Bun.build + @opentui/solid/bun-plugin (Solid needs Babel)
+  index.tsx          entry: flags → load config → apply theme → render <App/>
+  assets.d.ts        types for `with { type: 'file' }` imports (wasm, .scm)
+build.ts             compiles a standalone binary per platform (Bun.build + Solid plugin)
+bin/druk.js          npm launcher: runs the platform binary from the optional dependency
+install              curl | bash installer, served at druk.letstri.dev/install
+scripts/
+  release.ts         stages npm packages + release archives from dist/
+  formula.ts         Homebrew formula for the current version's archives
   app/
     App.tsx          all application state + keybindings
     commands.ts      command tree  ← the feature index (Ctrl+P palette)
   core/
+    cli.ts           argv -> project directory + optional single file
     config.ts        user settings, persisted to ~/.config/druk/config.json
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
-    git.ts           diff hunks, status, branches, commit/stash/undo
-    diff.ts          unified diff -> rows for the viewer, remotes
+    git.ts           read-only queries: diff hunks, status, branch, ahead/behind
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
     session.ts       per-project open tabs + expanded folders, keyed by path
     update.ts        startup npm version check (best-effort, opt-out)
     assets.ts        pins OpenTUI's tree-sitter asset lookup (side-effect import)
   languages/
     index.ts         language registry  ← add a language here
+    grammars.ts      wasm + query file imports, the form the binary can embed
     queries/*.scm    highlight queries for grammars we vendor
     highlight.ts     tree-sitter client → non-overlapping highlight segments
   themes/
@@ -35,7 +42,6 @@ build.ts             Bun.build + @opentui/solid/bun-plugin (Solid needs Babel)
     vim.ts           modal editing state machine (normal / insert / visual)
     history.ts       undo/redo, coalesced per edit burst
     typing.ts        auto-closing pairs and indentation on Enter
-    multicursor.ts   extra carets: word lookup, occurrence search, batched edits
   ui/                presentational components, no app state
     EditorPane, FileTree, Tabs, StatusBar, CommandPalette, FilePicker,
     SearchPanel, UpdateBanner, Overlay, TextInput, PromptModal,
@@ -52,20 +58,23 @@ Dependency direction is one-way: `ui/` and feature folders never import from `ap
 1. Confirm a grammar wasm exists (most are in the `tree-sitter-wasms` package).
 2. Write a highlight query at `src/languages/queries/<id>.scm`, capturing the scopes
    the themes style (`keyword`, `string`, `function`, `type`, `comment`, …).
-3. Add an entry to `LANGUAGES` in [`src/languages/index.ts`](src/languages/index.ts):
+3. Import both in [`src/languages/grammars.ts`](src/languages/grammars.ts) and add them to
+   `GRAMMARS`. The imports have to be static and carry `with { type: 'file' }` — that is
+   what makes `bun build --compile` embed them; a path built at runtime resolves to
+   nothing inside the shipped binary.
+4. Add an entry to `LANGUAGES` in [`src/languages/index.ts`](src/languages/index.ts):
 
 ```ts
-{
-  id: 'python',                                        // must match OpenTUI's filetype name
-  name: 'Python',
-  wasm: 'tree-sitter-wasms/out/tree-sitter-python.wasm',
-  query: 'python.scm',
-}
+{ id: 'python', ...GRAMMARS.python }   // id must match OpenTUI's filetype name
 ```
 
 Grammars OpenTUI already bundles (javascript, typescript, markdown, zig) only need
 `bundled: true` — no wasm or query. Parser registration and highlighting both read from
 this one table.
+
+The status bar shows the `id`, which is fine for almost all of them. Add a `label` only
+where OpenTUI's filetype name is not what a person would call the file — `typescriptreact`
+shows as `tsx`, `javascriptreact` as `jsx`.
 
 Highlight queries are easy to get wrong in a way that fails *silently*: a query naming a
 node the grammar does not have simply matches nothing, and one invalid pattern stops the
@@ -95,7 +104,7 @@ mutated object would leave every color on screen stale after a theme switch — 
 `ui.bg` inside JSX is what subscribes that spot to the change. `syntaxTheme` can stay a
 plain object because it is only read when the style table is rebuilt.
 
-Indent guides ride the same pipeline: `computeSegments` appends one `indent.guide`
+Indent guides ride the same pipeline: `computeHighlights` appends one `indent.guide`
 capture per indent stop, so they inherit the newline-offset conversion and run-merging
 that syntax highlights use.
 
@@ -122,8 +131,8 @@ vim mode).
 
 - **Bun only.** OpenTUI's native core loads through Bun's FFI; Node has no FFI.
 - **Highlight offsets.** `highlightOnce` returns absolute string offsets, but the edit
-  buffer indexes text with newlines removed. `segmentsFromHighlights` converts between
-  the two — without it, highlights drift right by one column per line above.
+  buffer indexes text with newlines removed. `segmentsIn` converts between the two —
+  without it, highlights drift right by one column per line above.
 - **Key routing.** `useKeyboard` handlers run *before* the focused textarea, and
   `preventDefault()` hides a key from it — that is how vim normal mode captures keys. Any
   open modal sets `blocked` on the editor so it stops consuming input.
@@ -134,10 +143,10 @@ vim mode).
 - **`Ctrl+Shift` is not deliverable.** Outside the kitty keyboard protocol
   `Ctrl+Shift+<letter>` arrives byte-identical to `Ctrl+<letter>` with `shift: false`, so a
   shifted chord silently runs the unshifted command. Bindings accept `Ctrl+Opt` as well.
-- **Esc is contested.** It collapses extra carets, leaves vim insert mode, and moves focus
-  to the tree. App's handler runs first and Solid applies focus synchronously, so it has to
-  check `vimMode()` before surrendering the editor — otherwise the vim handler is already
-  unfocused when it runs and never sees the key.
+- **Esc is contested.** It leaves vim insert mode and moves focus to the tree. App's
+  handler runs first and Solid applies focus synchronously, so it has to check `vimMode()`
+  before surrendering the editor — otherwise the vim handler is already unfocused when it
+  runs and never sees the key.
 - **git paths are resolved.** `git rev-parse --show-toplevel` returns the real path
   (`/private/var/…`) while the tree holds what the user opened (`/var/…`), so status keys
   are rebased onto the caller's form before they can be looked up.
@@ -148,23 +157,114 @@ vim mode).
 - **Global handlers ignore preventDefault.** It stops the focused renderable, not sibling
   `useKeyboard` handlers — those must check `key.defaultPrevented` themselves.
 - **Highlights are windowed.** Each `addHighlightByCharRange` is an FFI call, so pushing a
-  whole 1500-line file costs ~270ms and repeats on every edit. `EditorPane` keeps all
-  segments in memory and applies only the viewport plus `OVERSCAN` lines, re-applying when
-  the cursor or a scroll moves the window. Segments carry a `line` for exactly this.
-  `applyWindow` therefore has to run from the deferred cursor sync too: `↑`/`↓` fire no
-  cursor-change event, so without it the window never leaves where the file opened and
-  anything past `OVERSCAN` renders unstyled.
+  whole 1500-line file costs ~270ms and repeats on every edit. `EditorPane` applies only
+  the viewport plus `OVERSCAN` lines, re-applying when the cursor or a scroll moves the
+  window. Segments carry a `line` for exactly this. `applyWindow` therefore has to run
+  from the deferred cursor sync too: `↑`/`↓` fire no cursor-change event, so without it
+  the window never leaves where the file opened and anything past `OVERSCAN` renders
+  unstyled.
+- **Highlighting is two stages, and the split is what keeps typing responsive.**
+  `computeHighlights` parses (in the tree-sitter worker, off this thread) and returns a
+  `Highlighted`; `segmentsIn` turns a *line range* of it into segments. Segmenting walks
+  every character it is given, so doing the whole document cost more than the parse did —
+  measured at 5 000 lines: 179ms parse, 152ms segmentation, and only the second number
+  blocks. `EditorPane` caches the parse and segments each window once.
+- **Everything per-document belongs on `Highlighted`, not in `segmentsIn`.** The line
+  offsets and the specificity sort are computed once, at parse time, and this is not a
+  micro-optimisation: they are O(characters) and O(captures log n), so recomputing them
+  per call put a floor under a *window* proportional to the whole file. Measured on a
+  20 000-line file, segmenting a single line: 2.07ms before, 0.155ms after — and the
+  before figure was paid on every scroll tick. `test/perf.test.tsx` guards it as a ratio
+  against a whole-document pass, so a slow machine cannot make it pass by accident.
+  Adding a per-window `.map()`, `.filter()` or `.sort()` over `ordered` reintroduces it.
+- **Incremental parsing is not available for this.** The client does expose
+  `createBuffer`/`updateBuffer`, and it is roughly twice as fast — but it reports
+  highlights only for the lines the edit *touched*, not the ones it invalidates. Typing
+  `/*` at the top of a 400-line file reports one row while a full parse recolours all 400,
+  and there is no range-request API to fill the gap. Verified before ruling it out.
 - **Async highlight staleness.** Results are only applied if the buffer text still
-  matches the snapshot that was highlighted.
+  matches the snapshot that was highlighted. `computeHighlights` also takes an `isStale`
+  probe and answers `STALE` rather than sorting and segmenting work nobody will use.
+- **Long lists must be windowed, not just culled.** The Zig core stops handing out
+  renderables a few thousand in, and `viewportCulling` skips *drawing* off-screen
+  children while still building them. So a `<For>` over every row is a hard failure,
+  not a slow one: `FileTree` left the tree empty when a directory held 8000 entries. It
+  renders a window between two spacer boxes, so the scrollbox's extent and mouse wheel
+  still work. Do not "simplify" it back to rendering the whole list, and size the window
+  from the terminal rather than with a constant — a fixed 200 rows left the bottom of the
+  tree blank on a tall screen.
+- **The editor scrollbar is ours; the sidebar's is OpenTUI's.** `FileTree` sits in a
+  `<scrollbox>` with a real draggable scrollbar. The editor paints its own track, and
+  dragging it cannot assign `editor.scrollY` — that is read-only at runtime, and moving
+  the caret instead would retarget the cursor. The drag therefore synthesizes the one
+  input the buffer accepts, a wheel event whose `delta` is in rows, aimed at
+  coordinates inside the textarea so `ignoreScrollOutsideBounds` does not drop it.
+- **Single-file mode is a different entry state, not a mode flag.** `druk file.ts` passes
+  `openFile` to `App`, which then builds its initial state from that one file instead of
+  from `loadSession` — one tab, no expanded folders, sidebar hidden — and skips
+  `saveSession` entirely. Skipping the write is the part worth keeping: the folder's own
+  layout is not this invocation's to overwrite with a one-tab, no-sidebar session. Nothing
+  else in the app branches on it; `Ctrl+B`, the tree, search and git all work normally
+  because `rootDir` is still a real directory.
+- **One move function, because a folder move invalidates paths in bulk.** `movePath` in
+  `App.tsx` backs renaming, dropping and `x`/`p` alike: it renames on disk and then
+  remaps every tab, buffer, preview and expanded entry *at or under* the old path. A
+  buffer left pointing at the old path saves the file back to where it used to be,
+  recreating the folder that was just moved. Anything that relocates a path goes through
+  here.
+- **Tree rows activate on mouse *up*, not down.** Pressing to start a drag must not
+  toggle the folder under the pointer: that collapsed the folder being dragged and took
+  the destination rows off the screen mid-gesture. The row remembers the press, the
+  release either activates it or completes a drag.
+- **Drag release arrives as `up`, not `drop`.** OpenTUI only sends `drop`/`drag-end` to a
+  renderable it has taken capture of, which does not happen for tree rows — logging every
+  event type the scrollbox saw during a drag showed `down`, `drag`×n, `up`, `up` and
+  nothing else. `up` bubbles up from the row under the pointer, which is enough because
+  the destination was resolved during the drag. It fires twice, so the handler has to be
+  idempotent.
+- **A one-column drag target needs capture on its parent.** Both draggable edges — the
+  editor's scrollbar and the sidebar's divider — are one column wide, and a pointer
+  leaves that within the first few rows of a vertical drag. Each event goes to whatever
+  sits under the pointer, so the `onMouseDrag` handler lives on the enclosing row and a
+  `dragging`/`resizing` signal, set on mouse-down over the handle, decides whether to
+  act. Binding the drag to the handle itself makes the gesture die on the first stray
+  pixel, which reads as a stuck scrollbar.
+- **The watcher ignores `.git`, with two deliberate exceptions.** Reading git status
+  rewrites `.git/index`, so a recursive watch that reacted to it would feed itself
+  forever: status → index write → watcher → status. But a commit or checkout made in
+  another terminal touches no working-tree file, and macOS coalesces everything under
+  `.git` down to `.git/index.lock` — the very file to avoid. So `watchTree` adds separate
+  watchers on `.git/HEAD` and `.git/refs`, which report a commit, checkout, reset or
+  pack-refs and (verified) nothing that reading status does. The callback is told which
+  kind of change a burst held, because reacting costs different amounts: re-reading
+  ahead/behind is two subprocesses and only history moving can change it, so a plain save
+  must not trigger it.
+- **Unsupported files are refused at the door, not hidden.** `listDir` returns everything
+  a directory holds, so the tree tells the truth about the filesystem; `openFile` is the
+  only guard, and it opens no tab for anything `readFile` rejects. There used to be a
+  `showHidden` setting and a binary tab showing a "cannot be shown" placeholder — both are
+  gone, and a buffer can no longer exist for a file that is not text, which is what makes
+  "never written back" structural rather than a check someone has to remember. The single
+  exception to listing everything is `VCS_DIRS`: a `.git` store is not project content and
+  would swamp the tree, the fuzzy picker and project search. Ordinary dotfiles are not in
+  that class and must stay visible.
+- **git is read-only.** `core/git.ts` runs queries and nothing else: `diff` for the gutter
+  marks, `status` for the tree marks, `rev-parse`/`rev-list` for the branch and
+  ahead/behind. There is no commit, push, stash, checkout or discard, and adding one would
+  bring back the whole problem of a subprocess rewriting files under open buffers.
+- **git output is not capped at 1 MB.** `spawnSync` truncates there by default and
+  reports ENOBUFS, which every caller in `core/git.ts` reads as "no output" — `status` in a
+  repository with thousands of changed files would silently become "nothing changed" and
+  the tree would show no marks. The helper raises `maxBuffer`.
 - **Destroyed natives outlive the ref.** Closing the last tab swaps the textarea for the
   placeholder and destroys the native buffer while `editor` still points at it. Both
   pending timers touch it, so they are cleared from the ref's own `onCleanup` — the pane's
   `onCleanup` fires far too late and the timer throws from outside any handler.
 - **Network.** The only request druk makes is one npm registry lookup at startup to
   check for a newer version. It is best-effort (2.5s timeout, failures ignored) and
-  disabled by `checkUpdates: false` in the config. Remote git commands run with
-  `GIT_TERMINAL_PROMPT=0` and ssh `BatchMode=yes`: a credential prompt would open
-  `/dev/tty` behind the alt-screen and freeze the single render thread until it timed out.
+  disabled by `checkUpdates: false` in the config. druk runs no git command that talks to
+  a remote, which is also what keeps a credential prompt from ever opening `/dev/tty`
+  behind the alt-screen and freezing the single render thread.
 - **Session restore.** Tabs and their buffers are seeded synchronously in the component
   body, not in an effect — mounting the editor before its buffer exists renders an empty
   document and marks the file modified.

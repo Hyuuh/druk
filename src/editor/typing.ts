@@ -15,8 +15,9 @@ const lineAt = (editor: TextareaRenderable, row: number) => editor.plainText.spl
 const indentOf = (line: string) => line.slice(0, line.length - line.trimStart().length)
 
 /**
- * Editing conveniences OpenTUI's buffer does not provide: bracket/quote pairing
- * and indentation that carries to the next line.
+ * Editing conveniences OpenTUI's buffer does not provide: bracket/quote pairing,
+ * indentation that carries to the next line, and Tab itself — the textarea binds
+ * no Tab at all and has no indent action, so without this the key does nothing.
  *
  * Returns true when the key was consumed.
  */
@@ -24,6 +25,24 @@ export function handleTyping(editor: TextareaRenderable, key: KeyEvent, tabSize:
   const { row, col } = editor.logicalCursor
   const line = lineAt(editor, row)
   const next = line[col] ?? ''
+
+  if (key.name === 'tab') {
+    if (key.shift) {
+      // Outdent: take up to one level off the front of the line, wherever the
+      // caret happens to sit, and keep the caret over the same character.
+      const lead = indentOf(line).length
+      const drop = Math.min(lead, tabSize)
+      if (drop === 0) return true
+      editor.setCursor(row, drop)
+      for (let i = 0; i < drop; i++) editor.deleteCharBackward()
+      editor.setCursor(row, Math.max(0, col - drop))
+      return true
+    }
+    // Align to the next tab stop rather than always inserting a full width, so
+    // Tab from column 3 with tabSize 4 lands on 4.
+    editor.insertText(' '.repeat(tabSize - (col % tabSize)))
+    return true
+  }
 
   if (key.name === 'return' || key.name === 'enter') {
     const indent = indentOf(line)

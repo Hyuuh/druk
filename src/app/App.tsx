@@ -1,20 +1,20 @@
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 
-import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useRenderer } from '@opentui/solid'
+import type { KeyEvent, MouseEvent } from '@opentui/core'
+import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
-import { saveConfig } from '../core/config'
+import { saveConfig, sidebarColumns, SIDEBAR_MIN, SIDEBAR_MAX } from '../core/config'
 import type { Config } from '../core/config'
-import { changedFiles, parseDiff } from '../core/diff'
 import type { TreeNode } from '../core/fs'
 import {
   BinaryFileError,
+  copy,
   createDir,
   createFile,
   exists,
-  fileSize,
+  freePath,
   flattenVisible,
   isDirectory,
   mtimeOf,
@@ -24,41 +24,21 @@ import {
   watchTree,
   writeFile,
 } from '../core/fs'
-import {
-  checkoutBranch,
-  commitAll,
-  createBranch,
-  currentBranch,
-  deleteBranch,
-  diffLines,
-  diffText,
-  discardFile,
-  fetchAll,
-  lastCommitSubject,
-  listBranches,
-  popStash,
-  pull,
-  push,
-  stashAll,
-  unpushedCount,
-  upstreamOf,
-  undoLastCommit,
-  statusMap,
-} from '../core/git'
-import type { Branch, FileStatus, LineChange, Upstream } from '../core/git'
+import { currentBranch, diffLines, statusMap, upstreamOf } from '../core/git'
+import type { FileStatus, LineChange, Upstream } from '../core/git'
 import type { Match } from '../core/search'
-import { replaceAll } from '../core/search'
+import { replaceAll, replaceMatch } from '../core/search'
 import { loadSession, saveSession } from '../core/session'
 import { checkForUpdate } from '../core/update'
 import type { UpdateInfo } from '../core/update'
 import type { VimMode } from '../editor/vim'
+import { languageLabel } from '../languages'
 import { filetypeForPath, invalidateSyntaxStyle } from '../languages/highlight'
 import { setTheme, themeLabels, ui } from '../themes'
 import type { ThemeName } from '../themes'
 import { ChoiceModal } from '../ui/ChoiceModal'
 import { CommandPalette } from '../ui/CommandPalette'
 import { ConfirmModal } from '../ui/ConfirmModal'
-import { DiffView } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
 import { FilePicker } from '../ui/FilePicker'
 import { FileTree } from '../ui/FileTree'
@@ -74,16 +54,18 @@ import { buildCommands } from './commands'
 
 type Focus = 'tree' | 'editor'
 
-/** Which question the branch list is answering. */
-type BranchPicker = 'switch' | 'base' | 'delete' | null
 interface Buffer {
   content: string
   dirty: boolean
-  /** Not text: the tab opens but shows a notice instead of an editor. */
-  binary?: boolean
   /** Disk mtime this buffer was last in sync with; used to detect outside edits. */
   mtime: number
 }
+/** Dirty buffers a disk sync refused to touch, split by what happened to the file. */
+interface DiskSync {
+  changed: string[]
+  deleted: string[]
+}
+
 /** An unsaved buffer whose file also changed on disk. */
 interface Conflict {
   path: string
@@ -96,13 +78,7 @@ type Prompt =
   | { kind: 'newFile'; dir: string }
   | { kind: 'newFolder'; dir: string }
   | { kind: 'rename'; target: string }
-  | { kind: 'delete'; target: string }
-  | { kind: 'newBranch'; from: string | null }
-  | { kind: 'commit' }
-  | { kind: 'undoCommit'; subject: string }
-  | { kind: 'push'; target: string; ahead: number; publish: boolean }
-  | { kind: 'discardFile'; target: string }
-  | { kind: 'deleteBranch'; name: string }
+  | { kind: 'delete'; targets: string[] }
   | { kind: 'closeDirty'; paths: string[]; names: string[] }
   | { kind: 'quitDirty'; names: string[] }
   | null
@@ -117,36 +93,78 @@ interface Confirmation {
   danger: boolean
 }
 
-const TREE_WIDTH = 30
-
 /**
  * Prompts answered with text, and the title their input box carries. Having a
  * title here is what makes a prompt a text prompt — every other kind is a
  * yes/no confirm, so the two sets can never fall out of step.
  */
+/** Columns the editor keeps for itself, whatever width the sidebar was saved at. */
+const EDITOR_MIN = 20
+
 /** True for Ctrl+Opt+<key>, however this terminal spells the second modifier. */
 const chord = (key: KeyEvent) => key.shift || key.option || key.meta
 
-const READY = 'Ready — Ctrl+P for commands'
-/** Prefix of the watcher's clash warning, so it can recognise its own message. */
-const CLASH_WARNING = 'Changed on disk with unsaved edits: '
+/** Idle: the footer shows contextual key hints instead of a message. */
+const READY = ''
+/**
+ * Prefixes of the watcher's clash warnings, so it can recognise its own message and
+ * clear it again. A deleted file is not a changed one — saying "changed" for a file
+ * that is gone sends the user looking for a diff that does not exist.
+ */
+const CLASH_CHANGED = 'Changed on disk with unsaved edits: '
+const CLASH_DELETED = 'Deleted on disk with unsaved edits: '
 
 const PROMPT_TITLES: Partial<Record<PromptKind, string>> = {
   newFile: 'New file name',
   newFolder: 'New folder name',
   rename: 'Rename to',
   gotoLine: 'Go to line',
-  newBranch: 'New branch name',
-  commit: 'Commit message',
 }
 
-export function App(props: { rootDir: string; initialConfig: Config }) {
+export function App(props: {
+  rootDir: string
+  /** `druk file.ts`: the one file to open, instead of the project's saved session. */
+  openFile?: string | null
+  initialConfig: Config
+}) {
   const renderer = useRenderer()
+  const dimensions = useTerminalDimensions()
   const rootDir = props.rootDir
+  const single = props.openFile ?? null
 
   // Restored synchronously: the editor must mount with its buffers already in
   // place, otherwise it renders an empty document and marks it modified.
   const restored = (() => {
+    // Asked for one file, so that is what opens: no saved tabs, no expanded folders,
+    // and the sidebar out of the way. The session is neither read nor written — the
+    // folder's own layout is not this invocation's to inherit or to overwrite.
+    if (single) {
+      try {
+        const buffer = { content: readFile(single), dirty: false, mtime: mtimeOf(single) }
+        return {
+          buffers: { [single]: buffer },
+          tabs: [single],
+          activePath: single as string | null,
+          expanded: [] as string[],
+          sidebar: false,
+          failed: null as string | null,
+        }
+      } catch (e) {
+        // Unreadable or not text. The editor still starts — with nothing open, and
+        // the reason on the status bar once there is a status bar to put it on.
+        return {
+          buffers: {},
+          tabs: [],
+          activePath: null,
+          expanded: [] as string[],
+          sidebar: false,
+          failed:
+            e instanceof BinaryFileError
+              ? 'It is binary, or uses an encoding druk cannot read.'
+              : (e as Error).message,
+        }
+      }
+    }
     const saved = loadSession(rootDir)
     const buffers: Record<string, Buffer> = {}
     for (const path of saved.tabs) {
@@ -159,13 +177,30 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     const tabs = saved.tabs.filter(path => buffers[path])
     const activePath =
       saved.activePath && buffers[saved.activePath] ? saved.activePath : (tabs[0] ?? null)
-    return { buffers, tabs, activePath, expanded: saved.expanded, sidebar: saved.sidebar }
+    return {
+      buffers,
+      tabs,
+      activePath,
+      expanded: saved.expanded,
+      sidebar: saved.sidebar,
+      failed: null as string | null,
+    }
   })()
 
   const [config, setConfig] = createStore<Config>({ ...props.initialConfig })
   const [buffers, setBuffers] = createStore<Record<string, Buffer>>(restored.buffers)
   const [expanded, setExpanded] = createSignal<Set<string>>(new Set(restored.expanded))
   const [selectedPath, setSelectedPath] = createSignal<string | null>(restored.activePath)
+  /**
+   * Rows picked out with Shift+↑/↓, in tree order. Empty for the ordinary case of
+   * one row under the cursor — `actionTargets` is what reconciles the two, so no
+   * action has to care which of the pair it is looking at.
+   */
+  const [marked, setMarked] = createSignal<string[]>([])
+  /** Row the current range grows from; null when there is no range. */
+  const [anchor, setAnchor] = createSignal<string | null>(null)
+  /** A file that would not open, shown over the editor until the next keypress. */
+  const [notice, setNotice] = createSignal<{ name: string; reason: string } | null>(null)
   const [tabs, setTabs] = createSignal<string[]>(restored.tabs)
   const [activePath, setActivePath] = createSignal<string | null>(restored.activePath)
   // Preview tab (VS Code style): opened from the tree, reused by the next
@@ -181,18 +216,37 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
   )
   const [reloadKey, setReloadKey] = createSignal(0)
   const [conflict, setConflict] = createSignal<Conflict | null>(null)
-  const [search, setSearch] = createSignal<SearchScope | null>(null)
+  /** Open search: its scope, and whether the replacement field starts showing. */
+  const [search, setSearch] = createSignal<{ scope: SearchScope; replacing?: boolean } | null>(null)
+  /**
+   * What is selected on screen, for search to open with. One line only: a query
+   * spanning a newline matches nothing, so carrying it over would just look broken.
+   */
+  const selection = () => {
+    const text = renderer.getSelection()?.getSelectedText() ?? ''
+    return text.includes('\n') ? '' : text
+  }
   const [picker, setPicker] = createSignal<'files' | 'tabs' | null>(null)
-  const [multiCursor, setMultiCursor] = createSignal(0)
+  /**
+   * Rows taken with `x` or `c`, waiting for the `p` that says where they go. A cut
+   * is spent by the paste; a copy is not, so the same thing can be dropped in
+   * several places without picking it up again.
+   */
+  const [clipboard, setClipboard] = createSignal<{ paths: string[]; mode: 'cut' | 'copy' }>({
+    paths: [],
+    mode: 'cut',
+  })
+  /** Only a cut greys its rows: a copy leaves the original exactly where it is. */
+  const cut = () => (clipboard().mode === 'cut' ? clipboard().paths : [])
   const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
   const [gitLines, setGitLines] = createSignal<Map<number, LineChange>>(new Map())
+  /** Bumped when something may have changed what git would report. */
   const [gitRevision, setGitRevision] = createSignal(0)
   const [gitStatus, setGitStatus] = createSignal<Map<string, FileStatus>>(new Map())
   const [branch, setBranch] = createSignal(currentBranch(rootDir))
   const [upstream, setUpstream] = createSignal<Upstream | null>(null)
-  const [branchPicker, setBranchPicker] = createSignal<BranchPicker>(null)
-  const [diff, setDiff] = createSignal<{ title: string; text: string } | null>(null)
-  const [branches, setBranches] = createSignal<Branch[]>([])
+  /** True between grabbing the sidebar divider and letting go. */
+  const [resizing, setResizing] = createSignal(false)
   const [history, setHistory] = createSignal<{ kind: 'undo' | 'redo'; key: number } | null>(null)
   const [goto, setGoto] = createSignal<{ line: number; col: number; key: number } | null>(null)
   const [cursor, setCursor] = createSignal({ line: 0, col: 0 })
@@ -201,7 +255,7 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     tone: 'info',
   })
 
-  const nodes = createMemo(() => flattenVisible(rootDir, expanded(), config.showHidden))
+  const nodes = createMemo(() => flattenVisible(rootDir, expanded()))
   const activeBuffer = () => {
     const path = activePath()
     return path ? buffers[path] : undefined
@@ -209,17 +263,7 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
 
   /** True while a modal or overlay owns the keyboard. One list, two readers. */
   const overlay = createMemo(
-    () =>
-      !!(
-        prompt() ||
-        palette() ||
-        conflict() ||
-        help() ||
-        search() ||
-        update() ||
-        picker() ||
-        branchPicker()
-      ),
+    () => !!(prompt() || palette() || conflict() || help() || search() || update() || picker()),
   )
 
   const dirtyPaths = () => Object.keys(unwrap(buffers)).filter(path => buffers[path]?.dirty)
@@ -262,7 +306,10 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
         dir = join(dir, part)
         next.add(dir)
       }
-      return next
+      // Same identity when nothing opened: `expanded` also drives the git-status
+      // effect, so a fresh Set here costs a whole-repo `git status` on every file
+      // open and every tab switch, neither of which touches the working tree.
+      return next.size === prev.size ? prev : next
     })
   }
 
@@ -282,6 +329,39 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     // From no selection, land on the first row regardless of direction.
     const next = idx < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, idx + delta))
     setSelectedPath(rows[next]!.path)
+    setMarked([])
+    setAnchor(null)
+  }
+
+  /**
+   * Shift+↑/↓: move the cursor and drag a range along behind it.
+   *
+   * Over the rows as they are displayed, so a range is exactly what you saw between
+   * the two ends — a collapsed folder counts as the one row it draws, not as the
+   * files inside it. The anchor is where the range started and does not move, so
+   * reversing direction shrinks the range instead of leaving a stranded end.
+   */
+  const extendSelection = (delta: number) => {
+    const rows = nodes()
+    const head = rows.findIndex(n => n.path === selectedPath())
+    if (rows.length === 0 || head < 0) return moveSelection(delta)
+
+    const from = anchor() ?? rows[head]!.path
+    if (!anchor()) setAnchor(from)
+    const start = rows.findIndex(n => n.path === from)
+    const next = Math.max(0, Math.min(rows.length - 1, head + delta))
+    const [lo, hi] = start <= next ? [start, next] : [next, start]
+
+    setMarked(rows.slice(lo, hi + 1).map(n => n.path))
+    setSelectedPath(rows[next]!.path)
+  }
+
+  /** Everything an action should apply to: the marked rows, else the cursor's row. */
+  const actionTargets = (): string[] => {
+    const all = marked()
+    if (all.length > 0) return all
+    const path = selectedPath()
+    return path ? [path] : []
   }
 
   const toggleSidebar = () => {
@@ -295,15 +375,23 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
   }
 
   const openFile = (path: string, preview = false) => {
+    setNotice(null)
     if (!buffers[path]) {
       try {
         setBuffers(path, { content: readFile(path), dirty: false, mtime: mtimeOf(path) })
       } catch (e) {
-        if (!(e instanceof BinaryFileError)) {
-          say(`Cannot open ${basename(path)}: ${(e as Error).message}`, 'error')
-          return
-        }
-        setBuffers(path, { content: '', dirty: false, mtime: mtimeOf(path), binary: true })
+        // Nothing druk can show, so no tab and no buffer — which is what keeps a file
+        // like this from ever being written back. The refusal goes over the editor
+        // rather than into the status bar: down there it reads as a footnote to the
+        // file still on screen, and the answer to "open this" was no.
+        setNotice({
+          name: basename(path),
+          reason:
+            e instanceof BinaryFileError
+              ? 'It is binary, or uses an encoding druk cannot read.'
+              : (e as Error).message,
+        })
+        return
       }
     }
     setTabs(prev => {
@@ -331,6 +419,89 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     if (previewPath() === path) setPreviewPath(null)
   }
 
+  /**
+   * Rename or move `from` to `to`, carrying the editor's own state along.
+   *
+   * Paths *under* `from` move with it, and that is the whole reason this is one
+   * function: moving or renaming a folder invalidates the absolute path of every
+   * tab, buffer and expanded entry inside it, and a buffer left pointing at the old
+   * path saves the file back to where it used to be — recreating the folder that was
+   * just moved. Returns an error message, or null on success.
+   */
+  const movePath = (from: string, to: string): string | null => {
+    const err = rename(from, to)
+    if (err) return err
+
+    const inside = `${from}/`
+    const remap = (path: string) =>
+      path === from ? to : path.startsWith(inside) ? to + path.slice(from.length) : path
+
+    setTabs(prev => prev.map(remap))
+    // Snapshotted first: moving a buffer writes to the store being walked.
+    for (const path of Object.keys(unwrap(buffers))) {
+      const next = remap(path)
+      if (next === path) continue
+      setBuffers(next, { ...buffers[path]! })
+      discardBuffer(path)
+    }
+    const active = activePath()
+    if (active) setActivePath(remap(active))
+    const preview = previewPath()
+    if (preview) setPreviewPath(remap(preview))
+    setSelectedPath(to)
+    // Fresh Set identity, so this doubles as the tree refresh.
+    setExpanded(prev => new Set([...prev].map(remap)))
+    return null
+  }
+
+  /**
+   * Why one path cannot go into `dir`, or null when it can. Separated from doing the
+   * move so a batch can report which of its files were refused and still move the rest.
+   */
+  const whyNotMove = (path: string, dir: string): string | null => {
+    if (dirname(path) === dir) return `${basename(path)} is already there`
+    // A folder cannot be moved inside itself: the destination would travel with the
+    // source, and `fs.renameSync` reports EINVAL for it.
+    if (dir === path || dir.startsWith(`${path}/`)) {
+      return `Cannot move ${basename(path)} into itself`
+    }
+    return null
+  }
+
+  /** Move `path` into the folder `dir`, refusing the moves that cannot mean anything. */
+  const moveInto = (path: string, dir: string) => {
+    const refused = whyNotMove(path, dir)
+    if (refused) return say(refused, 'warn')
+    const err = movePath(path, join(dir, basename(path)))
+    if (err) return say(err, 'error')
+    expand(dir)
+    say(`Moved ${basename(path)} to ${relative(rootDir, dir) || basename(rootDir)}/`)
+  }
+
+  /**
+   * Move several into `dir`. One refusal does not stop the others — a range selection
+   * routinely includes the destination folder itself, and failing the whole batch for
+   * that would be maddening.
+   */
+  const moveAllInto = (paths: string[], dir: string) => {
+    if (paths.length === 1) return moveInto(paths[0]!, dir)
+    let moved = 0
+    const refused: string[] = []
+    for (const path of paths) {
+      if (whyNotMove(path, dir) || movePath(path, join(dir, basename(path)))) {
+        refused.push(basename(path))
+        continue
+      }
+      moved++
+    }
+    setMarked([])
+    setAnchor(null)
+    if (moved > 0) expand(dir)
+    const where = relative(rootDir, dir) || basename(rootDir)
+    if (refused.length === 0) return say(`Moved ${moved} items to ${where}/`)
+    say(`Moved ${moved} to ${where}/ — left ${refused.join(', ')}`, 'warn')
+  }
+
   const activateNode = (node: TreeNode) => {
     setSelectedPath(node.path)
     if (node.isDir) toggleExpand(node.path)
@@ -343,6 +514,65 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     const node = selectedNode()
     if (!node) return rootDir
     return node.isDir ? node.path : dirname(node.path)
+  }
+
+  /**
+   * Copy one path into `dir`, never over anything: a name already taken there gets
+   * the `copy` suffix, which is what makes pasting beside the original work at all.
+   * Returns false when it could not be done, so a batch can count what it managed.
+   */
+  const copyInto = (path: string, dir: string): boolean => {
+    // A folder cannot be copied into itself — `cpSync` would walk the copy it is
+    // writing. Its own parent is fine, and is exactly how a folder is duplicated.
+    if (dir === path || dir.startsWith(`${path}/`)) {
+      say(`Cannot copy ${basename(path)} into itself`, 'warn')
+      return false
+    }
+    const err = copy(path, freePath(dir, basename(path)))
+    if (err) {
+      say(err, 'error')
+      return false
+    }
+    return true
+  }
+
+  const copyAllInto = (paths: string[], dir: string) => {
+    let copied = 0
+    for (const path of paths) if (copyInto(path, dir)) copied++
+    setMarked([])
+    setAnchor(null)
+    if (copied === 0) return
+    expand(dir)
+    refreshTree()
+    const where = relative(rootDir, dir) || basename(rootDir)
+    const what = copied === 1 ? basename(paths[0]!) : `${copied} items`
+    say(`Copied ${what} to ${where}/`)
+  }
+
+  /** Take the selection for a move or a copy; `p` drops it into the folder chosen next. */
+  const takeForPaste = (mode: 'cut' | 'copy') => {
+    const targets = actionTargets()
+    if (targets.length === 0) return say('Nothing selected', 'warn')
+    setClipboard({ paths: targets, mode })
+    setMarked([])
+    setAnchor(null)
+    const what = targets.length === 1 ? basename(targets[0]!) : `${targets.length} items`
+    const verb = mode === 'cut' ? 'Cut' : 'Copied'
+    say(`${verb} ${what} — press p on the folder to ${mode === 'cut' ? 'move' : 'copy'} into`)
+  }
+
+  /** Complete an `x` or `c` into whatever folder the selection is in or on. */
+  const paste = () => {
+    const { paths, mode } = clipboard()
+    if (paths.length === 0) {
+      return say('Nothing taken — press x or c on a file or folder first', 'warn')
+    }
+    const from = paths.filter(path => exists(path))
+    // A copy stays on the clipboard: pasting it twice is a reasonable thing to want.
+    if (mode === 'cut') setClipboard({ paths: [], mode: 'cut' })
+    if (from.length === 0) return say(`What was ${mode} is gone`, 'warn')
+    if (mode === 'cut') moveAllInto(from, targetDir())
+    else copyAllInto(from, targetDir())
   }
 
   /**
@@ -382,6 +612,14 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     openFile(list[(idx + delta + list.length) % list.length]!)
   }
 
+  /** Put replaced text into the buffer. The tab is pinned first: an edited preview
+   * tab must never be recycled out from under the edit. */
+  const applyReplacement = (path: string, next: string) => {
+    pinTab(path)
+    setBuffers(path, { content: next, dirty: true })
+    setReloadKey(k => k + 1)
+  }
+
   const jumpTo = (match: Match) => {
     setSearch(null)
     if (match.path && match.path !== activePath()) openFile(match.path)
@@ -405,7 +643,6 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     const path = activePath()
     const buffer = activeBuffer()
     if (!path || !buffer) return
-    if (buffer.binary) return say(`${basename(path)} is not text — nothing to save`, 'warn')
     // Someone else touched the file since we loaded it — ask before clobbering.
     if (mtimeOf(path) !== buffer.mtime) {
       if (!exists(path)) {
@@ -451,23 +688,35 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
    * Returns the dirty buffers it refused to touch, for the caller to report: every
    * caller follows this with its own `say`, which would bury a warning said here.
    */
-  const syncFromDisk = (): string[] => {
+  const syncFromDisk = (): DiskSync => {
     const updates: [string, Buffer][] = []
-    const clashed: string[] = []
+    const changed: string[] = []
+    const deleted: string[] = []
+    const vanished: string[] = []
     for (const path of Object.keys(buffers)) {
       const buffer = buffers[path]!
-      if (buffer.binary) continue
+      // The file is gone — deleted here, removed by a checkout, or cleaned up
+      // outside. A clean buffer has nothing left to show, so its tab goes with it.
+      // A dirty one keeps the tab: saving recreates the file, which is exactly what
+      // the deleted-on-disk conflict prompt offers.
+      if (!exists(path)) {
+        if (buffer.dirty) deleted.push(basename(path))
+        else vanished.push(path)
+        continue
+      }
       let disk: string
       try {
         disk = readFile(path)
       } catch {
-        continue // gone or binary — the tree refresh below reflects it
+        continue // unreadable, or binary now — the tree refresh below reflects it
       }
       if (disk === buffer.content) continue
       // Unsaved edits stay untouched; the user is warned and asked on save.
-      if (buffer.dirty) clashed.push(basename(path))
+      if (buffer.dirty) changed.push(basename(path))
       else updates.push([path, { content: disk, dirty: false, mtime: mtimeOf(path) }])
     }
+    // After the walk: closing a tab mutates the store being iterated.
+    for (const path of vanished) closeTab(path, true)
     if (updates.length > 0) {
       setBuffers(
         produce(draft => {
@@ -477,41 +726,15 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
       setReloadKey(k => k + 1)
     }
     refreshTree()
-    return clashed
+    return { changed, deleted }
   }
 
-  /** Report an operation that may have rewritten files under the editor. */
-  const afterGitChange = (message: string) => {
-    setBranch(currentBranch(rootDir))
-    setUpstream(upstreamOf(rootDir))
-    const clashed = syncFromDisk()
-    setGitRevision(n => n + 1)
-    if (clashed.length === 0) return say(message)
-    say(`${message} — unsaved edits kept in ${clashed.join(', ')}`, 'warn')
-  }
-
-  const openBranchPicker = (mode: Exclude<BranchPicker, null>) => {
-    const all = listBranches(rootDir)
-    if (all.length === 0) return say('Not a git repository', 'warn')
-    const usable =
-      mode === 'delete' ? all.filter(b => !b.remote && !b.current) : all.filter(b => !b.current)
-    if (usable.length === 0) {
-      return say(mode === 'delete' ? 'No other local branches' : 'No other branches', 'warn')
-    }
-    setBranches(usable)
-    setBranchPicker(mode)
-  }
-
-  const pickBranch = (name: string) => {
-    const mode = branchPicker()
-    const target = branches().find(b => b.name === name)
-    setBranchPicker(null)
-    if (!mode || !target) return
-    if (mode === 'base') return setPrompt({ kind: 'newBranch', from: target.name })
-    if (mode === 'delete') return setPrompt({ kind: 'deleteBranch', name: target.name })
-    const err = checkoutBranch(rootDir, target)
-    if (err) return say(err, 'error')
-    afterGitChange(`Switched to ${currentBranch(rootDir) ?? target.name}`)
+  /** The watcher's warning for a sync, or null when nothing clashed. */
+  const clashWarning = (sync: DiskSync): string | null => {
+    const parts: string[] = []
+    if (sync.changed.length > 0) parts.push(`${CLASH_CHANGED}${sync.changed.join(', ')}`)
+    if (sync.deleted.length > 0) parts.push(`${CLASH_DELETED}${sync.deleted.join(', ')}`)
+    return parts.length > 0 ? parts.join(' · ') : null
   }
 
   const submitPrompt = (value: string) => {
@@ -521,15 +744,7 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     if (!p || !PROMPT_TITLES[p.kind]) return
     if (!name) return say('Nothing entered', 'warn')
 
-    if (p.kind === 'commit') {
-      const err = commitAll(rootDir, name)
-      if (err) return say(err, 'error')
-      afterGitChange(`Committed "${name}"`)
-    } else if (p.kind === 'newBranch') {
-      const err = createBranch(rootDir, name, p.from ?? undefined)
-      if (err) return say(err, 'error')
-      afterGitChange(`Created ${name}`)
-    } else if (p.kind === 'gotoLine') {
+    if (p.kind === 'gotoLine') {
       const asked = Number.parseInt(name, 10)
       if (!Number.isInteger(asked) || asked < 1) return say(`Not a line number: ${name}`, 'error')
       const total = activeBuffer()?.content.split('\n').length ?? 1
@@ -552,18 +767,8 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
       setSelectedPath(path)
       say(`Created ${name}/`)
     } else if (p.kind === 'rename') {
-      const to = join(dirname(p.target), name)
-      const err = rename(p.target, to)
+      const err = movePath(p.target, join(dirname(p.target), name))
       if (err) return say(err, 'error')
-      setTabs(prev => prev.map(t => (t === p.target ? to : t)))
-      const buffer = buffers[p.target]
-      if (buffer) {
-        setBuffers(to, { ...buffer })
-        discardBuffer(p.target)
-      }
-      if (activePath() === p.target) setActivePath(to)
-      setSelectedPath(to)
-      refreshTree()
       say(`Renamed to ${name}`)
     }
   }
@@ -573,46 +778,27 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     const p = prompt()
     setPrompt(null)
     switch (p?.kind) {
-      case 'push': {
-        const err = push(rootDir)
-        return err ? say(err, 'error') : afterGitChange(`Pushed to ${p.target}`)
-      }
-      case 'discardFile': {
-        const err = discardFile(rootDir, p.target)
-        if (err) return say(err, 'error')
-        // The buffer is what the user sees, and syncFromDisk deliberately leaves
-        // dirty ones alone — so discarding has to reset this one explicitly.
-        try {
-          setBuffers(p.target, {
-            content: readFile(p.target),
-            dirty: false,
-            mtime: mtimeOf(p.target),
-          })
-          setReloadKey(k => k + 1)
-        } catch {
-          closeTab(p.target, true) // the file only existed in the working tree
-        }
-        syncFromDisk()
-        setGitRevision(n => n + 1)
-        return say(`Discarded changes in ${basename(p.target)}`)
-      }
-      case 'undoCommit': {
-        const err = undoLastCommit(rootDir)
-        return err
-          ? say(err, 'error')
-          : afterGitChange(`Undid "${p.subject}" — its changes are staged`)
-      }
-      case 'deleteBranch': {
-        const err = deleteBranch(rootDir, p.name)
-        return err ? say(err, 'error') : say(`Deleted branch ${p.name}`)
-      }
       case 'delete': {
-        const err = remove(p.target)
-        if (err) return say(err, 'error')
-        if (tabs().includes(p.target)) closeTab(p.target, true)
-        if (selectedPath() === p.target) setSelectedPath(null)
+        const failed: string[] = []
+        for (const target of p.targets) {
+          const err = remove(target)
+          if (err) {
+            failed.push(basename(target))
+            continue
+          }
+          if (tabs().includes(target)) closeTab(target, true)
+        }
+        const gone = selectedPath()
+        if (gone && p.targets.includes(gone)) setSelectedPath(null)
+        setMarked([])
+        setAnchor(null)
         refreshTree()
-        return say(`Deleted ${basename(p.target)}`)
+        if (failed.length > 0) return say(`Could not delete ${failed.join(', ')}`, 'error')
+        return say(
+          p.targets.length === 1
+            ? `Deleted ${basename(p.targets[0]!)}`
+            : `Deleted ${p.targets.length} items`,
+        )
       }
       case 'closeDirty': {
         for (const path of p.paths) closeTab(path, true)
@@ -630,15 +816,33 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     say(`Theme: ${themeLabels[name]}`)
   }
 
-  const applyWordWrap = (wrap: boolean) => {
-    patchConfig({ wordWrap: wrap })
-    say(`Word wrap ${wrap ? 'on' : 'off'}`)
+  /**
+   * `'auto'` resolved against the terminal, then clamped against it again: a width
+   * saved on a wide screen must not swallow the editor when the window is smaller
+   * next time. The second clamp wins outright — below `SIDEBAR_MIN + EDITOR_MIN`
+   * columns the tree gives up its minimum rather than leave the editor unusable.
+   * The config value is untouched, so a saved width returns in full on a wide screen.
+   */
+  const treeWidth = () =>
+    Math.max(
+      0,
+      Math.min(
+        sidebarColumns(config.sidebarWidth, dimensions().width),
+        dimensions().width - EDITOR_MIN,
+      ),
+    )
+
+  const resizeSidebar = (width: number) => {
+    const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(width)))
+    if (next !== config.sidebarWidth) patchConfig({ sidebarWidth: next })
   }
 
-  const applyShowHidden = (show: boolean) => {
-    patchConfig({ showHidden: show })
-    say(show ? 'Showing hidden files' : 'Hiding system files')
-  }
+  /**
+   * Step the width by `delta`, from what is on screen rather than from the config.
+   * On a window too narrow to honour a large saved width that does discard it — but
+   * the alternative is a key that visibly does nothing while quietly counting down.
+   */
+  const nudgeSidebar = (delta: number) => resizeSidebar(treeWidth() + delta)
 
   const applyTabSize = (size: number) => {
     patchConfig({ tabSize: size })
@@ -674,50 +878,19 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
   const confirmation = createMemo<Confirmation | null>(() => {
     const p = prompt()
     switch (p?.kind) {
-      case 'push':
-        return p.publish
-          ? {
-              title: 'Publish branch',
-              verb: 'publish',
-              danger: false,
-              message: `Publish "${p.target}" and its ${p.ahead} commit(s) to origin?`,
-            }
-          : {
-              title: 'Push',
-              verb: 'push',
-              danger: false,
-              message: `Push ${p.ahead} commit(s) to ${p.target}?`,
-            }
-      case 'discardFile':
-        return {
-          title: 'Discard changes',
-          verb: 'discard',
-          danger: true,
-          message: `Discard all changes in "${basename(p.target)}"? This cannot be undone.`,
-        }
-      case 'undoCommit':
-        return {
-          title: 'Undo commit',
-          verb: 'undo',
-          danger: false,
-          message: `Undo "${p.subject}"? Its changes stay in the working tree.`,
-        }
-      case 'deleteBranch':
-        return {
-          title: 'Delete branch',
-          verb: 'delete',
-          danger: true,
-          message: `Delete branch "${p.name}"?`,
-        }
-      case 'delete':
+      case 'delete': {
+        const only = p.targets.length === 1 ? p.targets[0]! : null
         return {
           title: 'Delete',
           verb: 'delete',
           danger: true,
-          message: `Delete "${basename(p.target)}"${
-            isDirectory(p.target) ? ' and its contents' : ''
-          }?`,
+          // Naming several files would run past the modal; the count is the thing
+          // worth checking before agreeing to this one.
+          message: only
+            ? `Delete "${basename(only)}"${isDirectory(only) ? ' and its contents' : ''}?`
+            : `Delete these ${p.targets.length} items and anything inside them?`,
         }
+      }
       case 'closeDirty':
         return {
           title: 'Unsaved changes',
@@ -755,89 +928,27 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
         gotoLine: () => setPrompt({ kind: 'gotoLine' }),
         undo: () => setHistory(prev => ({ kind: 'undo', key: (prev?.key ?? 0) + 1 })),
         redo: () => setHistory(prev => ({ kind: 'redo', key: (prev?.key ?? 0) + 1 })),
-        findInFile: () => setSearch('file'),
-        findInProject: () => setSearch('project'),
+        findInFile: () => setSearch({ scope: 'file' }),
+        findInProject: () => setSearch({ scope: 'project' }),
+        replaceInFile: () => setSearch({ scope: 'file', replacing: true }),
         newFile: () => setPrompt({ kind: 'newFile', dir: targetDir() }),
         newFolder: () => setPrompt({ kind: 'newFolder', dir: targetDir() }),
         rename: withNode(n => setPrompt({ kind: 'rename', target: n.path })),
-        remove: withNode(n => setPrompt({ kind: 'delete', target: n.path })),
+        remove: () => {
+          const targets = actionTargets()
+          if (targets.length === 0) return say('Nothing selected', 'warn')
+          setPrompt({ kind: 'delete', targets })
+        },
+        cutForMove: () => takeForPaste('cut'),
+        copyForPaste: () => takeForPaste('copy'),
+        paste,
         closeTab: () => void (activePath() && closeTab(activePath()!)),
         nextTab: () => switchTab(1),
         prevTab: () => switchTab(-1),
         toggleFocus: () => (focus() === 'tree' ? setFocus('editor') : focusTree()),
         toggleSidebar,
-        commit: () => setPrompt({ kind: 'commit' }),
-        diffFile: () => {
-          const path = activePath()
-          if (!path) return say('No file open', 'warn')
-          const text = diffText(rootDir, path)
-          if (!text.trim()) return say(`${basename(path)} matches HEAD`)
-          setDiff({ title: `Diff — ${basename(path)}`, text })
-        },
-        diffAll: () => {
-          const text = diffText(rootDir)
-          if (!text.trim()) return say('Nothing changed since HEAD')
-          const files = changedFiles(parseDiff(text))
-          setDiff({ title: `Diff — ${files} file${files === 1 ? '' : 's'}`, text })
-        },
-        undoCommit: () => {
-          const subject = lastCommitSubject(rootDir)
-          if (!subject) return say('No commit to undo', 'warn')
-          setPrompt({ kind: 'undoCommit', subject })
-        },
-        push: () => {
-          // Read HEAD now rather than trusting the cached signal: the user may have
-          // checked out something else in another terminal, and push follows HEAD.
-          const here = currentBranch(rootDir)
-          if (!here) return say('Not on a branch', 'warn')
-          const upstream = upstreamOf(rootDir)
-          if (!upstream) return say('Not a git repository', 'warn')
-          setBranch(here)
-          setPrompt({
-            kind: 'push',
-            target: upstream.name ?? here,
-            ahead: upstream.name ? upstream.ahead : unpushedCount(rootDir),
-            publish: upstream.name === null,
-          })
-        },
-        pull: () => {
-          const err = pull(rootDir)
-          if (err) return say(err, 'error')
-          afterGitChange('Pulled')
-        },
-        fetch: () => {
-          const err = fetchAll(rootDir)
-          if (err) return say(err, 'error')
-          const upstream = upstreamOf(rootDir)
-          afterGitChange(
-            upstream?.name
-              ? `Fetched — ${upstream.ahead} ahead, ${upstream.behind} behind ${upstream.name}`
-              : 'Fetched',
-          )
-        },
-        discardChanges: () => {
-          const path = activePath()
-          if (!path) return say('No file open', 'warn')
-          setPrompt({ kind: 'discardFile', target: path })
-        },
-        stash: () => {
-          const err = stashAll(rootDir)
-          if (err) return say(err, 'error')
-          afterGitChange('Stashed all changes')
-        },
-        popStash: () => {
-          const err = popStash(rootDir)
-          if (err) return say(err, 'error')
-          afterGitChange('Restored the latest stash')
-        },
-        switchBranch: () => openBranchPicker('switch'),
-        newBranch: () => setPrompt({ kind: 'newBranch', from: null }),
-        newBranchFrom: () => openBranchPicker('base'),
-        deleteBranch: () => openBranchPicker('delete'),
         setVim: applyVim,
         setTabSize: applyTabSize,
-        setShowHidden: applyShowHidden,
-        setWordWrap: applyWordWrap,
         setTheme: applyTheme,
         showHelp: () => setHelp(true),
         quit,
@@ -846,11 +957,15 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
         vimEnabled: config.vim,
         activeTheme: config.theme,
         tabSize: config.tabSize,
-        showHidden: config.showHidden,
-        wordWrap: config.wordWrap,
       },
     ),
   )
+
+  onMount(() => {
+    // Same refusal `druk file.ts` deserves as opening one from the tree, and for the
+    // same reason: an empty editor with a status line under it looks like a bug.
+    if (restored.failed) setNotice({ name: basename(single!), reason: restored.failed })
+  })
 
   onMount(() => {
     if (!props.initialConfig.checkUpdates) return
@@ -869,11 +984,18 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
   // nothing else would ever replace a warning the user has already dealt with.
   onMount(() =>
     onCleanup(
-      watchTree(rootDir, () => {
-        const clashed = syncFromDisk()
-        if (clashed.length > 0) {
-          say(`${CLASH_WARNING}${clashed.join(', ')}`, 'warn')
-        } else if (status().msg.startsWith(CLASH_WARNING)) {
+      watchTree(rootDir, changed => {
+        // History moved elsewhere: nothing in the working tree need have changed, so
+        // this is the only thing that tells the branch and ahead/behind to re-read.
+        if (changed.git) setGitRevision(n => n + 1)
+        if (!changed.tree) return
+        const warning = clashWarning(syncFromDisk())
+        if (warning) {
+          say(warning, 'warn')
+        } else if (
+          status().msg.startsWith(CLASH_CHANGED) ||
+          status().msg.startsWith(CLASH_DELETED)
+        ) {
           say(READY)
         }
       }),
@@ -886,7 +1008,7 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
       // on every keystroke. Saving bumps reloadKey, which refreshes the marks.
       () => [activePath(), reloadKey(), gitRevision()] as const,
       ([path]) => {
-        setGitLines(path && !activeBuffer()?.binary ? diffLines(path) : new Map())
+        setGitLines(path ? diffLines(path) : new Map())
       },
     ),
   )
@@ -917,6 +1039,9 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     on(
       () => [tabs(), activePath(), expanded(), sidebar()] as const,
       ([openTabs, active, folders, showTree]) => {
+        // Single-file mode leaves no trace: `druk one.ts` would otherwise save a
+        // one-tab, sidebar-hidden layout over whatever the folder had.
+        if (single) return
         saveSession(rootDir, {
           tabs: openTabs,
           activePath: active,
@@ -937,6 +1062,10 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     }
     if (overlay()) return
 
+    // The refusal has been read by the time another key is pressed. Dismissed here
+    // rather than on a timer, so it cannot vanish while it is still being read.
+    if (notice()) setNotice(null)
+
     /**
      * Run a global chord and hide the key from the textarea, which binds many of
      * the same ones itself — Ctrl+W deletes a word, Ctrl+F/Ctrl+B move the caret,
@@ -948,6 +1077,11 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     }
 
     if (key.ctrl && k === 'q') return claim(quit)
+    // Ctrl+C quits from the tree. In the editor it belongs to EditorPane, which is
+    // the only place that knows whether there is a selection to copy instead — the
+    // renderer's own selection covers mouse drags only. Either way it
+    // routes through `quit()`, so a dirty buffer still gets its prompt.
+    if (key.ctrl && k === 'c' && focus() !== 'editor') return claim(quit)
     if (key.ctrl && k === 'p') return claim(() => setPalette(true))
     if (key.ctrl && k === 'o') return claim(() => setPicker('files'))
     // Ctrl+E is line-end in every terminal; keep the tab family on the arrows.
@@ -958,9 +1092,12 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     // keyboard protocol, so it cannot be bound at all in Terminal.app, plain
     // iTerm2 or tmux — hence a plain Ctrl chord for the project search. Ctrl+Opt
     // arrives as ctrl+meta (Terminal.app) or ctrl+option (iTerm2), never both.
-    if (key.ctrl && k === 'r') return claim(() => setSearch('project'))
-    if (key.ctrl && chord(key) && k === 'f') return claim(() => setSearch('project'))
-    if (key.ctrl && k === 'f') return claim(() => setSearch('file'))
+    // In vim, Ctrl+R is redo and belongs to the editor. Project search keeps its
+    // other spelling, Ctrl+Opt+F, so nothing becomes unreachable.
+    const vimOwnsRedo = config.vim && focus() === 'editor' && vimMode() !== 'insert'
+    if (key.ctrl && k === 'r' && !vimOwnsRedo) return claim(() => setSearch({ scope: 'project' }))
+    if (key.ctrl && chord(key) && k === 'f') return claim(() => setSearch({ scope: 'project' }))
+    if (key.ctrl && k === 'f') return claim(() => setSearch({ scope: 'file' }))
     if (key.ctrl && k === 'w') {
       return claim(() => void (activePath() && closeTab(activePath()!)))
     }
@@ -976,11 +1113,11 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
     if (key.ctrl && (k === 'pagedown' || k === 'right')) return claim(() => switchTab(1))
 
     if (focus() === 'editor') {
-      // Esc first collapses extra carets; only a second one leaves the editor. In
-      // vim it belongs to the mode switch, and focus moves synchronously — leaving
-      // now means EditorPane's vim handler is already unfocused and never runs.
+      // In vim, Esc belongs to the mode switch. Focus moves synchronously, so
+      // leaving now would mean EditorPane's vim handler is already unfocused when
+      // it runs and never sees the key.
       const vimOwnsEscape = config.vim && vimMode() !== 'normal'
-      if (k === 'escape' && multiCursor() === 0 && sidebar() && !vimOwnsEscape) focusTree()
+      if (k === 'escape' && sidebar() && !vimOwnsEscape) focusTree()
       return // everything else belongs to the textarea
     }
 
@@ -998,10 +1135,12 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
         if (activePath()) setFocus('editor')
         break
       case 'up':
-        moveSelection(-1)
+        if (key.shift) extendSelection(-1)
+        else moveSelection(-1)
         break
       case 'down':
-        moveSelection(1)
+        if (key.shift) extendSelection(1)
+        else moveSelection(1)
         break
       case 'right':
         if (node?.isDir && !expanded().has(node.path)) toggleExpand(node.path)
@@ -1015,17 +1154,49 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
       case 'enter':
         if (node) activateNode(node)
         break
+      // Bare keys rather than a chord: the tree owns its keyboard while focused,
+      // and every Ctrl+Opt pair worth having is already spoken for.
+      case '[':
+        nudgeSidebar(-2)
+        break
+      case ']':
+        nudgeSidebar(2)
+        break
       case 'a':
         setPrompt({ kind: key.shift ? 'newFolder' : 'newFile', dir: targetDir() })
         break
       case 'r':
         if (node) setPrompt({ kind: 'rename', target: node.path })
         break
+      // Cut, copy and paste rather than a "move to…" prompt: the tree is already the
+      // way to choose a folder, and typing a destination path is the thing it exists
+      // to save you from.
+      case 'x':
+        takeForPaste('cut')
+        break
+      case 'c':
+        takeForPaste('copy')
+        break
+      case 'p':
+        paste()
+        break
+      case 'escape':
+        if (clipboard().paths.length > 0) {
+          const cancelled = clipboard().mode === 'cut' ? 'Move' : 'Copy'
+          setClipboard({ paths: [], mode: 'cut' })
+          say(`${cancelled} cancelled`)
+        } else if (marked().length > 0) {
+          setMarked([])
+          setAnchor(null)
+        }
+        break
       case 'd':
       case 'delete':
-      case 'backspace':
-        if (node) setPrompt({ kind: 'delete', target: node.path })
+      case 'backspace': {
+        const targets = actionTargets()
+        if (targets.length > 0) setPrompt({ kind: 'delete', targets })
         break
+      }
     }
   })
 
@@ -1039,12 +1210,22 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
           preview: p === previewPath(),
         }))}
         activePath={activePath()}
-        treeWidth={sidebar() ? TREE_WIDTH : 0}
         onSelect={p => openFile(p)}
         onClose={closeTab}
         onOverflow={() => setPicker('tabs')}
       />
-      <box flexDirection="row" flexGrow={1}>
+      {/* Drag capture lives on the row, not the divider: the pointer leaves a
+          one-column target immediately, and each drag event is delivered to
+          whatever sits under it. */}
+      <box
+        flexDirection="row"
+        flexGrow={1}
+        onMouseDrag={(event: MouseEvent) => {
+          if (resizing()) resizeSidebar(event.x)
+        }}
+        onMouseDragEnd={() => setResizing(false)}
+        onMouseUp={() => setResizing(false)}
+      >
         <Show when={sidebar()}>
           <FileTree
             rootName={basename(rootDir) || rootDir}
@@ -1052,11 +1233,34 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
             selectedPath={selectedPath()}
             expanded={expanded()}
             focused={focus() === 'tree'}
-            width={TREE_WIDTH}
+            width={treeWidth()}
             gitStatus={gitStatus()}
+            cutPaths={cut()}
+            markedPaths={marked()}
             onActivate={activateNode}
             onPin={node => pinTab(node.path)}
             onFocus={() => setFocus('tree')}
+            onMove={(from, dir) =>
+              // Dragging any one of a marked set takes the whole set with it.
+              moveAllInto(marked().includes(from) ? marked() : [from], dir)
+            }
+          />
+          {/* Drag handle: one column, drawn as a rule so the grab target can be seen
+              and aimed at. A left border is what fills a box this narrow — its own
+              width is the border's. `scrollbar` is the palette's colour for exactly
+              this, a quiet rule that is still legible on both panel and editor
+              backgrounds. The sidebar starts at column 0, so the pointer's x is the
+              width asked for. */}
+          <box
+            width={1}
+            flexShrink={0}
+            border={['left']}
+            borderColor={ui.scrollbar}
+            backgroundColor={ui.barBg}
+            onMouseDown={(event: MouseEvent) => {
+              setResizing(true)
+              resizeSidebar(event.x)
+            }}
           />
         </Show>
         <EditorPane
@@ -1070,25 +1274,22 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
           history={history()}
           vim={config.vim}
           tabSize={config.tabSize}
-          wordWrap={config.wordWrap}
           gitLines={gitLines()}
-          notice={
-            activeBuffer()?.binary
-              ? `${basename(activePath()!)} · ${fileSize(activePath()!)}`
-              : null
-          }
+          notice={notice()}
           blocked={overlay()}
           onChange={onEditorChange}
           onCursor={setCursor}
           onFocus={() => setFocus('editor')}
           onVimMode={setVimMode}
-          onMultiCursor={setMultiCursor}
+          onQuit={quit}
         />
       </box>
       <StatusBar
         message={status().msg}
         tone={status().tone}
-        filetype={activePath() ? (filetypeForPath(activePath()!) ?? 'plain') : undefined}
+        filetype={
+          activePath() ? languageLabel(filetypeForPath(activePath()!) ?? 'plain') : undefined
+        }
         cursor={activePath() ? cursor() : undefined}
         dirty={activeBuffer()?.dirty ?? false}
         vimMode={activePath() ? vimMode() : null}
@@ -1096,6 +1297,7 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
         ahead={upstream()?.ahead ?? 0}
         behind={upstream()?.behind ?? 0}
         changed={gitStatus().size}
+        focus={focus()}
       />
 
       <Show when={promptTitle()}>
@@ -1121,15 +1323,31 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
         )}
       </Show>
       <Show when={search()}>
-        {(scope: () => SearchScope) => (
+        {(open: () => { scope: SearchScope; replacing?: boolean }) => (
           <SearchPanel
-            scope={scope()}
+            scope={open().scope}
             rootDir={rootDir}
             activePath={activePath()}
             activeContent={activeBuffer()?.content ?? ''}
+            initialQuery={selection()}
+            replacing={open().replacing}
             onPick={jumpTo}
+            onReplaceOne={
+              open().scope === 'file'
+                ? (match, query, replacement) => {
+                    const path = activePath()
+                    const buffer = path ? buffers[path] : undefined
+                    if (!path || !buffer) return
+                    const next = replaceMatch(buffer.content, match, query, replacement)
+                    // Refused when the line has moved on since the scan — say so rather
+                    // than writing the replacement at a drifted offset.
+                    if (next === null) return say('That match is gone', 'warn')
+                    applyReplacement(path, next)
+                  }
+                : undefined
+            }
             onReplaceAll={
-              scope() === 'file'
+              open().scope === 'file'
                 ? (query, replacement) => {
                     const path = activePath()
                     const buffer = path ? buffers[path] : undefined
@@ -1137,9 +1355,7 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
                     const next = replaceAll(buffer.content, query, replacement)
                     setSearch(null)
                     if (next === buffer.content) return say('Nothing to replace')
-                    pinTab(path) // an edited preview must never be recycled
-                    setBuffers(path, { content: next, dirty: true })
-                    setReloadKey(k => k + 1)
+                    applyReplacement(path, next)
                     say(`Replaced "${query}" in ${basename(path)}`)
                   }
                 : undefined
@@ -1152,7 +1368,6 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
         {(kind: () => 'files' | 'tabs') => (
           <FilePicker
             rootDir={rootDir}
-            showHidden={config.showHidden}
             files={kind() === 'tabs' ? tabs() : undefined}
             title={kind() === 'tabs' ? 'Switch tab' : 'Open file'}
             onPick={path => {
@@ -1161,30 +1376,6 @@ export function App(props: { rootDir: string; initialConfig: Config }) {
             }}
             onClose={() => setPicker(null)}
           />
-        )}
-      </Show>
-      <Show when={branchPicker()}>
-        {(mode: () => Exclude<BranchPicker, null>) => (
-          <FilePicker
-            rootDir={rootDir}
-            showHidden={config.showHidden}
-            files={branches().map(b => b.name)}
-            display={name => name}
-            title={
-              mode() === 'switch'
-                ? 'Switch branch'
-                : mode() === 'delete'
-                  ? 'Delete branch'
-                  : 'Branch off'
-            }
-            onPick={pickBranch}
-            onClose={() => setBranchPicker(null)}
-          />
-        )}
-      </Show>
-      <Show when={diff()}>
-        {(open: () => { title: string; text: string }) => (
-          <DiffView title={open().title} diff={open().text} onClose={() => setDiff(null)} />
         )}
       </Show>
       <Show when={palette()}>

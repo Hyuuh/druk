@@ -11,7 +11,12 @@ import { fileURLToPath } from 'node:url'
  * Imported for its side effect before anything touches the highlighter.
  */
 function findAssetRoot(): string | null {
-  let dir = dirname(fileURLToPath(import.meta.url))
+  const here = fileURLToPath(import.meta.url)
+  // A compiled binary carries OpenTUI's assets inside itself and has no node_modules
+  // to walk to; pointing the resolver at whatever tree the user happens to be sitting
+  // in would hand it a mismatched dylib.
+  if (here.includes('$bunfs') || /^B:[\\/]~BUN/i.test(here)) return null
+  let dir = dirname(here)
   for (let i = 0; i < 10; i++) {
     const nm = join(dir, 'node_modules')
     // Only claim this root when it holds the native library too: pointing

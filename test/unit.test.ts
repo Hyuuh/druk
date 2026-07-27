@@ -75,8 +75,6 @@ describe('registries', () => {
       vimEnabled: false,
       activeTheme: 'dark',
       tabSize: 2,
-      showHidden: false,
-      wordWrap: false,
     })
     const leaves = flattenCommands(tree)
 

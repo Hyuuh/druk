@@ -6,18 +6,11 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from
 import { copyToClipboard, readClipboard } from '../core/clipboard'
 import type { LineChange } from '../core/git'
 import { History } from '../editor/history'
-import { deleteRanges, nextMatch, replaceRanges, wordRangeAt } from '../editor/multicursor'
-import type { Range } from '../editor/multicursor'
 import { handleTyping } from '../editor/typing'
 import { handleVimKey, initialVimState } from '../editor/vim'
 import type { VimMode } from '../editor/vim'
-import {
-  computeSegments,
-  CURSOR_MARK,
-  getSyntaxStyle,
-  styleIdForGroup,
-} from '../languages/highlight'
-import type { Segment } from '../languages/highlight'
+import { computeHighlights, getSyntaxStyle, segmentsIn, STALE } from '../languages/highlight'
+import type { Highlighted, Segment } from '../languages/highlight'
 import { ui } from '../themes'
 import type { ThemeName } from '../themes'
 
@@ -34,22 +27,34 @@ export interface EditorPaneProps {
   history: { kind: 'undo' | 'redo'; key: number } | null
   vim: boolean
   tabSize: number
-  wordWrap: boolean
   /** True while a modal owns the keyboard; the editor must ignore all keys. */
   blocked: boolean
-  /** Set when the file is not text; shows a notice over the (empty) editor. */
-  notice: string | null
   /** Lines changed against git HEAD, for the gutter marks. */
   gitLines: Map<number, LineChange>
+  /**
+   * A file that would not open. Drawn over the pane, because the answer to "open
+   * this" has to land where the file would have appeared — not as a status-bar line
+   * under whatever is still on screen. No buffer exists for it.
+   */
+  notice: { name: string; reason: string } | null
   onChange: (text: string) => void
   onCursor: (pos: { line: number; col: number }) => void
   onFocus: () => void
   onVimMode: (mode: VimMode | null) => void
-  /** Extra caret count, so Esc can clear them instead of leaving the editor. */
-  onMultiCursor: (count: number) => void
+  /**
+   * Ctrl+C with nothing selected. Only this component can tell whether there is a
+   * selection to copy, so it owns the decision and App owns the quitting.
+   */
+  onQuit: () => void
 }
 
-const DEBOUNCE_MS = 80
+/**
+ * Long enough to swallow the keystrokes of one fast burst, no longer. It used to be
+ * 80ms, which was 80ms of doing nothing before a parse that costs 70ms on its own —
+ * over half the wait to first colour on a 1 000-line file, spent idle. Overlapping
+ * parses are held off by `runHighlight`, not by this.
+ */
+const DEBOUNCE_MS = 16
 /** Lines kept highlighted above and below the viewport, so small scrolls are free. */
 const OVERSCAN = 60
 
@@ -75,6 +80,29 @@ function allowSelectionOnlyInEditor(el: TextareaRenderable) {
   const start = renderer.startSelection.bind(renderer)
   renderer.startSelection = (renderable: unknown, x: number, y: number) => {
     if (renderable === selectionHosts.get(renderer)) start(renderable, x, y)
+  }
+}
+
+/**
+ * Run `after` once the editor has taken its new size. Two things need it, and
+ * OpenTUI reports the resize nowhere else:
+ *
+ * The gutter draws into a cached buffer and only invalidates it when the line
+ * count changes — but a resize re-wraps the text without changing that count, and
+ * the cached paint still maps rows to the lines they held at the old width. The
+ * numbers then land on continuation rows and the lines that follow lose theirs.
+ * Anything that marks the gutter dirty fixes it; re-applying the signs is the
+ * public call that does, and it is what the pane already has to hand.
+ *
+ * The scrollbar is measured against the pane, so it is wrong until it is read
+ * again at the new size.
+ */
+export function afterResize(el: TextareaRenderable, after: () => void) {
+  const host = el as unknown as { onResize: (width: number, height: number) => void }
+  const resize = host.onResize.bind(host)
+  host.onResize = (width: number, height: number) => {
+    resize(width, height)
+    after()
   }
 }
 
@@ -110,10 +138,17 @@ export function EditorPane(props: EditorPaneProps) {
   let gutter: GutterHost | undefined
   let editor: TextareaRenderable | undefined
   let highlightTimer: ReturnType<typeof setTimeout> | null = null
+  /** A parse is with the worker; `queuedParse` says the text moved on since. */
+  let parsing = false
+  let queuedParse = false
   /** Segments grouped by line, plus the lines currently pushed to the buffer.
    * Every highlight is an FFI call, so the window is maintained incrementally:
    * scrolling adds the lines that appeared and drops the ones that left. */
   let byLine = new Map<number, Segment[]>()
+  /** The last parse, segmented lazily per window. */
+  let parsed: Highlighted | null = null
+  /** Lines already turned into segments, so each is done once. */
+  const segmented = new Set<number>()
   const appliedLines = new Set<number>()
   const cursor = { line: 0, col: 0 }
   const history = new History({ content: props.content, cursor: 0 })
@@ -125,28 +160,32 @@ export function EditorPane(props: EditorPaneProps) {
   const [cursorLine, setCursorLine] = createSignal(0)
   /** Scroll position of the textarea, mirrored so the scrollbar can react to it. */
   const [viewport, setViewport] = createSignal({ top: 0, height: 0, total: 0 })
-  /**
-   * Every occurrence Ctrl+D has picked up, in the order they were added. The
-   * last one owns the buffer's real selection; the rest are painted.
-   */
-  const [matches, setMatches] = createSignal<Range[]>([])
-  /**
-   * One entry per visible row: true where the thumb sits. Empty when the file
-   * fits, so a short file shows no track at all.
-   */
-  const scrollbar = createMemo(() => {
+  /** Track geometry, shared by the painter and the drag handler. */
+  const scrollMetrics = createMemo(() => {
     const measured = viewport()
     // The textarea reports height 0 until the first layout, so until then fall
     // back to the terminal minus the tab bar and status bar.
     const height = measured.height || dimensions().height - 2
     const total = measured.total || props.content.split('\n').length
-    const top = measured.top
-    if (height <= 0 || total <= height) return []
+    if (height <= 0 || total <= height) return null
     const size = Math.max(1, Math.round((height * height) / total))
-    const span = height - size
-    const at = Math.min(span, Math.round((top / (total - height)) * span))
-    return Array.from({ length: height }, (_, row) => row >= at && row < at + size)
+    return { height, total, size, span: height - size, top: measured.top }
   })
+
+  /**
+   * One entry per visible row: true where the thumb sits. Empty when the file
+   * fits, so a short file shows no track at all.
+   */
+  const scrollbar = createMemo(() => {
+    const m = scrollMetrics()
+    if (!m) return []
+    const at = Math.min(m.span, Math.round((m.top / (m.total - m.height)) * m.span))
+    return Array.from({ length: m.height }, (_, row) => row >= at && row < at + m.size)
+  })
+
+  let track: { y: number } | undefined
+  /** True between grabbing the scrollbar thumb and letting go. */
+  const [dragging, setDragging] = createSignal(false)
 
   const gutterWidth = () => String(props.content.split('\n').length).length + 2
 
@@ -156,9 +195,9 @@ export function EditorPane(props: EditorPaneProps) {
   })
 
   // Line signs are a method, not a settable prop, so Solid cannot bind them.
-  createEffect(() => {
-    // The colors are read inside the effect because `ui` is a store: a table built
-    // at module scope would hold the first theme's palette forever.
+  const applyLineSigns = () => {
+    // The colors are read here because `ui` is a store: a table built at module
+    // scope would hold the first theme's palette forever.
     const signColor: Record<LineChange, string> = {
       added: ui.gitAdded,
       modified: ui.gitModified,
@@ -172,28 +211,12 @@ export function EditorPane(props: EditorPaneProps) {
         ]),
       ),
     )
-  })
+  }
+  createEffect(applyLineSigns)
 
   const syncViewport = () => {
     if (!editor) return
     setViewport({ top: editor.scrollY, height: editor.height, total: editor.lineCount })
-  }
-
-  /**
-   * The buffer paints one selection, so the other matches are drawn as
-   * highlights. A zero-width caret still needs a cell to be visible.
-   */
-  const drawMatches = () => {
-    const all = matches()
-    if (!editor || all.length === 0) return
-    const styleId = styleIdForGroup(CURSOR_MARK)
-    if (styleId == null) return
-    for (const range of all.slice(0, -1)) {
-      const from = editor.editBuffer.offsetToPosition(range.start)
-      const to = editor.editBuffer.offsetToPosition(Math.max(range.end, range.start + 1))
-      if (!from || !to || to.row !== from.row) continue
-      editor.addHighlight(from.row, { start: from.col, end: to.col, styleId })
-    }
   }
 
   /**
@@ -215,6 +238,33 @@ export function EditorPane(props: EditorPaneProps) {
     props.onCursor({ ...cursor })
   }
 
+  /**
+   * Segment the lines about to be painted, once each. The parse covers the whole
+   * file, but turning captures into segments walks every character it is given —
+   * doing that for the document on each keystroke costs more than the parse.
+   */
+  const ensureSegments = (from: number, to: number) => {
+    if (!parsed) return
+    // One call per contiguous run of unsegmented lines. A range whose ends are new
+    // but whose middle was done by an earlier window — jump away, jump back — must
+    // not re-segment that middle, or every line in it collects a second copy of its
+    // segments and gets highlighted twice.
+    for (let line = from; line <= to; line++) {
+      if (segmented.has(line)) continue
+      let last = line
+      while (last + 1 <= to && !segmented.has(last + 1)) last++
+
+      for (const segment of segmentsIn(parsed, line, last)) {
+        const list = byLine.get(segment.line)
+        if (list) list.push(segment)
+        else byLine.set(segment.line, [segment])
+      }
+      // Recorded even when a line had no captures, so it is not re-segmented.
+      for (let done = line; done <= last; done++) segmented.add(done)
+      line = last
+    }
+  }
+
   /** Keep the viewport (plus overscan) highlighted, touching only what changed. */
   const applyWindow = (force = false) => {
     if (!editor) return
@@ -232,12 +282,39 @@ export function EditorPane(props: EditorPaneProps) {
         appliedLines.delete(line)
       }
     }
+    ensureSegments(from, to)
     for (let line = from; line <= to; line++) {
       if (appliedLines.has(line)) continue
       appliedLines.add(line)
       for (const segment of byLine.get(line) ?? []) editor.addHighlight(line, segment)
     }
-    drawMatches()
+  }
+
+  /**
+   * Put the row under the pointer at the middle of the thumb and scroll there.
+   *
+   * `scrollY` is read-only, and moving the caret would be wrong — dragging a
+   * scrollbar must not retarget the cursor. So the move is delivered as the one
+   * scroll input the buffer already accepts: a wheel event, whose delta is in rows.
+   * The coordinates have to land inside the textarea or `ignoreScrollOutsideBounds`
+   * drops it.
+   */
+  const dragTo = (screenY: number) => {
+    const m = scrollMetrics()
+    if (!m || !editor || !track) return
+    const within = Math.max(0, Math.min(m.span, screenY - track.y - Math.floor(m.size / 2)))
+    const wanted = m.span === 0 ? 0 : Math.round((within / m.span) * (m.total - m.height))
+    const delta = wanted - editor.scrollY
+    if (delta === 0) return
+    const host = editor as unknown as { onMouseEvent: (event: unknown) => void }
+    host.onMouseEvent({
+      type: 'scroll',
+      x: editor.x + 1,
+      y: editor.y + 1,
+      scroll: { direction: delta > 0 ? 'down' : 'up', delta: Math.abs(delta) },
+    })
+    syncViewport()
+    applyWindow()
   }
 
   let cursorSync: ReturnType<typeof setTimeout> | null = null
@@ -253,43 +330,62 @@ export function EditorPane(props: EditorPaneProps) {
     }, 0)
   }
 
-  createEffect(
-    on(
-      () => matches(),
-      cursors => {
-        props.onMultiCursor(Math.max(0, cursors.length - 1))
-        applyWindow(true)
-      },
-      { defer: true },
-    ),
-  )
-
   const highlight = async (snapshot: string, forPath: string | null) => {
-    if (props.notice) return
-    const segs = await computeSegments(snapshot, props.filetype, props.tabSize)
+    const result = await computeHighlights(
+      snapshot,
+      props.filetype,
+      props.tabSize,
+      () => !editor || forPath !== props.path || editor.plainText !== snapshot,
+    )
+    if (result === STALE) return
     // Stale guard: only apply if this is still the same file AND the buffer text
     // is byte-for-byte what we highlighted — otherwise offsets would drift.
     if (!editor || forPath !== props.path || editor.plainText !== snapshot) return
+    parsed = result
     byLine = new Map()
-    for (const segment of segs ?? []) {
-      const list = byLine.get(segment.line)
-      if (list) list.push(segment)
-      else byLine.set(segment.line, [segment])
-    }
+    segmented.clear()
     applyWindow(true)
+  }
+
+  /**
+   * One parse at a time, with the newest text always winning.
+   *
+   * The worker is the whole cost of recolouring — measured on this machine at 17ms
+   * for 200 lines, 71ms for 1 000 and 354ms for 5 000, against ~6ms of preparation
+   * and well under 1ms of segmentation. It is far slower than anyone types, so
+   * firing a parse per keystroke just queues work that is already stale when it
+   * starts, and each one delays the parse that finally matters. Instead the pending
+   * request collapses to a single flag: whatever the buffer says when the worker
+   * comes free is what gets parsed.
+   */
+  const runHighlight = async (text: string) => {
+    if (parsing) {
+      queuedParse = true
+      return
+    }
+    parsing = true
+    try {
+      await highlight(text, props.path)
+    } finally {
+      parsing = false
+    }
+    if (!queuedParse) return
+    queuedParse = false
+    if (editor) void runHighlight(editor.plainText)
   }
 
   /** The text changed: drop the stale segments before re-highlighting the new text. */
   const rehighlight = (text: string) => {
+    parsed = null
     byLine = new Map()
-    void highlight(text, props.path)
+    segmented.clear()
+    void runHighlight(text)
   }
 
   const stepHistory = (kind: 'undo' | 'redo') => {
     if (!editor) return
     const at = kind === 'undo' ? history.undo() : history.redo()
     if (!at) return
-    setMatches([])
     // setText resets the buffer's own history, which is fine — `history` is the
     // one being stepped, and its entries are whole edit bursts.
     editor.setText(at.content)
@@ -313,7 +409,7 @@ export function EditorPane(props: EditorPaneProps) {
   const scheduleHighlight = () => {
     if (highlightTimer) clearTimeout(highlightTimer)
     highlightTimer = setTimeout(() => {
-      if (editor) void highlight(editor.plainText, props.path)
+      if (editor) void runHighlight(editor.plainText)
     }, DEBOUNCE_MS)
   }
 
@@ -338,7 +434,7 @@ export function EditorPane(props: EditorPaneProps) {
     // preventDefault only stops the textarea, not sibling global handlers, so a
     // key already claimed elsewhere (the tree's Enter) must be ignored here too.
     if (key.defaultPrevented) return
-    if (props.blocked || !editor || !props.focused || props.notice) return
+    if (props.blocked || !editor || !props.focused) return
     scheduleCursorSync()
     cursorBeforeEdit = editor.cursorOffset
 
@@ -354,84 +450,24 @@ export function EditorPane(props: EditorPaneProps) {
       return
     }
 
-    if (key.ctrl && key.name === 'd') {
-      key.preventDefault()
-      const text = editor.plainText
-      const all = matches()
-
-      // First press selects the word under the cursor; each next one adds the
-      // following occurrence, so typing replaces every selection at once.
-      if (all.length === 0) {
-        const word = wordRangeAt(text, editor.cursorOffset)
-        if (!word) return
-        setMatches([word])
-        editor.setSelection(word.start, word.end)
-        applyWindow(true)
-        return
-      }
-
-      const last = all.at(-1)!
-      const word = text.slice(last.start, last.end)
-      if (!word) return
-      const found = nextMatch(text, word, last.end)
-      if (!found || all.some(range => range.start === found.start)) return
-      setMatches([...all, found])
-      editor.setSelection(found.start, found.end)
-      applyWindow(true)
-      return
-    }
-    if (key.name === 'escape' && matches().length > 0) {
-      key.preventDefault()
-      // Collapse to the end of the last match: clearSelection alone drops the
-      // caret back to the top of the buffer.
-      const last = matches().at(-1)
-      setMatches([])
-      editor.clearSelection()
-      if (last) editor.cursorOffset = last.end
-      applyWindow(true)
-      return
-    }
-
-    // With several matches live, an edit is applied to all of them.
-    if (matches().length > 0) {
-      const typed = key.sequence
-      const buffer = editor
-      const edit = (next: Range[]) => {
-        setMatches(next)
-        const last = next.at(-1)
-        if (last) buffer.cursorOffset = last.start
-        props.onChange(buffer.plainText)
-        scheduleHighlight()
-        applyWindow(true)
-      }
-      if (key.name === 'backspace') {
-        key.preventDefault()
-        edit(deleteRanges(editor, matches()))
-        return
-      }
-      if (typed && typed.length === 1 && !key.ctrl && !key.meta) {
-        key.preventDefault()
-        edit(replaceRanges(editor, matches(), typed))
-        return
-      }
-      // Anything else (arrows, Enter, a shortcut) ends multi-cursor editing.
-      setMatches([])
-      editor.clearSelection()
-    }
-
     if (key.ctrl && (key.name === 'c' || key.name === 'x')) {
-      // Nothing selected: swallow it anyway. The renderer no longer exits on
-      // Ctrl+C, and letting it through would type a control character.
+      key.preventDefault()
       const selected = editor.getSelectedText()
       if (!selected) {
-        key.preventDefault()
+        // Nothing to copy, so Ctrl+C is the quit key. Swallowed either way — the
+        // renderer no longer exits on it, and letting it through would type a
+        // control character.
+        if (key.name === 'c') props.onQuit()
         return
       }
-      key.preventDefault()
       copyToClipboard(selected)
-      if (key.name === 'x') editor.deleteSelection()
+      if (key.name === 'x') {
+        editor.deleteSelection()
+        applyWindow(true)
+      }
       return
     }
+
     if (key.ctrl && key.name === 'v') {
       const text = readClipboard()
       if (text === null) return
@@ -450,7 +486,8 @@ export function EditorPane(props: EditorPaneProps) {
     if (key.defaultPrevented) return
     if (props.blocked || !props.vim || !editor || !props.focused) return
     const before = vimState.mode
-    if (handleVimKey(editor, key, vimState)) key.preventDefault()
+    const stepped = { undo: () => stepHistory('undo'), redo: () => stepHistory('redo') }
+    if (handleVimKey(editor, key, vimState, stepped)) key.preventDefault()
     if (vimState.mode !== before) {
       editor.cursorStyle = {
         style: vimState.mode === 'insert' ? 'line' : 'block',
@@ -467,7 +504,6 @@ export function EditorPane(props: EditorPaneProps) {
       () => props.path,
       path => {
         if (!editor) return
-        setMatches([])
         scheduleCursorSync()
         if (editor.plainText !== props.content) editor.setText(props.content)
         editor.setCursor(0, 0)
@@ -552,120 +588,152 @@ export function EditorPane(props: EditorPaneProps) {
   )
 
   return (
-    <Show
-      when={props.path != null}
-      fallback={
+    // A wrapper only so the refusal has something to sit on top of: it has to cover
+    // the empty state as much as an open file.
+    <box flexGrow={1} flexDirection="column" backgroundColor={ui.bg}>
+      <Show when={props.notice}>
+        {(refused: () => { name: string; reason: string }) => (
+          <box
+            position="absolute"
+            top={0}
+            left={0}
+            width="100%"
+            height="100%"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            backgroundColor={ui.bg}
+            zIndex={10}
+          >
+            <text
+              fg={ui.text}
+              bg={ui.bg}
+              content={`${refused().name} cannot be shown`}
+              attributes={TextAttributes.BOLD}
+            />
+            <text fg={ui.faint} bg={ui.bg} content="" />
+            <text fg={ui.dim} bg={ui.bg} content={refused().reason} />
+            <text fg={ui.faint} bg={ui.bg} content="" />
+            <text fg={ui.faint} bg={ui.bg} content="Press any key to go back" />
+          </box>
+        )}
+      </Show>
+      <Show
+        when={props.path != null}
+        fallback={
+          <box
+            flexGrow={1}
+            flexDirection="column"
+            backgroundColor={ui.bg}
+            alignItems="center"
+            justifyContent="center"
+          >
+            <text fg={ui.dim} bg={ui.bg} content="druk" attributes={TextAttributes.BOLD} />
+            <text fg={ui.faint} bg={ui.bg} content="" />
+            <text fg={ui.faint} bg={ui.bg} content="Enter   open file from the tree" />
+            <text fg={ui.faint} bg={ui.bg} content="Ctrl+P  commands" />
+            <text fg={ui.faint} bg={ui.bg} content="Ctrl+F  find" />
+          </box>
+        }
+      >
+        {/* Drag capture lives on the wrapper, not the tracks: the pointer leaves a
+          one-cell target on the first stray pixel, and each drag event goes to
+          whatever sits under it. Guarded on `dragging` so a plain text
+          selection across the pane never scrolls. */}
         <box
           flexGrow={1}
-          flexDirection="column"
+          flexDirection="row"
           backgroundColor={ui.bg}
-          alignItems="center"
-          justifyContent="center"
-        >
-          <text fg={ui.dim} bg={ui.bg} content="druk" attributes={TextAttributes.BOLD} />
-          <text fg={ui.faint} bg={ui.bg} content="" />
-          <text fg={ui.faint} bg={ui.bg} content="Enter   open file from the tree" />
-          <text fg={ui.faint} bg={ui.bg} content="Ctrl+P  commands" />
-          <text fg={ui.faint} bg={ui.bg} content="Ctrl+F  find" />
-        </box>
-      }
-    >
-      <box
-        flexGrow={1}
-        flexDirection="row"
-        backgroundColor={ui.bg}
-        onMouseDown={() => props.onFocus()}
-      >
-        <line_number
-          ref={(el: unknown) => {
-            gutter = el as GutterHost
+          onMouseDown={() => props.onFocus()}
+          onMouseDrag={(event: MouseEvent) => {
+            if (dragging()) dragTo(event.y)
           }}
-          target={editorEl() ?? undefined}
-          fg={ui.gutter}
-          bg={ui.bg}
-          minWidth={gutterWidth()}
-          paddingRight={1}
-          flexGrow={1}
-          lineColors={
-            // Both entries are backgrounds, not text colors — a bright value here
-            // paints a solid block behind the line number.
-            new Map([[cursorLine(), { gutter: ui.currentLine, content: ui.currentLine }]])
-          }
+          onMouseDragEnd={() => setDragging(false)}
+          onMouseUp={() => setDragging(false)}
         >
-          <textarea
-            ref={el => {
-              editor = el
-              setEditorEl(el)
-              ignoreScrollOutsideBounds(el)
-              allowSelectionOnlyInEditor(el)
-              onCleanup(releaseEditor)
+          <line_number
+            ref={(el: unknown) => {
+              gutter = el as GutterHost
             }}
-            initialValue={props.content}
-            focused={props.focused}
-            syntaxStyle={getSyntaxStyle()}
-            backgroundColor={ui.bg}
-            textColor={ui.text}
-            focusedBackgroundColor={ui.bg}
-            focusedTextColor={ui.text}
-            cursorColor={ui.cursor}
-            wrapMode={props.wordWrap ? 'word' : 'none'}
-            tabIndicator={props.tabSize}
-            tabIndicatorColor={ui.indentGuide}
+            target={editorEl() ?? undefined}
+            fg={ui.gutter}
+            bg={ui.bg}
+            minWidth={gutterWidth()}
+            paddingRight={1}
             flexGrow={1}
-            paddingLeft={1}
-            onContentChange={() => {
-              if (!editor) return
-              history.record({ content: editor.plainText, cursor: cursorBeforeEdit }, Date.now())
-              props.onChange(editor.plainText)
-              scheduleHighlight()
-            }}
-            onMouse={() => applyWindow()}
-            onCursorChange={() => {
-              applyWindow()
-              syncCursor()
-            }}
-          />
-        </line_number>
-        <Show when={scrollbar().length > 0}>
-          <box width={1} flexShrink={0} backgroundColor={ui.bg}>
-            <For each={scrollbar()}>
-              {filled => (
-                <text fg={filled ? ui.scrollbar : ui.bg} bg={ui.bg} content={filled ? '█' : '│'} />
-              )}
-            </For>
-          </box>
-        </Show>
-        <Show when={props.notice}>
-          {(notice: () => string) => (
-            <box
-              position="absolute"
-              top={0}
-              left={0}
-              width="100%"
-              height="100%"
-              flexDirection="column"
-              alignItems="center"
-              justifyContent="center"
+            lineColors={
+              // Both entries are backgrounds, not text colors — a bright value here
+              // paints a solid block behind the line number.
+              new Map([[cursorLine(), { gutter: ui.currentLine, content: ui.currentLine }]])
+            }
+          >
+            <textarea
+              ref={el => {
+                editor = el
+                setEditorEl(el)
+                ignoreScrollOutsideBounds(el)
+                afterResize(el, () => {
+                  applyLineSigns()
+                  syncViewport()
+                })
+                allowSelectionOnlyInEditor(el)
+                onCleanup(releaseEditor)
+              }}
+              initialValue={props.content}
+              focused={props.focused}
+              syntaxStyle={getSyntaxStyle()}
               backgroundColor={ui.bg}
+              textColor={ui.text}
+              focusedBackgroundColor={ui.bg}
+              focusedTextColor={ui.text}
+              cursorColor={ui.cursor}
+              // Always wrapping: OpenTUI's textarea scrolls sideways only by
+              // dragging the caret along, so unwrapped long lines have no way to be
+              // read that does not move the cursor.
+              wrapMode="word"
+              tabIndicator={props.tabSize}
+              tabIndicatorColor={ui.indentGuide}
+              flexGrow={1}
+              paddingLeft={1}
+              onContentChange={() => {
+                if (!editor) return
+                history.record({ content: editor.plainText, cursor: cursorBeforeEdit }, Date.now())
+                props.onChange(editor.plainText)
+                scheduleHighlight()
+              }}
+              onMouse={() => applyWindow()}
+              onCursorChange={() => {
+                applyWindow()
+                syncCursor()
+              }}
+            />
+          </line_number>
+          <Show when={scrollbar().length > 0}>
+            <box
+              ref={(el: { y: number }) => {
+                track = el
+              }}
+              width={1}
+              flexShrink={0}
+              backgroundColor={ui.bg}
+              onMouseDown={(event: MouseEvent) => {
+                setDragging(true)
+                dragTo(event.y)
+              }}
             >
-              <text
-                fg={ui.text}
-                bg={ui.bg}
-                content="This file cannot be shown"
-                attributes={TextAttributes.BOLD}
-              />
-              <text fg={ui.faint} bg={ui.bg} content="" />
-              <text fg={ui.dim} bg={ui.bg} content={notice()} />
-              <text fg={ui.faint} bg={ui.bg} content="" />
-              <text
-                fg={ui.faint}
-                bg={ui.bg}
-                content="It is binary, or uses an encoding druk cannot read."
-              />
+              <For each={scrollbar()}>
+                {filled => (
+                  <text
+                    fg={filled ? ui.scrollbar : ui.bg}
+                    bg={ui.bg}
+                    content={filled ? '█' : '│'}
+                  />
+                )}
+              </For>
             </box>
-          )}
-        </Show>
-      </box>
-    </Show>
+          </Show>
+        </box>
+      </Show>
+    </box>
   )
 }

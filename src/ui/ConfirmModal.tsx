@@ -1,7 +1,9 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
+import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { For } from 'solid-js'
 
 import { ui } from '../themes'
+import { modalWidth, PAD, wrapText } from './modal'
 import { Overlay } from './Overlay'
 
 export interface ConfirmModalProps {
@@ -16,6 +18,10 @@ export interface ConfirmModalProps {
 }
 
 export function ConfirmModal(props: ConfirmModalProps) {
+  const dimensions = useTerminalDimensions()
+  const width = () => modalWidth(dimensions().width, 0.5, 60, 84)
+  const lines = () => wrapText(props.message, width() - PAD * 2)
+
   useKeyboard((key: KeyEvent) => {
     if (key.name === 'return' || key.name === 'enter') {
       key.preventDefault()
@@ -31,7 +37,7 @@ export function ConfirmModal(props: ConfirmModalProps) {
   return (
     <Overlay>
       <box
-        width={60}
+        width={width()}
         flexDirection="column"
         backgroundColor={ui.panelBg}
         border
@@ -39,10 +45,11 @@ export function ConfirmModal(props: ConfirmModalProps) {
         borderColor={accent()}
         title={` ${props.title} `}
         titleColor={accent()}
-        paddingLeft={1}
-        paddingRight={1}
+        paddingLeft={PAD}
+        paddingRight={PAD}
       >
-        <text fg={ui.text} bg={ui.panelBg} content={props.message} />
+        <For each={lines()}>{line => <text fg={ui.text} bg={ui.panelBg} content={line} />}</For>
+        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
         <text fg={ui.dim} bg={ui.panelBg} content={`Enter to ${props.verb} · Esc to cancel`} />
       </box>
     </Overlay>

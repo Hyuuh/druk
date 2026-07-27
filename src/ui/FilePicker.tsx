@@ -1,17 +1,17 @@
 import { relative } from 'node:path'
 
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
+import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 
 import { fuzzyScore, listFiles } from '../core/search'
 import { ui } from '../themes'
+import { listRows, modalWidth, PAD } from './modal'
 import { Overlay } from './Overlay'
 import { TextInput } from './TextInput'
 
 export interface FilePickerProps {
   rootDir: string
-  showHidden: boolean
   /** Candidates to choose from. Defaults to every file in the project. */
   files?: string[]
   title?: string
@@ -21,14 +21,17 @@ export interface FilePickerProps {
   onClose: () => void
 }
 
-const VISIBLE_ROWS = 12
-
 export function FilePicker(props: FilePickerProps) {
+  const dimensions = useTerminalDimensions()
   const [query, setQuery] = createSignal('')
   const [index, setIndex] = createSignal(0)
 
+  const width = () => modalWidth(dimensions().width, 0.62, 72, 110)
+  /** Border, input, blank line and footer. */
+  const visibleRows = () => listRows(dimensions().height, 8, 18)
+
   // Scanned once per open: a project's file list does not move under you mid-search.
-  const files = props.files ?? listFiles(props.rootDir, 5000, props.showHidden)
+  const files = props.files ?? listFiles(props.rootDir, 5000)
 
   const label = (value: string) => props.display?.(value) ?? relative(props.rootDir, value)
 
@@ -39,7 +42,7 @@ export function FilePicker(props: FilePickerProps) {
       const score = fuzzyScore(label(path), q)
       if (score !== null) scored.push({ path, score })
     }
-    return scored.toSorted((a, b) => a.score - b.score).slice(0, VISIBLE_ROWS)
+    return scored.toSorted((a, b) => a.score - b.score).slice(0, visibleRows())
   })
 
   const selected = () => Math.min(index(), Math.max(0, matches().length - 1))
@@ -66,7 +69,7 @@ export function FilePicker(props: FilePickerProps) {
   return (
     <Overlay zIndex={150}>
       <box
-        width={72}
+        width={width()}
         flexDirection="column"
         backgroundColor={ui.panelBg}
         border
@@ -74,8 +77,8 @@ export function FilePicker(props: FilePickerProps) {
         borderColor={ui.accent}
         title={` ${props.title ?? 'Open file'} — ${files.length} `}
         titleColor={ui.text}
-        paddingLeft={1}
-        paddingRight={1}
+        paddingLeft={PAD}
+        paddingRight={PAD}
       >
         <TextInput
           value={query()}
@@ -85,20 +88,30 @@ export function FilePicker(props: FilePickerProps) {
             setIndex(0)
           }}
         />
+        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
         <Show
           when={matches().length > 0}
-          fallback={<text fg={ui.dim} bg={ui.panelBg} content=" No matches" />}
+          fallback={<text fg={ui.dim} bg={ui.panelBg} content="No matches" />}
         >
           <For each={matches()}>
             {(match, i) => {
               const active = () => i() === selected()
               const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
+              /** The name reads first; the folders it sits in are context. */
+              const shown = () => label(match.path).slice(0, width() - PAD * 2 - 4)
+              const cut = () => shown().lastIndexOf('/') + 1
               return (
-                <text
-                  fg={active() ? ui.text : ui.dim}
-                  bg={bg()}
-                  content={` ${label(match.path).slice(0, 68)}`}
-                />
+                <box flexDirection="row" backgroundColor={bg()}>
+                  <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
+                  <text fg={ui.faint} bg={bg()} flexShrink={0} content={shown().slice(0, cut())} />
+                  <box flexGrow={1} backgroundColor={bg()}>
+                    <text
+                      fg={active() ? ui.text : ui.dim}
+                      bg={bg()}
+                      content={shown().slice(cut())}
+                    />
+                  </box>
+                </box>
               )
             }}
           </For>

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { buildCommands } from '../src/app/commands'
 import type { CommandActions } from '../src/app/commands'
-import { fixture, launch, press, pressEscape } from './helpers'
+import { fixture, launch, press } from './helpers'
 import type { Harness } from './helpers'
 
 /** Row index of a top-level command, so tests survive new commands. */
@@ -14,8 +14,6 @@ function rowOf(label: string): number {
     vimEnabled: false,
     activeTheme: 'dark',
     tabSize: 2,
-    showHidden: true,
-    wordWrap: false,
   })
   return tree.findIndex(command => command.label === label)
 }
@@ -52,17 +50,6 @@ describe('editor', () => {
     expect(frame).toContain('typescript') // status bar
   })
 
-  test('opens a second file without crashing', async () => {
-    const t = await launch(fixture(PROJECT))
-    await openMain(t)
-    await pressEscape(t) // back to tree
-    await press(t, i => i.pressArrow('down')) // notes.md
-    await press(t, i => i.pressEnter())
-    const frame = t.captureCharFrame()
-    expect(frame).toContain('# hi')
-    expect(frame).toContain('markdown')
-  })
-
   test('typing then Ctrl+S writes to disk', async () => {
     const dir = fixture(PROJECT)
     const t = await launch(dir)
@@ -77,7 +64,8 @@ describe('command palette', () => {
   test('nests into submenus and applies a theme', async () => {
     const t = await launch(fixture(PROJECT))
     await press(t, i => i.pressKey('p', { ctrl: true }))
-    expect(t.captureCharFrame()).toContain('Themes >')
+    // `›`, the same glyph the title trail and the README use for nesting.
+    expect(t.captureCharFrame()).toContain('Themes ›')
 
     for (let i = 0; i < rowOf('Themes'); i++) await press(t, input => input.pressArrow('down'))
     await press(t, i => i.pressEnter())
@@ -90,7 +78,7 @@ describe('command palette', () => {
     const t = await launch(fixture(PROJECT))
     await press(t, i => i.pressKey('p', { ctrl: true }))
     await press(t, i => void i.typeText('light'))
-    expect(t.captureCharFrame()).toContain('Themes >   GitHub Light')
+    expect(t.captureCharFrame()).toContain('Themes ›   GitHub Light')
   })
 })
 

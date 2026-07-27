@@ -1,8 +1,9 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
+import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createSignal } from 'solid-js'
 
 import { ui } from '../themes'
+import { modalWidth, PAD } from './modal'
 import { Overlay } from './Overlay'
 import { TextInput } from './TextInput'
 
@@ -14,7 +15,10 @@ export interface PromptModalProps {
 }
 
 export function PromptModal(props: PromptModalProps) {
+  const dimensions = useTerminalDimensions()
   const [value, setValue] = createSignal(props.initialValue)
+
+  const width = () => modalWidth(dimensions().width, 0.5, 60, 80)
 
   useKeyboard((key: KeyEvent) => {
     // Solid applies focus synchronously; without this the submitting key also
@@ -31,7 +35,7 @@ export function PromptModal(props: PromptModalProps) {
   return (
     <Overlay>
       <box
-        width={60}
+        width={width()}
         flexDirection="column"
         backgroundColor={ui.panelBg}
         border
@@ -39,10 +43,11 @@ export function PromptModal(props: PromptModalProps) {
         borderColor={ui.accent}
         title={` ${props.title} `}
         titleColor={ui.text}
-        paddingLeft={1}
-        paddingRight={1}
+        paddingLeft={PAD}
+        paddingRight={PAD}
       >
         <TextInput value={value()} onInput={setValue} />
+        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
         <text fg={ui.dim} bg={ui.panelBg} content="Enter to confirm · Esc to cancel" />
       </box>
     </Overlay>

@@ -1,12 +1,13 @@
 import { expect, test } from 'bun:test'
 
-import { computeSegments, getSyntaxStyle } from '../src/languages/highlight'
+import { getSyntaxStyle } from '../src/languages/highlight'
 import { fixture, launch, press } from './helpers'
+import { allSegments } from './syntax'
 
 const YAML = 'settings:\n  autoInstallPeers: true\n  count: 42\n# note\n'
 
 test('yaml keys, values and comments get distinct styles', async () => {
-  const segs = (await computeSegments(YAML, 'yaml')) ?? []
+  const segs = await allSegments(YAML, 'yaml')
   const ss = getSyntaxStyle()
   const lines = YAML.split('\n')
   /** Style covering the first occurrence of `needle`, by line and column. */

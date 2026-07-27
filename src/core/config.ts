@@ -19,6 +19,26 @@ export const CONFIG_FILE = join(
   'config.json',
 )
 
+/** Narrow enough to still show a name, wide enough to leave the editor usable. */
+export const SIDEBAR_MIN = 15
+export const SIDEBAR_MAX = 80
+
+/**
+ * `'auto'`: this share of the terminal, within these bounds. The floor is what an
+ * 80-column window gets, so the automatic width only ever grows from what a fixed
+ * default gave — a flat 30 columns is fine there and cramped at 200, where two
+ * columns per nesting level leave a deep path almost nothing for its name.
+ */
+const AUTO_SHARE = 0.25
+const AUTO_MIN = 30
+const AUTO_MAX = 60
+
+/** Resolve `sidebarWidth` against the terminal. */
+export function sidebarColumns(width: number | 'auto', terminalWidth: number): number {
+  if (width !== 'auto') return width
+  return Math.max(AUTO_MIN, Math.min(AUTO_MAX, Math.round(terminalWidth * AUTO_SHARE)))
+}
+
 export interface Config {
   /** Color scheme id — see src/themes. */
   theme: ThemeName
@@ -26,10 +46,12 @@ export interface Config {
   vim: boolean
   /** Columns per indent level: indent guides and literal tabs both use it. */
   tabSize: number
-  /** Show .DS_Store, .git and friends in the tree. */
-  showHidden: boolean
-  /** Wrap long lines instead of scrolling horizontally. */
-  wordWrap: boolean
+  /**
+   * Columns the file tree occupies, or `'auto'` for a share of the terminal —
+   * a fixed default is either cramped on a wide screen or greedy on a narrow one.
+   * Resizing with `[` / `]` or by dragging the divider pins an explicit number.
+   */
+  sidebarWidth: number | 'auto'
   /** Check npm for a newer druk on startup. */
   checkUpdates: boolean
   /** Version whose update notice was dismissed; suppresses the banner for it. */
@@ -40,8 +62,7 @@ export const DEFAULTS: Config = {
   theme: 'dark',
   vim: false,
   tabSize: 2,
-  showHidden: true,
-  wordWrap: false,
+  sidebarWidth: 'auto',
   checkUpdates: true,
   skipUpdate: '',
 }
@@ -57,8 +78,13 @@ function parse(raw: unknown): Config {
         : DEFAULTS.tabSize,
     checkUpdates: typeof obj.checkUpdates === 'boolean' ? obj.checkUpdates : DEFAULTS.checkUpdates,
     skipUpdate: typeof obj.skipUpdate === 'string' ? obj.skipUpdate : DEFAULTS.skipUpdate,
-    showHidden: typeof obj.showHidden === 'boolean' ? obj.showHidden : DEFAULTS.showHidden,
-    wordWrap: typeof obj.wordWrap === 'boolean' ? obj.wordWrap : DEFAULTS.wordWrap,
+    sidebarWidth:
+      typeof obj.sidebarWidth === 'number' &&
+      obj.sidebarWidth >= SIDEBAR_MIN &&
+      obj.sidebarWidth <= SIDEBAR_MAX
+        ? Math.floor(obj.sidebarWidth)
+        : // Anything else, `'auto'` included, is the default.
+          DEFAULTS.sidebarWidth,
   }
 }
 

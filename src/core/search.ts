@@ -10,6 +10,33 @@ export interface Match {
   text: string
 }
 
+/** Lines around a match, for a preview. */
+export interface Context {
+  /** 0-based index of `lines[0]`. */
+  start: number
+  lines: string[]
+}
+
+/** As `contextAround`, for text already in hand (the open buffer). */
+export function contextIn(text: string, line: number, radius: number): Context {
+  const lines = text.split('\n')
+  const start = Math.max(0, line - radius)
+  return { start, lines: lines.slice(start, line + radius + 1) }
+}
+
+/**
+ * `radius` lines either side of `line`. Reads the file rather than carrying context
+ * on every `Match`: a 200-match scan would drag five extra lines along for each, and
+ * only the selected one is ever shown.
+ */
+export function contextAround(path: string, line: number, radius: number): Context | null {
+  try {
+    return contextIn(readFile(path), line, radius)
+  } catch {
+    return null // deleted or unreadable since the scan
+  }
+}
+
 export interface SearchOptions {
   caseSensitive?: boolean
   limit?: number
@@ -106,12 +133,12 @@ export function fuzzyScore(text: string, query: string): number | null {
 }
 
 /** Every file under `root`, breadth-first, so the nearest ones survive the limit. */
-export function listFiles(root: string, limit = 5000, showHidden = false): string[] {
+export function listFiles(root: string, limit = 5000): string[] {
   const files: string[] = []
   const queue: string[] = [root]
   while (queue.length > 0 && files.length < limit) {
     const dir = queue.shift()!
-    for (const node of listDir(dir, 0, showHidden)) {
+    for (const node of listDir(dir, 0)) {
       if (node.isDir) {
         if (!SKIPPED_DIRS.has(node.name)) queue.push(node.path)
       } else if (files.length < limit) {
@@ -134,4 +161,28 @@ export function replaceAll(text: string, query: string, replacement: string): st
   const escaped = query.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
   // Function form, so `$&` and `$1` in the replacement are inserted literally.
   return text.replace(new RegExp(escaped, 'gi'), () => replacement)
+}
+
+/**
+ * Replace the one occurrence `match` points at, leaving every other alone.
+ *
+ * `match.col` counts characters within its line, so the offset is the sum of the
+ * lines above it plus their newlines — the same arithmetic `searchText` implies,
+ * done in reverse. A match whose line has since changed length is refused rather
+ * than applied at a drifted offset.
+ */
+export function replaceMatch(
+  text: string,
+  match: Match,
+  query: string,
+  replacement: string,
+): string | null {
+  if (!query) return null
+  const lines = text.split('\n')
+  if (lines[match.line] !== match.text) return null
+  const line = lines[match.line]!
+  const found = line.slice(match.col, match.col + query.length)
+  if (found.toLowerCase() !== query.toLowerCase()) return null
+  lines[match.line] = line.slice(0, match.col) + replacement + line.slice(match.col + query.length)
+  return lines.join('\n')
 }

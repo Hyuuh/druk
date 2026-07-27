@@ -1,0 +1,114 @@
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { DEFAULTS } from '../src/core/config'
+import type { Config } from '../src/core/config'
+import { fixture, launch, press } from './helpers'
+
+/** Open the only file and return a reader for what lands on disk. */
+async function editor(content: string, config: Partial<Config> = {}) {
+  const dir = fixture({ 'a.ts': content })
+  const t = await launch(dir, config)
+  await press(t, input => input.pressArrow('down'))
+  await press(t, input => input.pressEnter())
+  const saved = async () => {
+    await press(t, input => input.pressKey('s', { ctrl: true }))
+    return readFileSync(join(dir, 'a.ts'), 'utf8')
+  }
+  return { t, saved }
+}
+
+describe('Tab in the editor', () => {
+  test('indents, rather than doing nothing at all', async () => {
+    const { t, saved } = await editor('hello\n')
+    await press(t, input => input.pressTab())
+    expect(await saved()).toBe('  hello\n')
+  })
+
+  test('aligns to the next tab stop instead of always inserting a full width', async () => {
+    const { t, saved } = await editor('hello\n', { ...DEFAULTS, tabSize: 4 })
+    // From column 1, a full width would overshoot to 5; the stop is 4.
+    await press(t, input => input.pressArrow('right'))
+    await press(t, input => input.pressTab())
+    expect(await saved()).toBe('h   ello\n')
+  })
+
+  test('honours the configured tab size', async () => {
+    const { t, saved } = await editor('hello\n', { ...DEFAULTS, tabSize: 8 })
+    await press(t, input => input.pressTab())
+    expect(await saved()).toBe('        hello\n')
+  })
+
+  test('inserts spaces, never a literal tab character', async () => {
+    const { t, saved } = await editor('hello\n')
+    await press(t, input => input.pressTab())
+    expect(await saved()).not.toContain('\t')
+  })
+
+  test('does not move focus to the tree — Esc does that', async () => {
+    const { t } = await editor('hello\n')
+    await press(t, input => input.pressTab())
+    // Still in the editor, so typing keeps landing in the buffer.
+    await press(t, input => void input.typeText('X'))
+    expect(t.captureCharFrame()).toContain('X')
+    expect(t.captureCharFrame()).toContain('Ln 1')
+  })
+})
+
+/**
+ * Terminals send CSI Z for a back-tab. The mock's `pressKey('tab', { shift: true })`
+ * types the literal string "tab" instead, so these drive the real bytes.
+ */
+const BACK_TAB = `${String.fromCharCode(27)}[Z`
+
+describe('Shift+Tab in the editor', () => {
+  test('takes one level off the front of the line', async () => {
+    const { t, saved } = await editor('    hello\n')
+    await press(t, input => void input.pressKeys([BACK_TAB]))
+    expect(await saved()).toBe('  hello\n')
+  })
+
+  test('removes only what is there, never past the margin', async () => {
+    const { t, saved } = await editor(' hello\n')
+    await press(t, input => void input.pressKeys([BACK_TAB]))
+    await press(t, input => void input.pressKeys([BACK_TAB]))
+    expect(await saved()).toBe('hello\n')
+  })
+
+  test('does nothing on a line with no indentation', async () => {
+    const { t, saved } = await editor('hello\n')
+    await press(t, input => void input.pressKeys([BACK_TAB]))
+    expect(await saved()).toBe('hello\n')
+  })
+
+  test('outdents from wherever the caret sits, not just column 0', async () => {
+    const { t, saved } = await editor('    hello\n')
+    for (let n = 0; n < 6; n++) await press(t, input => input.pressArrow('right'))
+    await press(t, input => void input.pressKeys([BACK_TAB]))
+    expect(await saved()).toBe('  hello\n')
+  })
+})
+
+describe('focus after Tab', () => {
+  test('the editor keeps focus', async () => {
+    const { t } = await editor('hello\n')
+    await press(t, input => input.pressTab())
+    // Still in the editor, so typing keeps landing in the buffer.
+    await press(t, input => void input.typeText('X'))
+    expect(t.captureCharFrame()).toContain('X')
+    expect(t.captureCharFrame()).toContain('Ln 1')
+  })
+})
+
+describe('word wrap', () => {
+  test('always on, so a long line stays readable without scrolling sideways', async () => {
+    const long = `${'word '.repeat(60)}TAIL_MARKER\n`
+    const t = await launch(fixture({ 'a.ts': long }))
+    await press(t, input => input.pressArrow('down'))
+    await press(t, input => input.pressEnter())
+
+    // Wrapped onto following rows rather than running off the right edge.
+    expect(t.captureCharFrame()).toContain('TAIL_MARKER')
+  })
+})

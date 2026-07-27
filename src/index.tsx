@@ -1,26 +1,37 @@
 #!/usr/bin/env bun
 import './core/assets'
-import { resolve } from 'node:path'
-
 import { render } from '@opentui/solid'
 
 import { App } from './app/App'
+import { flagOutput, resolveTarget } from './core/cli'
 import { loadConfig } from './core/config'
 import { setTheme } from './themes'
 
-const rootDir = resolve(process.argv[2] ?? process.cwd())
+const flag = flagOutput(process.argv[2])
+if (flag !== null) {
+  process.stdout.write(flag)
+  process.exit(0)
+}
+
+const target = resolveTarget(process.argv[2], process.cwd())
+if (!target) {
+  process.stderr.write(`druk: no such file or directory: ${process.argv[2]}\n`)
+  process.exit(1)
+}
+const { rootDir, openFile } = target
 
 // Apply the saved theme before the first render.
 const config = loadConfig()
 setTheme(config.theme)
 
-await render(() => <App rootDir={rootDir} initialConfig={config} />, {
+await render(() => <App rootDir={rootDir} openFile={openFile} initialConfig={config} />, {
   useMouse: true,
   // Without motion reporting the terminal never hands drags to the app, so every
   // click-drag paints the terminal's own selection over the UI instead.
   enableMouseMovement: true,
-  // Ctrl+C copies here; quitting is Ctrl+Q. Leaving this on would drop unsaved
-  // buffers the moment someone copies out of habit.
+  // Ctrl+C is handled in App, not here: it copies when there is a selection and
+  // quits otherwise. OpenTUI's own exit would bypass the unsaved-buffer prompt and
+  // drop the work.
   exitOnCtrlC: false,
   targetFps: 30,
 })

@@ -1,10 +1,11 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
+import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 
 import type { Command } from '../app/commands'
 import { flattenCommands } from '../app/commands'
 import { ui } from '../themes'
+import { listRows, modalWidth, PAD } from './modal'
 import { Overlay } from './Overlay'
 import { TextInput } from './TextInput'
 
@@ -19,12 +20,15 @@ interface Row {
   trail: string[]
 }
 
-const VISIBLE_ROWS = 12
-
 export function CommandPalette(props: CommandPaletteProps) {
+  const dimensions = useTerminalDimensions()
   const [query, setQuery] = createSignal('')
   const [trail, setTrail] = createSignal<Command[]>([])
   const [index, setIndex] = createSignal(0)
+
+  const width = () => modalWidth(dimensions().width, 0.55, 58, 92)
+  /** Border, input, blank line and footer. */
+  const visibleRows = () => listRows(dimensions().height, 8, 18)
 
   const rows = createMemo<Row[]>(() => {
     const q = query().trim().toLowerCase()
@@ -43,8 +47,9 @@ export function CommandPalette(props: CommandPaletteProps) {
   // A filter can match every leaf in the tree; rendering them all pushes the
   // input and the footer off an 80x24 screen, so only a window is drawn.
   const windowed = createMemo(() => {
-    const start = Math.max(0, Math.min(selected() - VISIBLE_ROWS + 1, rows().length - VISIBLE_ROWS))
-    return { start, rows: rows().slice(start, start + VISIBLE_ROWS) }
+    const size = visibleRows()
+    const start = Math.max(0, Math.min(selected() - size + 1, rows().length - size))
+    return { start, rows: rows().slice(start, start + size) }
   })
 
   const enter = (row: Row) => {
@@ -88,7 +93,7 @@ export function CommandPalette(props: CommandPaletteProps) {
   return (
     <Overlay zIndex={150}>
       <box
-        width={58}
+        width={width()}
         flexDirection="column"
         backgroundColor={ui.panelBg}
         border
@@ -102,8 +107,8 @@ export function CommandPalette(props: CommandPaletteProps) {
             : ' Commands '
         }
         titleColor={ui.text}
-        paddingLeft={1}
-        paddingRight={1}
+        paddingLeft={PAD}
+        paddingRight={PAD}
       >
         <TextInput
           value={query()}
@@ -113,22 +118,28 @@ export function CommandPalette(props: CommandPaletteProps) {
             setIndex(0)
           }}
         />
+        {/* A blank line between the field and the list, so the two read as separate
+            things rather than one dense block. */}
+        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
         <Show
           when={rows().length > 0}
-          fallback={<text fg={ui.dim} bg={ui.panelBg} content=" No matching commands" />}
+          fallback={<text fg={ui.dim} bg={ui.panelBg} content="No matching commands" />}
         >
           <For each={windowed().rows}>
             {(row, i) => {
               const active = () => windowed().start + i() === selected()
               const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-              const prefix = row.trail.length > 0 ? `${row.trail.join(' > ')} > ` : ''
+              const prefix = row.trail.length > 0 ? `${row.trail.join(' › ')} › ` : ''
               return (
                 <box flexDirection="row" backgroundColor={bg()}>
+                  {/* A bar on the selected row: the background alone is easy to miss
+                      on a low-contrast theme. */}
+                  <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
                   <box flexGrow={1}>
                     <text
                       fg={active() ? ui.text : ui.dim}
                       bg={bg()}
-                      content={` ${prefix}${row.command.label}${row.command.children ? ' >' : ''}`}
+                      content={`${prefix}${row.command.label}${row.command.children ? ' ›' : ''}`}
                     />
                   </box>
                   <Show when={row.command.hint}>
@@ -145,7 +156,7 @@ export function CommandPalette(props: CommandPaletteProps) {
           fg={ui.dim}
           bg={ui.panelBg}
           content={
-            trail().length > 0 ? ' ←/Esc back · Enter run' : ' ↑↓ move · Enter open · Esc close'
+            trail().length > 0 ? '←/Esc back · Enter run' : '↑↓ move · Enter open · Esc close'
           }
         />
       </box>

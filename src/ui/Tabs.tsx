@@ -15,8 +15,6 @@ export interface TabInfo {
 export interface TabsProps {
   tabs: TabInfo[]
   activePath: string | null
-  /** Columns taken by the file tree, which sits left of the bar. */
-  treeWidth: number
   onSelect: (path: string) => void
   onClose: (path: string) => void
   /** Clicking an overflow counter asks for the full list of open tabs. */
@@ -38,7 +36,9 @@ export function Tabs(props: TabsProps) {
    * view. Letting flexbox shrink them instead clips names mid-character.
    */
   const visible = createMemo(() => {
-    const budget = Math.max(0, dimensions().width - props.treeWidth)
+    // The bar spans the terminal: the tree sits below it, not beside it. Taking
+    // the sidebar's width off the budget made tabs reflow on every resize.
+    const budget = dimensions().width
     const width = (tab: TabInfo) => shorten(tab.name).length + CHROME
 
     const active = Math.max(

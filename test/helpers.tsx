@@ -21,10 +21,28 @@ export function fixture(files: Record<string, string>): string {
   return dir
 }
 
-export async function launch(dir: string, config: Partial<Config> = {}) {
+export async function launch(
+  dir: string,
+  config: Partial<Config> = {},
+  /** Terminal size, for anything that has to degrade on a small screen. */
+  size: { width?: number; height?: number } = {},
+  /** `openFile` renders single-file mode, as `druk <file>` does. */
+  options: { openFile?: string } = {},
+) {
   const t = await testRender(
-    () => App({ rootDir: dir, initialConfig: { ...DEFAULTS, checkUpdates: false, ...config } }),
-    { width: 80, height: 20 },
+    () =>
+      App({
+        rootDir: dir,
+        openFile: options.openFile ?? null,
+        initialConfig: { ...DEFAULTS, checkUpdates: false, ...config },
+      }),
+    {
+      width: size.width ?? 80,
+      height: size.height ?? 20,
+      // Mirror src/index.tsx. OpenTUI defaults this on and tears the renderer down
+      // itself, so without it a Ctrl+C test measures the harness, not the app.
+      exitOnCtrlC: false,
+    },
   )
   await settle(t)
   return t
@@ -34,8 +52,12 @@ export async function launch(dir: string, config: Partial<Config> = {}) {
  * The reconciler flushes on a macrotask, so a frame captured immediately after
  * an event still shows the previous state. Yield before rendering.
  */
-export async function settle(t: { flush: () => Promise<void> }): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, 0))
+export async function settle(
+  t: { flush: () => Promise<void> },
+  /** Wait longer when something debounced (a scan, the watcher) has to fire first. */
+  waitMs = 0,
+): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, waitMs))
   await t.flush()
 }
 
@@ -54,4 +76,11 @@ export async function pressEscape(t: Harness) {
   t.mockInput.pressEscape()
   await new Promise(resolve => setTimeout(resolve, 60))
   await settle(t)
+}
+
+/** Run a palette leaf by typing enough of its label to select it. */
+export async function runCommand(t: Harness, label: string) {
+  await press(t, input => input.pressKey('p', { ctrl: true }))
+  await press(t, input => void input.typeText(label))
+  await press(t, input => input.pressEnter())
 }

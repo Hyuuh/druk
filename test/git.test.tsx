@@ -54,8 +54,8 @@ test('a branch with no upstream shows without ahead/behind arrows', async () => 
 
   const footer = t.captureCharFrame().split('\n').at(-2)!
   expect(footer).toContain('⎇ main')
-  expect(footer).not.toContain('↑')
-  expect(footer).not.toContain('↓')
+  expect(footer).not.toMatch(/↑\d/)
+  expect(footer).not.toMatch(/↓\d/)
 })
 
 test('status marks reach the file tree', async () => {

@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  # One runner per platform: cross-compiling needs the target's @opentui/core-<platform>
+  # package, and `bun install` only fetches the host's.
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-latest
+          - target: darwin-x64
+            os: macos-13
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+          - target: linux-x64
+            os: ubuntu-latest
+          - target: windows-x64
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: druk-${{ matrix.target }}
+          path: dist/${{ matrix.target }}/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      # Node is here for `npm publish` alone — provenance is an npm feature.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: latest
+          registry-url: 'https://registry.npmjs.org'
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: druk-*
+      # download-artifact names each directory after the artifact; release.ts wants
+      # dist/<target>/druk.
+      - run: |
+          cd dist
+          for dir in druk-*; do mv "$dir" "${dir#druk-}"; done
+          chmod +x */druk || true
+      - run: bun run release --publish
+        env:
+          NPM_CONFIG_PROVENANCE: true
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # The install script downloads these by name, so the release has to carry them
+      # before anyone can be told to curl it.
+      - name: Attach binaries to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: gh release upload "${GITHUB_REF_NAME}" dist/release/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

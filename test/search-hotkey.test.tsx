@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, press, settle } from './helpers'
 
 const project = { 'a.ts': 'hello world\n', 'b.ts': 'hello again\n' }
 
@@ -18,6 +18,8 @@ describe('search hotkeys', () => {
     expect(t.captureCharFrame()).toContain('Search in project')
 
     await press(t, input => void input.typeText('hello'))
+    // The scan is debounced, so the results land a moment after the typing.
+    await settle(t, 300)
     const frame = t.captureCharFrame()
     expect(frame).toContain('a.ts')
     expect(frame).toContain('b.ts')

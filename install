@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# Installs druk into ~/.druk/bin. Served at https://druk.letstri.dev/install:
+#   curl -fsSL https://druk.letstri.dev/install | bash
+set -euo pipefail
+
+APP=druk
+REPO=letstri/druk
+
+MUTED='\033[0;2m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+usage() {
+    cat <<EOF
+druk installer
+
+Usage: install [options]
+
+Options:
+    -h, --help              Display this help message
+    -v, --version <version> Install a specific version (e.g. 0.2.0)
+    -b, --binary <path>     Install from a local binary instead of downloading
+        --no-modify-path    Don't touch shell config files (.zshrc, .bashrc, …)
+
+Examples:
+    curl -fsSL https://druk.letstri.dev/install | bash
+    curl -fsSL https://druk.letstri.dev/install | bash -s -- --version 0.2.0
+EOF
+}
+
+requested_version=${VERSION:-}
+no_modify_path=false
+binary_path=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -v|--version)
+            if [[ -n "${2:-}" ]]; then
+                requested_version="$2"
+                shift 2
+            else
+                echo -e "${RED}Error: --version requires a version argument${NC}" >&2
+                exit 1
+            fi
+            ;;
+        -b|--binary)
+            if [[ -n "${2:-}" ]]; then
+                binary_path="$2"
+                shift 2
+            else
+                echo -e "${RED}Error: --binary requires a path argument${NC}" >&2
+                exit 1
+            fi
+            ;;
+        --no-modify-path)
+            no_modify_path=true
+            shift
+            ;;
+        *)
+            echo -e "${RED}Error: unknown option '$1'${NC}" >&2
+            exit 1
+            ;;
+    esac
+done
+
+INSTALL_DIR="${DRUK_INSTALL_DIR:-$HOME/.druk/bin}"
+mkdir -p "$INSTALL_DIR"
+
+if [ -n "$binary_path" ]; then
+    if [ ! -f "$binary_path" ]; then
+        echo -e "${RED}Error: no binary at ${binary_path}${NC}" >&2
+        exit 1
+    fi
+    specific_version="local"
+else
+    case "$(uname -s)" in
+      Darwin*) os="darwin" ;;
+      Linux*) os="linux" ;;
+      MINGW*|MSYS*|CYGWIN*) os="windows" ;;
+      *) echo -e "${RED}Unsupported OS: $(uname -s)${NC}" >&2; exit 1 ;;
+    esac
+
+    arch=$(uname -m)
+    case "$arch" in
+      aarch64|arm64) arch="arm64" ;;
+      x86_64|amd64) arch="x64" ;;
+    esac
+
+    # A binary running under Rosetta reports x64 while the machine is arm64, and the
+    # native build is both faster and the only one Apple silicon keeps supporting.
+    if [ "$os" = "darwin" ] && [ "$arch" = "x64" ]; then
+      if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = "1" ]; then
+        arch="arm64"
+      fi
+    fi
+
+    target="$os-$arch"
+    case "$target" in
+      darwin-arm64|darwin-x64|linux-arm64|linux-x64|windows-x64) ;;
+      *)
+        echo -e "${RED}Unsupported platform: $target${NC}" >&2
+        echo -e "${MUTED}Supported: darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64${NC}" >&2
+        exit 1
+        ;;
+    esac
+
+    if [ "$os" = "linux" ]; then
+        archive_ext=".tar.gz"
+        if ! command -v tar >/dev/null 2>&1; then
+            echo -e "${RED}Error: 'tar' is required but not installed.${NC}" >&2
+            exit 1
+        fi
+    else
+        archive_ext=".zip"
+        if ! command -v unzip >/dev/null 2>&1; then
+            echo -e "${RED}Error: 'unzip' is required but not installed.${NC}" >&2
+            exit 1
+        fi
+    fi
+
+    filename="$APP-$target$archive_ext"
+
+    if [ -z "$requested_version" ]; then
+        url="https://github.com/$REPO/releases/latest/download/$filename"
+        # `set -e` plus pipefail would abort on curl's own exit code here, printing its
+        # error and none of ours; the guard keeps the failure ours to report.
+        latest=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) || latest=""
+        specific_version=$(printf '%s' "$latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -1)
+        if [ -z "$specific_version" ]; then
+            echo -e "${RED}Could not find a published release of druk${NC}" >&2
+            echo -e "${MUTED}Check https://github.com/$REPO/releases, or install with: npm install -g druk${NC}" >&2
+            exit 1
+        fi
+    else
+        requested_version="${requested_version#v}"
+        url="https://github.com/$REPO/releases/download/v${requested_version}/$filename"
+        specific_version=$requested_version
+        if [ "$(curl -sI -o /dev/null -w '%{http_code}' "https://github.com/$REPO/releases/tag/v${requested_version}")" = "404" ]; then
+            echo -e "${RED}Error: release v${requested_version} not found${NC}" >&2
+            echo -e "${MUTED}Available releases: https://github.com/$REPO/releases${NC}" >&2
+            exit 1
+        fi
+    fi
+
+    if command -v "$APP" >/dev/null 2>&1; then
+        installed_version=$("$APP" --version 2>/dev/null || echo "")
+        if [ "$installed_version" = "$specific_version" ]; then
+            echo -e "${MUTED}druk ${NC}$specific_version${MUTED} is already installed${NC}"
+            exit 0
+        fi
+    fi
+
+    echo -e "${MUTED}Installing ${NC}druk $specific_version${MUTED} for $target${NC}"
+    tmp_dir=$(mktemp -d)
+    trap 'rm -rf "$tmp_dir"' EXIT
+    if ! curl -# -fL -o "$tmp_dir/$filename" "$url"; then
+        echo -e "${RED}Failed to download $filename${NC}" >&2
+        echo -e "${MUTED}Release v$specific_version may carry no binary for $target: $url${NC}" >&2
+        exit 1
+    fi
+
+    if [ "$os" = "linux" ]; then
+        tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"
+    else
+        unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
+    fi
+    binary_path="$tmp_dir/$APP"
+    [ "$os" = "windows" ] && binary_path="$tmp_dir/$APP.exe"
+fi
+
+exe_name="$APP"
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) exe_name="$APP.exe" ;; esac
+
+cp "$binary_path" "$INSTALL_DIR/$exe_name"
+chmod 755 "$INSTALL_DIR/$exe_name"
+
+add_to_path() {
+    local config_file=$1 command=$2
+    if grep -Fxq "$command" "$config_file" 2>/dev/null; then
+        return
+    elif [ -w "$config_file" ]; then
+        printf '\n# druk\n%s\n' "$command" >> "$config_file"
+        echo -e "${MUTED}Added druk to \$PATH in ${NC}$config_file"
+    else
+        echo -e "${MUTED}Add this to $config_file yourself:${NC}"
+        echo -e "  $command"
+    fi
+}
+
+XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
+
+case "$(basename "${SHELL:-bash}")" in
+    fish)
+        config_files="$HOME/.config/fish/config.fish"
+        path_command="fish_add_path $INSTALL_DIR"
+    ;;
+    zsh)
+        config_files="${ZDOTDIR:-$HOME}/.zshrc ${ZDOTDIR:-$HOME}/.zshenv $XDG_CONFIG_HOME/zsh/.zshrc"
+        path_command="export PATH=$INSTALL_DIR:\$PATH"
+    ;;
+    *)
+        config_files="$HOME/.bashrc $HOME/.bash_profile $HOME/.profile"
+        path_command="export PATH=$INSTALL_DIR:\$PATH"
+    ;;
+esac
+
+if [ "$no_modify_path" != "true" ] && [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    config_file=""
+    for file in $config_files; do
+        if [ -f "$file" ]; then
+            config_file=$file
+            break
+        fi
+    done
+
+    if [ -z "$config_file" ]; then
+        echo -e "${MUTED}No shell config found. Add this yourself:${NC}"
+        echo -e "  $path_command"
+    else
+        add_to_path "$config_file" "$path_command"
+    fi
+fi
+
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+fi
+
+echo -e ""
+echo -e "${GREEN}druk ${specific_version}${NC} installed to ${INSTALL_DIR}"
+echo -e ""
+echo -e "  druk              ${MUTED}# open the current directory${NC}"
+echo -e "  druk ./path       ${MUTED}# open a directory or a file${NC}"
+echo -e ""
+echo -e "${MUTED}Restart your shell (or source your shell config) if druk is not on \$PATH yet.${NC}"

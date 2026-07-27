@@ -1,12 +1,14 @@
 import { basename, relative } from 'node:path'
 
+import { TextAttributes } from '@opentui/core'
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
-import { createMemo, createSignal, For, Show } from 'solid-js'
+import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 
-import type { Match } from '../core/search'
-import { searchProject, searchText } from '../core/search'
+import type { Context, Match } from '../core/search'
+import { contextAround, contextIn, searchProject, searchText } from '../core/search'
 import { ui } from '../themes'
+import { modalWidth, PAD } from './modal'
 import { Overlay } from './Overlay'
 import { TextInput } from './TextInput'
 
@@ -17,23 +19,65 @@ export interface SearchPanelProps {
   rootDir: string
   activePath: string | null
   activeContent: string
+  /** What the editor had selected, so the obvious query is already typed. */
+  initialQuery?: string
+  /** Open with the replacement field already showing. */
+  replacing?: boolean
   onPick: (match: Match) => void
+  /** Replace the selected match only. Absent for project-wide search. */
+  onReplaceOne?: (match: Match, query: string, replacement: string) => void
   /** Replace every match in the open file. Absent for project-wide search. */
   onReplaceAll?: (query: string, replacement: string) => void
   onClose: () => void
 }
 
-const VISIBLE_ROWS = 10
 const MIN_QUERY = 2
 
+/** Lines either side of the selected match in the preview. */
+const CONTEXT = 2
+
+/**
+ * A project scan reads every file in the tree — around 90ms across 2 600 files, and
+ * it grows from there. Running that on the keystroke means each character freezes
+ * the editor, so the scan waits for the typing to settle. In-file search is only
+ * string work on the open buffer, so it stays immediate.
+ */
+const SCAN_DEBOUNCE_MS = 140
+
+/** A file heading, or one of its matches. Selection only ever lands on a match. */
+type Row =
+  | { kind: 'file'; path: string; count: number }
+  | { kind: 'match'; match: Match; at: number }
+
 export function SearchPanel(props: SearchPanelProps) {
-  const [query, setQuery] = createSignal('')
+  const dimensions = useTerminalDimensions()
+  // Read once: the panel is mounted fresh each time it opens, and re-reading would
+  // fight whatever has been typed since.
+  const opened = props.initialQuery ?? ''
+  const [query, setQuery] = createSignal(opened)
+  /** The query the results belong to; trails `query` while a project scan is pending. */
+  const [scanned, setScanned] = createSignal(opened)
   const [replacement, setReplacement] = createSignal('')
-  const [replacing, setReplacing] = createSignal(false)
+  const [replacing, setReplacing] = createSignal(props.replacing ?? false)
   const [index, setIndex] = createSignal(0)
 
+  let scanTimer: ReturnType<typeof setTimeout> | null = null
+  onCleanup(() => {
+    if (scanTimer) clearTimeout(scanTimer)
+  })
+
+  const type = (value: string) => {
+    setQuery(value)
+    setIndex(0)
+    if (props.scope !== 'project') return setScanned(value)
+    if (scanTimer) clearTimeout(scanTimer)
+    scanTimer = setTimeout(() => setScanned(value), SCAN_DEBOUNCE_MS)
+  }
+
+  const pending = () => props.scope === 'project' && scanned() !== query()
+
   const matches = createMemo(() => {
-    const q = query()
+    const q = scanned()
     if (q.length < MIN_QUERY) return []
     return props.scope === 'project'
       ? searchProject(props.rootDir, q)
@@ -41,12 +85,73 @@ export function SearchPanel(props: SearchPanelProps) {
   })
 
   const selected = () => Math.min(index(), Math.max(0, matches().length - 1))
+  const current = () => matches()[selected()]
+
+  /**
+   * The text that would take each hit's place, or '' when nothing would. Every row
+   * shows it beside the hit as it is typed, so the result is visible before anything
+   * is written — which is the whole reason to look at the list before pressing Enter.
+   */
+  const swap = () => (replacing() ? replacement() : '')
+
+  /**
+   * The widest of the modals, and deliberately so: every other one shows short
+   * labels, while this one shows lines of source that mean nothing truncated.
+   */
+  const width = () => modalWidth(dimensions().width, 0.86, 64, 160)
+  /** Inside the border *and* the padding — miss either and every long row wraps. */
+  const contentWidth = () => width() - 2 - PAD * 2
+
+  /** Surroundings of the selected match, or null when there is no room to show them. */
+  const preview = createMemo<Context | null>(() => {
+    const match = current()
+    if (!match || dimensions().height < 18) return null
+    return props.scope === 'project'
+      ? contextAround(match.path, match.line, CONTEXT)
+      : contextIn(props.activeContent, match.line, CONTEXT)
+  })
+
+  /**
+   * Rows the list may use. Named apart from `modal.ts`'s `listRows` on purpose: this
+   * one has a preview to make room for. The panel has to fit a short terminal, and
+   * the list gives way before the preview does — a preview of nothing is useless,
+   * but a list of two rows is still a list.
+   */
+  const resultRows = () => {
+    const chrome = 7 + (replacing() ? 1 : 0) + (preview() ? CONTEXT * 2 + 2 : 0)
+    return Math.max(2, Math.min(18, dimensions().height - chrome))
+  }
+
+  /**
+   * Matches grouped under their file. Grouping is what buys the line text the whole
+   * width: the old flat list spent 34 columns repeating the same path on every row.
+   */
+  const rows = createMemo<Row[]>(() => {
+    const out: Row[] = []
+    const all = matches()
+    for (let i = 0; i < all.length; i++) {
+      const match = all[i]!
+      if (props.scope === 'project' && match.path !== all[i - 1]?.path) {
+        let count = 0
+        while (all[i + count]?.path === match.path) count++
+        out.push({ kind: 'file', path: match.path, count })
+      }
+      out.push({ kind: 'match', match, at: i })
+    }
+    return out
+  })
+
+  /** The window of rows on screen, kept over the selected match. */
   const windowed = createMemo(() => {
-    const start = Math.max(
-      0,
-      Math.min(selected() - VISIBLE_ROWS + 1, matches().length - VISIBLE_ROWS),
-    )
-    return { start, rows: matches().slice(start, start + VISIBLE_ROWS) }
+    const all = rows()
+    const size = resultRows()
+    const cursor = all.findIndex(row => row.kind === 'match' && row.at === selected())
+    // One row of lead-in, so the file heading above the selection stays visible.
+    const start = Math.max(0, Math.min(cursor - size + 2, all.length - size))
+    return {
+      start: Math.max(0, start),
+      rows: all.slice(Math.max(0, start), Math.max(0, start) + size),
+    }
   })
 
   useKeyboard((key: KeyEvent) => {
@@ -61,14 +166,17 @@ export function SearchPanel(props: SearchPanelProps) {
     } else if (k === 'tab' && props.onReplaceAll) {
       key.preventDefault()
       setReplacing(r => !r)
+    } else if (key.ctrl && k === 'a' && replacing() && props.onReplaceAll) {
+      key.preventDefault()
+      props.onReplaceAll(query(), replacement())
     } else if (k === 'return' || k === 'enter') {
       key.preventDefault()
-      if (replacing() && props.onReplaceAll) {
-        props.onReplaceAll(query(), replacement())
-        return
-      }
-      const match = matches()[selected()]
-      if (match) props.onPick(match)
+      const match = current()
+      if (!match) return
+      // Replacing one match at a time is the point of the mode; the whole file goes
+      // through Ctrl+A, which is the harder move to make by accident.
+      if (replacing() && props.onReplaceOne) props.onReplaceOne(match, query(), replacement())
+      else props.onPick(match)
     } else if (k === 'escape') {
       key.preventDefault()
       props.onClose()
@@ -77,14 +185,33 @@ export function SearchPanel(props: SearchPanelProps) {
 
   const summary = () => {
     if (query().length < MIN_QUERY) return 'Type at least 2 characters'
-    if (matches().length === 0) return 'No matches'
-    return `${selected() + 1} of ${matches().length}${matches().length >= 200 ? '+' : ''}`
+    // Say so rather than showing the previous query's count as if it were current.
+    if (pending()) return 'Searching…'
+    const all = matches()
+    if (all.length === 0) return 'No matches'
+    const files = new Set(all.map(m => m.path)).size
+    const capped = all.length >= 200 ? '+' : ''
+    const where = props.scope === 'project' ? ` in ${files} file${files === 1 ? '' : 's'}` : ''
+    return `${selected() + 1} of ${all.length}${capped}${where}`
+  }
+
+  const label = (path: string) => relative(props.rootDir, path) || basename(path)
+
+  /**
+   * The line, cut to `room` around the match rather than from column 0. A hit 200
+   * columns into a minified line was simply not in the old fixed 38-column slice, so
+   * the row showed the query's own result without the query in it.
+   */
+  const sliceAround = (text: string, col: number, room: number) => {
+    if (text.length <= room) return { text, col, cut: false }
+    const start = Math.max(0, Math.min(col - 12, text.length - room))
+    return { text: text.slice(start, start + room), col: col - start, cut: start > 0 }
   }
 
   return (
     <Overlay zIndex={150}>
       <box
-        width={76}
+        width={width()}
         flexDirection="column"
         backgroundColor={ui.panelBg}
         border
@@ -92,50 +219,166 @@ export function SearchPanel(props: SearchPanelProps) {
         borderColor={ui.accent}
         title={props.scope === 'project' ? ' Search in project ' : ' Search in file '}
         titleColor={ui.text}
-        paddingLeft={1}
-        paddingRight={1}
+        paddingLeft={PAD}
+        paddingRight={PAD}
       >
-        <TextInput
-          value={query()}
-          placeholder="Search…"
-          onInput={v => {
-            setQuery(v)
-            setIndex(0)
-          }}
-        />
+        <TextInput value={query()} placeholder="Search…" onInput={type} />
         <Show when={replacing()}>
           <TextInput value={replacement()} placeholder="Replace with…" onInput={setReplacement} />
         </Show>
         <text fg={ui.dim} bg={ui.panelBg} content={summary()} />
+        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
+
         <For each={windowed().rows}>
-          {(match, i) => {
-            const active = () => windowed().start + i() === selected()
+          {row => {
+            if (row.kind === 'file') {
+              return (
+                <box flexDirection="row" backgroundColor={ui.barBg}>
+                  <text
+                    fg={ui.folder}
+                    bg={ui.barBg}
+                    flexShrink={0}
+                    content={` ${label(row.path)} `}
+                    attributes={TextAttributes.BOLD}
+                  />
+                  {/* Spacer first, so the count lands on the right edge. */}
+                  <box flexGrow={1} backgroundColor={ui.barBg} />
+                  <text
+                    fg={ui.faint}
+                    bg={ui.barBg}
+                    flexShrink={0}
+                    content={`${row.count} match${row.count === 1 ? '' : 'es'} `}
+                  />
+                </box>
+              )
+            }
+
+            const active = () => row.at === selected()
             const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-            const where =
-              props.scope === 'project'
-                ? `${relative(props.rootDir, match.path) || basename(match.path)}:${match.line + 1}`
-                : `${match.line + 1}:${match.col + 1}`
+            const gutter = () => `${row.match.line + 1}`.padStart(5)
+            // Room left after the marker (1), the line number and its gap (7) and the
+            // cut marker (1). One column over and the row wraps onto a second line —
+            // and the replacement shown beside the hit takes its share of it too.
+            const cut = () =>
+              sliceAround(row.match.text, row.match.col, contentWidth() - 9 - swap().length)
+            const head = () => cut().text.slice(0, cut().col)
+            const hit = () => cut().text.slice(cut().col, cut().col + scanned().length)
+            const tail = () => cut().text.slice(cut().col + scanned().length)
+
             return (
               <box flexDirection="row" backgroundColor={bg()}>
-                <box width={props.scope === 'project' ? 34 : 10}>
-                  <text fg={active() ? ui.accent : ui.dim} bg={bg()} content={` ${where}`} />
-                </box>
+                <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌' : ' '} />
                 <text
-                  fg={active() ? ui.text : ui.dim}
+                  fg={active() ? ui.accent : ui.faint}
                   bg={bg()}
-                  content={match.text.trim().slice(0, 38)}
+                  flexShrink={0}
+                  content={`${gutter()}  `}
                 />
+                <text fg={ui.dim} bg={bg()} flexShrink={0} content={cut().cut ? '…' : ''} />
+                <text fg={active() ? ui.text : ui.dim} bg={bg()} flexShrink={0} content={head()} />
+                {/* The hit itself, so the eye lands on why the row is here — struck
+                    through once there is a replacement to put in its place. */}
+                <text
+                  fg={swap() ? ui.gitDeleted : ui.accent}
+                  bg={bg()}
+                  flexShrink={0}
+                  content={hit()}
+                  attributes={swap() ? TextAttributes.STRIKETHROUGH : TextAttributes.BOLD}
+                />
+                <Show when={swap()}>
+                  <text
+                    fg={ui.gitAdded}
+                    bg={bg()}
+                    flexShrink={0}
+                    content={swap()}
+                    attributes={TextAttributes.BOLD}
+                  />
+                </Show>
+                <box flexGrow={1} backgroundColor={bg()}>
+                  <text fg={active() ? ui.text : ui.dim} bg={bg()} content={tail()} />
+                </box>
               </box>
             )
           }}
         </For>
+
+        <Show when={preview()}>
+          {(around: () => Context) => (
+            <box flexDirection="column" backgroundColor={ui.bg} marginTop={1}>
+              <For each={around().lines}>
+                {(line, i) => {
+                  const at = () => around().start + i()
+                  const isMatch = () => at() === current()?.line
+                  return (
+                    <box flexDirection="row" backgroundColor={isMatch() ? ui.currentLine : ui.bg}>
+                      <text
+                        fg={ui.gutter}
+                        bg={isMatch() ? ui.currentLine : ui.bg}
+                        flexShrink={0}
+                        content={`${`${at() + 1}`.padStart(5)} `}
+                      />
+                      <box flexGrow={1} backgroundColor={isMatch() ? ui.currentLine : ui.bg}>
+                        {/* The selected line carries the same before/after as its row
+                            above it, or the two would disagree about what the file is
+                            about to say. */}
+                        <Show
+                          when={isMatch() && swap() && current()}
+                          fallback={
+                            <text
+                              fg={isMatch() ? ui.text : ui.faint}
+                              bg={isMatch() ? ui.currentLine : ui.bg}
+                              content={line.slice(0, contentWidth() - 6)}
+                            />
+                          }
+                        >
+                          {(match: () => Match) => (
+                            <box flexDirection="row" backgroundColor={ui.currentLine}>
+                              <text
+                                fg={ui.text}
+                                bg={ui.currentLine}
+                                flexShrink={0}
+                                content={line.slice(0, match().col)}
+                              />
+                              <text
+                                fg={ui.gitDeleted}
+                                bg={ui.currentLine}
+                                flexShrink={0}
+                                content={line.slice(match().col, match().col + scanned().length)}
+                                attributes={TextAttributes.STRIKETHROUGH}
+                              />
+                              <text
+                                fg={ui.gitAdded}
+                                bg={ui.currentLine}
+                                flexShrink={0}
+                                content={swap()}
+                                attributes={TextAttributes.BOLD}
+                              />
+                              <box flexGrow={1} backgroundColor={ui.currentLine}>
+                                <text
+                                  fg={ui.text}
+                                  bg={ui.currentLine}
+                                  content={line.slice(match().col + scanned().length)}
+                                />
+                              </box>
+                            </box>
+                          )}
+                        </Show>
+                      </box>
+                    </box>
+                  )
+                }}
+              </For>
+            </box>
+          )}
+        </Show>
+
         <text
           fg={ui.dim}
           bg={ui.panelBg}
           content={
             props.onReplaceAll
               ? replacing()
-                ? '↑↓ move · Enter replace all · Tab back to search · Esc close'
+                ? '↑↓ move · Enter replace · Ctrl+A replace all · Tab back · Esc close'
                 : '↑↓ move · Enter jump · Tab replace · Esc close'
               : '↑↓ move · Enter jump · Esc close'
           }

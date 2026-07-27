@@ -1,8 +1,8 @@
 {
   "name": "druk",
   "displayName": "Druk",
-  "version": "0.2.0",
-  "private": false,
+  "version": "1.0.0-beta.1",
+  "private": true,
   "description": "A terminal code editor — file tree, tabs, tree-sitter syntax highlighting and search; keyboard and mouse driven.",
   "keywords": [
     "bun",
@@ -28,24 +28,25 @@
   },
   "funding": "https://github.com/sponsors/letstri",
   "bin": {
-    "druk": "./dist/index.js"
+    "druk": "./bin/druk.js"
   },
   "files": [
-    "dist",
-    "bunfig.toml"
+    "bin"
   ],
   "type": "module",
   "scripts": {
     "start": "bun run src/index.tsx",
     "dev": "bun run --watch src/index.tsx",
     "build": "bun build.ts",
+    "release": "bun scripts/release.ts",
+    "formula": "bun scripts/formula.ts",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepublishOnly": "pnpm run check-types && pnpm run lint && pnpm run test && pnpm run build",
-    "test": "bun test",
+    "check": "bun run check-types && bun run lint && bun run format:check && bun run test",
+    "test": "bun test --parallel",
     "test:watch": "bun test --watch"
   },
   "dependencies": {
@@ -64,5 +65,5 @@
   "engines": {
     "bun": ">=1.1"
   },
-  "packageManager": "pnpm@11.5.0"
+  "//private": "What npm publishes is staged by scripts/release.ts, never this directory."
 }

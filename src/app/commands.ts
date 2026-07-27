@@ -32,9 +32,13 @@ export interface CommandActions {
   redo: () => void
   findInFile: () => void
   findInProject: () => void
+  replaceInFile: () => void
   newFile: () => void
   newFolder: () => void
   rename: () => void
+  cutForMove: () => void
+  copyForPaste: () => void
+  paste: () => void
   remove: () => void
   closeTab: () => void
   nextTab: () => void
@@ -43,22 +47,6 @@ export interface CommandActions {
   toggleSidebar: () => void
   setVim: (enabled: boolean) => void
   setTabSize: (size: number) => void
-  setShowHidden: (show: boolean) => void
-  setWordWrap: (wrap: boolean) => void
-  commit: () => void
-  diffFile: () => void
-  diffAll: () => void
-  push: () => void
-  pull: () => void
-  fetch: () => void
-  discardChanges: () => void
-  undoCommit: () => void
-  stash: () => void
-  popStash: () => void
-  switchBranch: () => void
-  newBranch: () => void
-  newBranchFrom: () => void
-  deleteBranch: () => void
   setTheme: (name: ThemeName) => void
   showHelp: () => void
   quit: () => void
@@ -68,8 +56,6 @@ export interface CommandContext {
   vimEnabled: boolean
   activeTheme: ThemeName
   tabSize: number
-  showHidden: boolean
-  wordWrap: boolean
 }
 
 const TAB_SIZES = [2, 4, 8]
@@ -95,6 +81,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           hint: 'Ctrl+R',
           run: actions.findInProject,
         },
+        {
+          id: 'find.replace',
+          label: 'Replace in current file',
+          hint: 'Ctrl+F then Tab',
+          run: actions.replaceInFile,
+        },
       ],
     },
     {
@@ -104,6 +96,9 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         { id: 'file.new', label: 'New file', hint: 'Ctrl+N', run: actions.newFile },
         { id: 'file.newDir', label: 'New folder', hint: 'Ctrl+Opt+N', run: actions.newFolder },
         { id: 'file.rename', label: 'Rename…', hint: 'r', run: actions.rename },
+        { id: 'file.cut', label: 'Cut for moving', hint: 'x', run: actions.cutForMove },
+        { id: 'file.copy', label: 'Copy', hint: 'c', run: actions.copyForPaste },
+        { id: 'file.paste', label: 'Paste here', hint: 'p', run: actions.paste },
         { id: 'file.delete', label: 'Delete…', hint: 'd', run: actions.remove },
       ],
     },
@@ -117,42 +112,24 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         { id: 'tabs.closeAll', label: 'Close all tabs', run: actions.closeAll },
         { id: 'tabs.next', label: 'Next tab', hint: 'Ctrl+Opt+→', run: actions.nextTab },
         { id: 'tabs.prev', label: 'Previous tab', hint: 'Ctrl+Opt+←', run: actions.prevTab },
+      ],
+    },
+    {
+      id: 'view',
+      label: 'View',
+      children: [
         {
-          id: 'tabs.sidebar',
+          id: 'view.sidebar',
           label: 'Toggle sidebar',
           hint: 'Ctrl+B',
           run: actions.toggleSidebar,
         },
         {
-          id: 'tabs.focus',
+          id: 'view.focus',
           label: 'Focus tree / editor',
-          hint: 'Tab / Esc',
+          hint: 'Tab in · Esc out',
           run: actions.toggleFocus,
         },
-      ],
-    },
-    {
-      id: 'git',
-      label: 'Git',
-      children: [
-        { id: 'git.diffFile', label: 'Diff this file', run: actions.diffFile },
-        { id: 'git.diffAll', label: 'Diff all changes', run: actions.diffAll },
-        { id: 'git.commit', label: 'Commit all changes…', run: actions.commit },
-        { id: 'git.push', label: 'Push…', run: actions.push },
-        { id: 'git.pull', label: 'Pull (fast-forward)', run: actions.pull },
-        { id: 'git.fetch', label: 'Fetch all', run: actions.fetch },
-        { id: 'git.undoCommit', label: 'Undo last commit…', run: actions.undoCommit },
-        { id: 'git.stash', label: 'Stash all changes', run: actions.stash },
-        { id: 'git.popStash', label: 'Pop latest stash', run: actions.popStash },
-        {
-          id: 'git.discard',
-          label: 'Discard changes in this file…',
-          run: actions.discardChanges,
-        },
-        { id: 'git.switch', label: 'Switch branch…', run: actions.switchBranch },
-        { id: 'git.new', label: 'New branch from current…', run: actions.newBranch },
-        { id: 'git.newFrom', label: 'New branch from…', run: actions.newBranchFrom },
-        { id: 'git.delete', label: 'Delete branch…', run: actions.deleteBranch },
       ],
     },
     {
@@ -177,38 +154,6 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           id: 'editor.vimOff',
           label: `${check(!ctx.vimEnabled)}Vim mode off`,
           run: () => actions.setVim(false),
-        },
-        {
-          id: 'editor.wrap',
-          label: 'Word wrap',
-          children: [
-            {
-              id: 'editor.wrap.on',
-              label: `${check(ctx.wordWrap)}On`,
-              run: () => actions.setWordWrap(true),
-            },
-            {
-              id: 'editor.wrap.off',
-              label: `${check(!ctx.wordWrap)}Off`,
-              run: () => actions.setWordWrap(false),
-            },
-          ],
-        },
-        {
-          id: 'editor.hidden',
-          label: 'Hidden files',
-          children: [
-            {
-              id: 'editor.hidden.show',
-              label: `${check(ctx.showHidden)}Show .DS_Store, .git, …`,
-              run: () => actions.setShowHidden(true),
-            },
-            {
-              id: 'editor.hidden.hide',
-              label: `${check(!ctx.showHidden)}Hide them`,
-              run: () => actions.setShowHidden(false),
-            },
-          ],
         },
         {
           id: 'editor.tabSize',

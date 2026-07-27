@@ -5,24 +5,31 @@
  *   1. Make sure a tree-sitter wasm exists (most live in `tree-sitter-wasms`).
  *   2. Drop a highlight query in `./queries/<id>.scm` (skip if OpenTUI bundles
  *      the grammar already — see `bundled: true` below).
- *   3. Add an entry here. Nothing else in the codebase needs to change.
+ *   3. Register both in `./grammars.ts`.
+ *   4. Add an entry here. Nothing else in the codebase needs to change.
  *
  * `id` must match OpenTUI's filetype name (`pathToFiletype`), which is what
  * maps a file extension to a language.
  */
+import { GRAMMARS } from './grammars'
+
 export interface Language {
   /** Filetype id, e.g. "typescript". Must match OpenTUI's `pathToFiletype`. */
   id: string
-  /** Human-readable name, shown in the status bar. */
-  name: string
+  /**
+   * What the status bar calls the file, when the id itself will not do. `id` has to
+   * be OpenTUI's filetype name, and a couple of those are a mouthful — `.tsx` files
+   * are `typescriptreact`. Left off, the id is shown as-is.
+   */
+  label?: string
   /**
    * Grammar shipped with OpenTUI — no wasm/query needed from us.
    * Bundled today: javascript, typescript, markdown, zig.
    */
   bundled?: boolean
-  /** Import specifier of the grammar wasm, when we vendor it ourselves. */
+  /** Path to the grammar wasm, when we vendor it ourselves — see ./grammars.ts. */
   wasm?: string
-  /** Highlight query file in ./queries, when we vendor it ourselves. */
+  /** Path to the highlight query, when we vendor the grammar ourselves. */
   query?: string
   /**
    * Regex highlighting, for formats with no usable grammar. Patterns paint in
@@ -31,43 +38,40 @@ export interface Language {
   patterns?: { group: string; re: RegExp }[]
 }
 
-const WASM = (name: string) => `tree-sitter-wasms/out/tree-sitter-${name}.wasm`
-
 export const LANGUAGES: Language[] = [
-  { id: 'javascript', name: 'JavaScript', bundled: true },
-  { id: 'typescript', name: 'TypeScript', bundled: true },
-  { id: 'markdown', name: 'Markdown', bundled: true },
-  { id: 'zig', name: 'Zig', bundled: true },
-  { id: 'json', name: 'JSON', wasm: WASM('json'), query: 'json.scm' },
-  { id: 'html', name: 'HTML', wasm: WASM('html'), query: 'html.scm' },
-  { id: 'typescriptreact', name: 'TSX', wasm: WASM('tsx'), query: 'tsx.scm' },
-  { id: 'javascriptreact', name: 'JSX', wasm: WASM('tsx'), query: 'tsx.scm' },
-  { id: 'vue', name: 'Vue', wasm: WASM('vue'), query: 'vue.scm' },
-  { id: 'css', name: 'CSS', wasm: WASM('css'), query: 'css.scm' },
-  { id: 'scss', name: 'SCSS', wasm: WASM('css'), query: 'css.scm' },
-  { id: 'less', name: 'Less', wasm: WASM('css'), query: 'css.scm' },
-  { id: 'python', name: 'Python', wasm: WASM('python'), query: 'python.scm' },
-  { id: 'rust', name: 'Rust', wasm: WASM('rust'), query: 'rust.scm' },
-  { id: 'go', name: 'Go', wasm: WASM('go'), query: 'go.scm' },
-  { id: 'java', name: 'Java', wasm: WASM('java'), query: 'java.scm' },
-  { id: 'kotlin', name: 'Kotlin', wasm: WASM('kotlin'), query: 'kotlin.scm' },
-  { id: 'scala', name: 'Scala', wasm: WASM('scala'), query: 'scala.scm' },
-  { id: 'c', name: 'C', wasm: WASM('c'), query: 'c.scm' },
-  { id: 'cpp', name: 'C++', wasm: WASM('cpp'), query: 'cpp.scm' },
-  { id: 'csharp', name: 'C#', wasm: WASM('c_sharp'), query: 'c_sharp.scm' },
-  { id: 'php', name: 'PHP', wasm: WASM('php'), query: 'php.scm' },
-  { id: 'ruby', name: 'Ruby', wasm: WASM('ruby'), query: 'ruby.scm' },
-  { id: 'elixir', name: 'Elixir', wasm: WASM('elixir'), query: 'elixir.scm' },
-  { id: 'swift', name: 'Swift', wasm: WASM('swift'), query: 'swift.scm' },
-  { id: 'dart', name: 'Dart', wasm: WASM('dart'), query: 'dart.scm' },
-  { id: 'lua', name: 'Lua', wasm: WASM('lua'), query: 'lua.scm' },
-  { id: 'bash', name: 'Shell', wasm: WASM('bash'), query: 'bash.scm' },
-  { id: 'toml', name: 'TOML', wasm: WASM('toml'), query: 'toml.scm' },
+  { id: 'javascript', bundled: true },
+  { id: 'typescript', bundled: true },
+  { id: 'markdown', bundled: true },
+  { id: 'zig', bundled: true },
+  { id: 'json', ...GRAMMARS.json },
+  { id: 'html', ...GRAMMARS.html },
+  { id: 'typescriptreact', label: 'tsx', ...GRAMMARS.tsx },
+  { id: 'javascriptreact', label: 'jsx', ...GRAMMARS.tsx },
+  { id: 'vue', ...GRAMMARS.vue },
+  { id: 'css', ...GRAMMARS.css },
+  { id: 'scss', ...GRAMMARS.css },
+  { id: 'less', ...GRAMMARS.css },
+  { id: 'python', ...GRAMMARS.python },
+  { id: 'rust', ...GRAMMARS.rust },
+  { id: 'go', ...GRAMMARS.go },
+  { id: 'java', ...GRAMMARS.java },
+  { id: 'kotlin', ...GRAMMARS.kotlin },
+  { id: 'scala', ...GRAMMARS.scala },
+  { id: 'c', ...GRAMMARS.c },
+  { id: 'cpp', ...GRAMMARS.cpp },
+  { id: 'csharp', ...GRAMMARS.csharp },
+  { id: 'php', ...GRAMMARS.php },
+  { id: 'ruby', ...GRAMMARS.ruby },
+  { id: 'elixir', ...GRAMMARS.elixir },
+  { id: 'swift', ...GRAMMARS.swift },
+  { id: 'dart', ...GRAMMARS.dart },
+  { id: 'lua', ...GRAMMARS.lua },
+  { id: 'bash', ...GRAMMARS.bash },
+  { id: 'toml', ...GRAMMARS.toml },
   // No usable grammar: tree-sitter-yaml hangs the query engine, and svelte/sql/ini
   // ship no wasm at all. Patterns are plenty for these shapes.
   {
     id: 'yaml',
-    name: 'YAML',
     patterns: [
       { group: 'punctuation', re: /^\s*-\s|[:[\]{},]/gm },
       { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
@@ -81,7 +85,6 @@ export const LANGUAGES: Language[] = [
   },
   {
     id: 'svelte',
-    name: 'Svelte',
     patterns: [
       { group: 'punctuation.bracket', re: /<\/?|\/?>|[{}]/g },
       { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
@@ -97,7 +100,6 @@ export const LANGUAGES: Language[] = [
   },
   {
     id: 'sql',
-    name: 'SQL',
     patterns: [
       { group: 'punctuation', re: /[(),;.*]/g },
       { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
@@ -115,7 +117,6 @@ export const LANGUAGES: Language[] = [
   },
   {
     id: 'ini',
-    name: 'INI',
     patterns: [
       { group: 'string', re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g },
       { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
@@ -131,6 +132,11 @@ const BY_ID = new Map(LANGUAGES.map(lang => [lang.id, lang]))
 
 export function languageFor(filetype: string | undefined): Language | undefined {
   return filetype ? BY_ID.get(filetype) : undefined
+}
+
+/** What to call `filetype` on screen. */
+export function languageLabel(filetype: string): string {
+  return languageFor(filetype)?.label ?? filetype
 }
 
 /** Languages we ship a grammar for and must register with tree-sitter at runtime. */

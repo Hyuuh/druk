@@ -21,7 +21,11 @@ async function withOpenFile() {
 describe('mouse selection', () => {
   test('dragging in the editor still selects, so Ctrl+C has something to copy', async () => {
     const t = await withOpenFile()
-    await t.mockMouse.drag(34, 1, 44, 1)
+    // Found from the frame rather than hard-coded: the editor's first column moves
+    // whenever the sidebar is resized or the divider changes width.
+    const row = t.captureCharFrame().split('\n')[1]!
+    const from = row.indexOf('alpha')
+    await t.mockMouse.drag(from, 1, from + 5, 1)
     await settle(t)
     expect(selected(t)).toContain('alpha')
   })

@@ -1,15 +1,16 @@
 import { expect, test } from 'bun:test'
 
 import { DEFAULTS } from '../src/core/config'
-import { computeSegments, getSyntaxStyle } from '../src/languages/highlight'
+import { getSyntaxStyle } from '../src/languages/highlight'
 import { THEMES } from '../src/themes'
 import { fixture, launch, press } from './helpers'
+import { allSegments } from './syntax'
 
 const NESTED = 'function f() {\n  if (x) {\n    return 1\n  }\n}\n'
 
 /** Every (line, column) carrying the indent-guide style. */
 async function guideColumns(content: string, tabSize: number) {
-  const segs = (await computeSegments(content, 'typescript', tabSize)) ?? []
+  const segs = await allSegments(content, 'typescript', tabSize)
   const guide = getSyntaxStyle().getStyleId('indent.guide')
   const lines = content.split('\n')
   return segs

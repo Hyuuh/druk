@@ -1,6 +1,4 @@
 import '../core/assets'
-import { fileURLToPath } from 'node:url'
-
 import { getTreeSitterClient, pathToFiletype, SyntaxStyle } from '@opentui/core'
 import type { TreeSitterClient } from '@opentui/core'
 
@@ -11,9 +9,6 @@ import type { Language } from './index'
 /** Two dots so it outranks any syntax capture on the same whitespace. */
 const INDENT_GUIDE = 'indent.guide'
 
-/** Extra multi-cursor carets, drawn as inverted cells. */
-export const CURSOR_MARK = 'druk.cursor'
-
 let clientDead = false
 let initPromise: Promise<TreeSitterClient | null> | null = null
 let syntaxStyle: SyntaxStyle | null = null
@@ -23,10 +18,8 @@ function registerVendoredParsers(client: TreeSitterClient): void {
     try {
       client.addFiletypeParser({
         filetype: lang.id,
-        wasm: fileURLToPath(import.meta.resolve(lang.wasm!)),
-        queries: {
-          highlights: [fileURLToPath(new URL(`./queries/${lang.query}`, import.meta.url))],
-        },
+        wasm: lang.wasm!,
+        queries: { highlights: [lang.query!] },
       })
     } catch {
       // best-effort: the language just stays unhighlighted
@@ -40,7 +33,6 @@ export function getSyntaxStyle(): SyntaxStyle {
     syntaxStyle = SyntaxStyle.fromStyles({
       ...syntaxTheme,
       [INDENT_GUIDE]: { bg: ui.indentGuide },
-      [CURSOR_MARK]: { bg: ui.cursor, fg: ui.bg },
     })
   }
   return syntaxStyle
@@ -106,57 +98,13 @@ function specificity(group: string): number {
   return group.split('.').length
 }
 
-/**
- * Turn tree-sitter's overlapping captures into flat, non-overlapping segments.
- *
- * Two steps:
- *   1. Paint each capture's style onto a per-character array. Painting the least
- *      specific captures first means the most specific one wins each character —
- *      the same rule OpenTUI's own renderer uses.
- *   2. Merge runs of equal style into segments.
- *
- * Coordinates are per line: the buffer stores highlights against a line index,
- * which lets the editor add and drop them a line at a time while scrolling.
- */
-function segmentsFromHighlights(
-  content: string,
-  highlights: ReadonlyArray<readonly [number, number, string, ...unknown[]]>,
-): Segment[] {
-  const styleAt = new Int32Array(content.length).fill(-1)
-  const ordered = highlights
-    .map(([start, end, group], index) => ({ start, end, group, index }))
-    .filter(h => h.end > h.start)
-    .toSorted((a, b) => specificity(a.group) - specificity(b.group) || a.index - b.index)
-
-  for (const h of ordered) {
-    const styleId = styleIdForGroup(h.group)
-    if (styleId == null) continue
-    for (let i = h.start; i < h.end; i++) styleAt[i] = styleId
-  }
-
-  const segments: Segment[] = []
-  let column = 0
-  let line = 0
-  let run: Segment | null = null
+/** Offset each line starts at, so a line range maps to a slice of the text. */
+function lineStarts(content: string): number[] {
+  const starts = [0]
   for (let i = 0; i < content.length; i++) {
-    if (content.charCodeAt(i) === 10) {
-      run = null // a segment never spans a line break
-      line++
-      column = 0
-      continue
-    }
-    const styleId = styleAt[i]!
-    if (styleId < 0) {
-      run = null
-    } else if (run && run.styleId === styleId) {
-      run.end = column + 1
-    } else {
-      run = { start: column, end: column + 1, styleId, line }
-      segments.push(run)
-    }
-    column++
+    if (content.charCodeAt(i) === 10) starts.push(i + 1)
   }
-  return segments
+  return starts
 }
 
 type RawHighlight = readonly [number, number, string]
@@ -185,24 +133,121 @@ function highlightWithPatterns(content: string, patterns: NonNullable<Language['
   return out
 }
 
-/** Compute non-overlapping highlight segments for `content`. Null when unavailable. */
-export async function computeSegments(
+/** Answered instead of segments when `isStale` says the text moved on. */
+export const STALE = Symbol('stale')
+
+interface Capture {
+  start: number
+  end: number
+  group: string
+}
+
+/**
+ * A parsed document, prepared for windowed segmentation. Neither field is derived
+ * per window: both `lineStarts` (O(characters)) and the sort (O(captures log n))
+ * used to run on every call, which put a floor of ~2ms under segmenting a *single*
+ * line of a 20 000-line file — more than painting the whole viewport costs.
+ */
+export interface Highlighted {
+  content: string
+  /** Offset each line starts at, so a line range maps to a slice of the text. */
+  starts: number[]
+  /**
+   * Captures least-specific-first, so the most specific one wins each character.
+   * `toSorted` is stable, which is what leaves equal-specificity captures in the
+   * order tree-sitter reported them — the tie-break the painter relies on.
+   */
+  ordered: Capture[]
+}
+
+function prepare(
+  content: string,
+  raw: ReadonlyArray<readonly [number, number, string, ...unknown[]]>,
+): Highlighted {
+  const ordered = raw
+    .map(([start, end, group]) => ({ start, end, group }))
+    .filter(h => h.end > h.start)
+    .toSorted((a, b) => specificity(a.group) - specificity(b.group))
+  return { content, starts: lineStarts(content), ordered }
+}
+
+/** Parse `content` without segmenting it. */
+export async function computeHighlights(
   content: string,
   filetype: string | undefined,
   tabSize = 2,
-): Promise<Segment[] | null> {
+  isStale?: () => boolean,
+): Promise<Highlighted | typeof STALE> {
   const guides = indentGuides(content, tabSize)
   const patterns = filetype ? languageFor(filetype)?.patterns : undefined
   if (patterns) {
-    return segmentsFromHighlights(content, [...highlightWithPatterns(content, patterns), ...guides])
+    return prepare(content, [...highlightWithPatterns(content, patterns), ...guides])
   }
 
   const client = filetype ? await ensureClient() : null
-  if (!client) return segmentsFromHighlights(content, guides)
+  if (!client) return prepare(content, guides)
   try {
     const res = await client.highlightOnce(content, filetype!)
-    return segmentsFromHighlights(content, [...(res.highlights ?? []), ...guides])
+    if (isStale?.()) return STALE
+    return prepare(content, [...(res.highlights ?? []), ...guides])
   } catch {
-    return segmentsFromHighlights(content, guides)
+    return prepare(content, guides)
   }
+}
+
+/**
+ * Non-overlapping segments for lines `from`..`to` (inclusive) of a parsed document.
+ *
+ * Two steps:
+ *   1. Paint each capture's style onto a per-character array. The captures arrive
+ *      least specific first, so the most specific one wins each character — the
+ *      same rule OpenTUI's own renderer uses.
+ *   2. Merge runs of equal style into segments.
+ *
+ * Coordinates are per line: the buffer stores highlights against a line index,
+ * which lets the editor add and drop them a line at a time while scrolling. Both
+ * steps are O(characters in the range), which is why only the viewport is done.
+ */
+export function segmentsIn(parsed: Highlighted, from: number, to: number): Segment[] {
+  const { content, starts, ordered } = parsed
+  const first = Math.max(0, Math.min(from, starts.length - 1))
+  const last = Math.max(first, Math.min(to, starts.length - 1))
+  const sliceStart = starts[first]!
+  const sliceEnd = last + 1 < starts.length ? starts[last + 1]! - 1 : content.length
+
+  const styleAt = new Int32Array(Math.max(0, sliceEnd - sliceStart)).fill(-1)
+  for (const h of ordered) {
+    // Skipped before resolving the group: the style lookup is the expensive part,
+    // and most of a file's captures are outside any one window.
+    if (h.end <= sliceStart || h.start >= sliceEnd) continue
+    const styleId = styleIdForGroup(h.group)
+    if (styleId == null) continue
+    const start = Math.max(h.start, sliceStart)
+    const end = Math.min(h.end, sliceEnd)
+    for (let i = start; i < end; i++) styleAt[i - sliceStart] = styleId
+  }
+
+  const segments: Segment[] = []
+  let column = 0
+  let line = first
+  let run: Segment | null = null
+  for (let i = sliceStart; i < sliceEnd; i++) {
+    if (content.charCodeAt(i) === 10) {
+      run = null // a segment never spans a line break
+      line++
+      column = 0
+      continue
+    }
+    const styleId = styleAt[i - sliceStart]!
+    if (styleId < 0) {
+      run = null
+    } else if (run && run.styleId === styleId) {
+      run.end = column + 1
+    } else {
+      run = { start: column, end: column + 1, styleId, line }
+      segments.push(run)
+    }
+    column++
+  }
+  return segments
 }
