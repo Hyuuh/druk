@@ -129,8 +129,28 @@ if (publish) {
   // on `latest` would become what every plain `npm install -g druk` gets. The
   // identifier is the tag, so a beta lands on `beta` and is installed on purpose.
   const tag = /-([a-z][\da-z]*)/i.exec(version)?.[1] ?? 'latest'
+
+  /**
+   * A version already on the registry is skipped rather than retried.
+   *
+   * npm forbids republishing a version, and this publishes seven packages in a row:
+   * without the check, anything that fails partway can never be finished — the rerun
+   * dies on the first package that did go out, and the ones after it stay missing.
+   */
+  const onRegistry = async (name: string) =>
+    (await Bun.$`npm view ${name}@${version} version`.quiet().nothrow()).exitCode === 0
+
   for (const target of targets) {
+    const name = `druk-${target}`
+    if (await onRegistry(name)) {
+      process.stdout.write(`${name}@${version} is already published — skipped\n`)
+      continue
+    }
     await Bun.$`npm publish --access public --tag ${tag}`.cwd(`${NPM_DIR}/druk-${target}`)
   }
-  await Bun.$`npm publish --access public --tag ${tag}`.cwd(rootDir)
+  if (await onRegistry('druk')) {
+    process.stdout.write(`druk@${version} is already published — skipped\n`)
+  } else {
+    await Bun.$`npm publish --access public --tag ${tag}`.cwd(rootDir)
+  }
 }
