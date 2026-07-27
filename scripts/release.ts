@@ -125,8 +125,12 @@ if (publish) {
     )
     process.exit(1)
   }
+  // npm refuses a prerelease without an explicit tag, and rightly so: `1.0.0-beta.1`
+  // on `latest` would become what every plain `npm install -g druk` gets. The
+  // identifier is the tag, so a beta lands on `beta` and is installed on purpose.
+  const tag = /-([a-z][\da-z]*)/i.exec(version)?.[1] ?? 'latest'
   for (const target of targets) {
-    await Bun.$`npm publish --access public`.cwd(`${NPM_DIR}/druk-${target}`)
+    await Bun.$`npm publish --access public --tag ${tag}`.cwd(`${NPM_DIR}/druk-${target}`)
   }
-  await Bun.$`npm publish --access public`.cwd(rootDir)
+  await Bun.$`npm publish --access public --tag ${tag}`.cwd(rootDir)
 }
