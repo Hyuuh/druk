@@ -63,10 +63,13 @@ jobs:
           cd dist
           for dir in druk-*; do mv "$dir" "${dir#druk-}"; done
           chmod +x */druk || true
+      # No NODE_AUTH_TOKEN: npm authenticates through OIDC, using the trusted
+      # publisher configured for each package. An empty token would be worse than
+      # none — setup-node writes it into .npmrc and npm then fails with ENEEDAUTH
+      # before it ever reaches the OIDC exchange.
       - run: bun run release --publish
         env:
           NPM_CONFIG_PROVENANCE: true
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       # The install script downloads these by name, so the release has to carry them
       # before anyone can be told to curl it.
       - name: Attach binaries to the release
