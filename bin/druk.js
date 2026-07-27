@@ -20,6 +20,10 @@ const pkg = `druk-${target}`
 const exe = platform === 'windows' ? 'druk.exe' : 'druk'
 
 function resolveBinary() {
+  // Beside the shim: where postinstall puts it when the optional dependency was
+  // skipped — by --no-optional, a lockfile from another OS, or a blocked fetch.
+  const rescued = join(dirname(fileURLToPath(import.meta.url)), exe)
+  if (existsSync(rescued)) return rescued
   try {
     return join(dirname(require.resolve(`${pkg}/package.json`)), 'bin', exe)
   } catch {}

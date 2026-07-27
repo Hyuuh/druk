@@ -85,6 +85,7 @@ for (const target of targets) {
 const rootDir = `${NPM_DIR}/druk`
 await mkdir(`${rootDir}/bin`, { recursive: true })
 await cp('./bin/druk.js', `${rootDir}/bin/druk.js`)
+await cp('./bin/postinstall.mjs', `${rootDir}/bin/postinstall.mjs`)
 await cp('./README.md', `${rootDir}/README.md`)
 
 const rootPkg = await Bun.file('./package.json').json()
@@ -99,8 +100,9 @@ await Bun.write(
       'private': undefined,
       'bin': { druk: './bin/druk.js' },
       'files': ['bin'],
-      // The published package builds nothing and has no sources to check.
-      'scripts': undefined,
+      // Nothing to build or check here — the one script repairs an install whose
+      // optional dependency was skipped, which is common enough to be worth it.
+      'scripts': { postinstall: 'node ./bin/postinstall.mjs' },
       'devDependencies': undefined,
       // Every dependency is compiled into the binaries; all that is left to fetch is
       // the one platform package for the machine doing the installing.
