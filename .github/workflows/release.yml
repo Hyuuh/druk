@@ -4,26 +4,36 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and package without publishing anything'
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
   contents: write
 
 jobs:
-  # A tag disagreeing with package.json would upload the binaries to one release while
-  # the shim it publishes fetched from another — the same broken install as no release
-  # at all. Fail in ten seconds rather than after five runners have built.
+  # package.json is the single source of the version: the published shim fetches its
+  # binaries from `releases/download/v${version}`, so the release has to carry that
+  # exact tag. A tag push disagreeing with package.json would upload the binaries to
+  # one release while the shim fetched from another — the same broken install as no
+  # release at all. Fail in ten seconds rather than after five runners have built.
   check:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - if: startsWith(github.ref, 'refs/tags/v')
+      - id: version
         run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+          version=v$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$version" != "$GITHUB_REF_NAME" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
             exit 1
           fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   # One runner per platform: cross-compiling needs the target's @opentui/core-<platform>
   # package, and `bun install` only fetches the host's.
@@ -58,14 +68,16 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: [check, build]
     runs-on: ubuntu-latest
-    # Every shipping step reads this one flag, so a dispatch run builds and packages as
-    # a dry run and ships nothing. The npm publish once carried no guard of its own
-    # while the release upload did: a dispatch run then published a package whose
-    # binaries were never uploaded anywhere, and every `npm i druk` fetched a 404.
+    # Every shipping step reads this one flag, so either both publish or neither does.
+    # The npm publish once carried no guard of its own while the release upload did: a
+    # run then published a package whose binaries were never uploaded anywhere, and
+    # every `npm i druk` fetched a 404. A tag push always ships; a manual run ships
+    # unless it asked for a dry run.
     env:
-      SHIP: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      SHIP: ${{ inputs.dry_run != true }}
+      VERSION: ${{ needs.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -88,18 +100,23 @@ jobs:
       - run: bun run release
       # Before npm, not after: the published package holds no binary and fetches one
       # from this release, so an install landing between the two would find nothing.
+      #
+      # `--target` is what lets a manual run ship: with no tag pushed, it creates one
+      # at this commit alongside the release. On a tag push the tag already exists and
+      # gh uses it as-is.
       - name: Publish the release with the binaries
         if: env.SHIP == 'true'
         run: |
-          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
-            || gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes
-          gh release upload "${GITHUB_REF_NAME}" dist/release/* --clobber
+          gh release view "$VERSION" >/dev/null 2>&1 \
+            || gh release create "$VERSION" --title "$VERSION" --target "$GITHUB_SHA" --generate-notes
+          gh release upload "$VERSION" dist/release/* --clobber
         env:
           GH_TOKEN: ${{ github.token }}
       # No NODE_AUTH_TOKEN: npm authenticates through OIDC, using the trusted publisher
       # configured for `druk`. An empty token would be worse than none — setup-node
       # writes it into .npmrc and npm then fails with ENEEDAUTH before it ever reaches
-      # the OIDC exchange.
+      # the OIDC exchange. A version already on the registry is skipped by release.ts,
+      # so re-running a shipped version is not an error.
       - name: Publish to npm
         if: env.SHIP == 'true'
         run: bun run release --publish

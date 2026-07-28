@@ -78,15 +78,21 @@ writes to your real `~/.config/druk`.
 
 The repo's own `package.json` is `private`: what npm publishes is staged into
 `dist/npm/druk` by `scripts/release.ts` — the shim, the postinstall and nothing else.
-Versions come from `package.json` — bump it, tag `v<version>`, and
-`.github/workflows/release.yml` builds every platform, uploads the archives to the
-release and publishes to npm, with no manual step.
+Versions come from `package.json` — bump it and `.github/workflows/release.yml` builds
+every platform, uploads the archives to the release and publishes to npm, with no manual
+step. Two ways to start it: push a tag `v<version>`, or run the workflow from the Actions
+tab, which tags the commit it runs on for you.
 
-**Only a tag ships.** Running the workflow by hand builds and packages as a dry run:
-both publishing steps read one `SHIP` flag, and a mismatch between the tag and
-`package.json` fails the run before anything is built. Neither guard is decoration —
-druk 1.0.0 reached npm from a manual run whose release upload was skipped, so the
-published shim spent its life fetching a release that did not exist.
+**`package.json` is the version, not the ref.** The published shim fetches its binaries
+from `releases/download/v<version>`, so the release must carry exactly that tag — the
+workflow reads the version once in `check` and every later step uses it. A tag push whose
+name disagrees with `package.json` fails there, before five runners have built.
+
+**Both publishing steps ship together or neither does.** They read one `SHIP` flag, false
+only for a manual run that asked for a dry run. That flag is not decoration: druk 1.0.0
+reached npm from a run whose release upload was skipped, and the published shim spent its
+life fetching a release that did not exist. Re-running a shipped version is safe —
+`release.ts` skips a version already on the registry and the upload clobbers its assets.
 
 Homebrew is not wired up yet. `scripts/formula.ts` generates a working formula from the
 archives in `dist/release/`, but nothing publishes it: that needs a `letstri/homebrew-tap`
