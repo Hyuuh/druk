@@ -15,6 +15,7 @@
 import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -79,12 +80,19 @@ export async function fetchBinary() {
     if (platform !== 'windows') chmodSync(unpacked, 0o755)
 
     for (const destination of [inPackage, inCache]) {
+      // Copy beside the destination, then rename into place. Renaming straight from
+      // the unpack directory fails with EXDEV wherever tmpdir is its own filesystem —
+      // /tmp is tmpfs on Ubuntu 24.10+ — and the rename is what keeps a half-written
+      // file from ever sitting where the shim will run it.
+      const partial = `${destination}.partial`
       try {
         mkdirSync(dirname(destination), { recursive: true })
-        // Rename, so a half-written file is never left where the shim will run it.
-        renameSync(unpacked, destination)
+        copyFileSync(unpacked, partial)
+        if (platform !== 'windows') chmodSync(partial, 0o755)
+        renameSync(partial, destination)
         return destination
       } catch {
+        rmSync(partial, { force: true })
         // Not writable — try the next place.
       }
     }
