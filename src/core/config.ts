@@ -51,7 +51,6 @@ export interface Config {
    * Resizing with `[` / `]` or by dragging the divider pins an explicit number.
    */
   sidebarWidth: number | 'auto'
-  checkUpdates: boolean
   /** Version whose update notice was dismissed; suppresses the banner for it. */
   skipUpdate: string
   /** On save: strip trailing spaces and end the file with one newline. */
@@ -65,7 +64,6 @@ export const DEFAULTS: Config = {
   vim: false,
   tabSize: 2,
   sidebarWidth: 'auto',
-  checkUpdates: true,
   skipUpdate: '',
   trimOnSave: false,
   autoSaveOnBlur: false,
@@ -80,7 +78,6 @@ function parse(raw: unknown): Config {
       typeof obj.tabSize === 'number' && obj.tabSize >= 1 && obj.tabSize <= 16
         ? Math.floor(obj.tabSize)
         : DEFAULTS.tabSize,
-    checkUpdates: typeof obj.checkUpdates === 'boolean' ? obj.checkUpdates : DEFAULTS.checkUpdates,
     skipUpdate: typeof obj.skipUpdate === 'string' ? obj.skipUpdate : DEFAULTS.skipUpdate,
     trimOnSave: typeof obj.trimOnSave === 'boolean' ? obj.trimOnSave : DEFAULTS.trimOnSave,
     autoSaveOnBlur:

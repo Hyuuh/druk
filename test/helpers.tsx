@@ -27,7 +27,7 @@ export async function launch(
   /** Terminal size, for anything that has to degrade on a small screen. */
   size: { width?: number; height?: number } = {},
   /** `openFile` renders single-file mode, as `druk <file>` does. */
-  options: { openFile?: string; openLine?: number } = {},
+  options: { openFile?: string; openLine?: number; checkUpdates?: boolean } = {},
 ) {
   const t = await testRender(
     () =>
@@ -35,7 +35,10 @@ export async function launch(
         rootDir: dir,
         openFile: options.openFile ?? null,
         openLine: options.openLine ?? null,
-        initialConfig: { ...DEFAULTS, checkUpdates: false, ...config },
+        initialConfig: { ...DEFAULTS, ...config },
+        // Off by default: the real check is unconditional, and without this every
+        // launch in the suite would hit the npm registry.
+        checkUpdates: options.checkUpdates ?? false,
       }),
     {
       width: size.width ?? 80,

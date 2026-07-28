@@ -132,6 +132,11 @@ export function App(props: {
   /** `druk file.ts:42`: 0-based line to land on in `openFile`. */
   openLine?: number | null
   initialConfig: Config
+  /**
+   * The startup update check is unconditional for users — this switch exists so
+   * the test harness can keep hundreds of launches off the npm registry.
+   */
+  checkUpdates?: boolean
 }) {
   const renderer = useRenderer()
   const dimensions = useTerminalDimensions()
@@ -1107,7 +1112,7 @@ export function App(props: {
   })
 
   onMount(() => {
-    if (!props.initialConfig.checkUpdates) return
+    if (props.checkUpdates === false) return
     let cancelled = false
     onCleanup(() => {
       cancelled = true

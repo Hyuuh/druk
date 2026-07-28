@@ -161,7 +161,6 @@ A bad value falls back to the default instead of breaking startup.
 | `tabSize` | `2` | 1–16 |
 | `vim` | `false` | normal / insert / visual modes, `hjkl w b 0 $ gg G`, counts, `i a o`, `x dd dw cw`, `v` + `d y c`, `yy p P`, `u` / `Ctrl+R` |
 | `sidebarWidth` | `"auto"` | a quarter of the window, or pin 15–80 columns |
-| `checkUpdates` | `true` | ask npm for a newer druk on startup |
 | `trimOnSave` | `false` | on save: strip trailing spaces and end the file with one newline |
 | `autoSaveOnBlur` | `false` | save every unsaved tab when the terminal window loses focus |
 
