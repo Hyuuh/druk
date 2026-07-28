@@ -91,16 +91,29 @@ jobs:
           for dir in druk-*; do mv "$dir" "${dir#druk-}"; done
           chmod +x */druk || true
       - run: bun run release
+      # git, not `gh release create --target`: GITHUB_TOKEN may create a release for a
+      # tag that already exists, but creating one that has to create the tag too comes
+      # back `403 Resource not accessible by integration`. Pushing the tag over the
+      # checkout's own credentials is plain `contents: write` and works, so a manual
+      # run tags the commit here and the release step then finds the tag waiting.
+      #
+      # A tag push arrives with it already on the remote, and re-running a shipped
+      # version reuses the tag it finds rather than moving it — the assets are
+      # replaced below, and npm skips a version already on the registry.
+      - name: Tag this commit
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "$VERSION is already tagged — reusing it"
+          else
+            git tag "$VERSION"
+            git push origin "$VERSION"
+          fi
       # Before npm, not after: the published package holds no binary and fetches one
       # from this release, so an install landing between the two would find nothing.
-      #
-      # `--target` is what lets a manual run ship: with no tag pushed, it creates one
-      # at this commit alongside the release. On a tag push the tag already exists and
-      # gh uses it as-is.
       - name: Publish the release with the binaries
         run: |
           gh release view "$VERSION" >/dev/null 2>&1 \
-            || gh release create "$VERSION" --title "$VERSION" --target "$GITHUB_SHA" --generate-notes
+            || gh release create "$VERSION" --title "$VERSION" --generate-notes
           gh release upload "$VERSION" dist/release/* --clobber
         env:
           GH_TOKEN: ${{ github.token }}

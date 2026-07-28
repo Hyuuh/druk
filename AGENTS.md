@@ -88,6 +88,13 @@ from `releases/download/v<version>`, so the release must carry exactly that tag 
 workflow reads the version once in `check` and every later step uses it. A tag push whose
 name disagrees with `package.json` fails there, before five runners have built.
 
+**The tag is pushed with git, not created by `gh`.** GITHUB_TOKEN may create a release
+for a tag that exists, but `gh release create --target <sha>`, which has to create the
+tag as well, comes back `403 Resource not accessible by integration` — with
+`contents: write` granted and no ruleset in the way. Pushing the tag over the checkout's
+credentials first is ordinary `contents: write` and works, so a manual run tags the
+commit in its own step and `gh` only ever sees a tag that is already there.
+
 **Every run ships, and both publishing steps go together.** There is no dry run: neither
 step may be made conditional on its own, because druk 1.0.0 reached npm from a run whose
 release upload was skipped, and the published shim spent its life fetching a release that
