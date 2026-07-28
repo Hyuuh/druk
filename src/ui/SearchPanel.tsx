@@ -44,10 +44,17 @@ const CONTEXT = 2
  */
 const SCAN_DEBOUNCE_MS = 140
 
-/** A file heading, or one of its matches. Selection only ever lands on a match. */
+/**
+ * A file heading, or one of its matches. `at` indexes into `matches()` — a heading
+ * points at the first of its own, so the summary and preview read the same off both.
+ * Selection lands on a match, or on a heading once it is folded and stands in for them.
+ */
 type Row =
-  | { kind: 'file'; path: string; count: number }
+  | { kind: 'file'; path: string; count: number; at: number; folded: boolean }
   | { kind: 'match'; match: Match; at: number }
+
+/** An open file's heading is scenery; a folded one stands in for its matches. */
+const selectable = (row: Row) => row.kind === 'match' || row.folded
 
 export function SearchPanel(props: SearchPanelProps) {
   const dimensions = useTerminalDimensions()
@@ -59,7 +66,10 @@ export function SearchPanel(props: SearchPanelProps) {
   const [scanned, setScanned] = createSignal(opened)
   const [replacement, setReplacement] = createSignal('')
   const [replacing, setReplacing] = createSignal(props.replacing ?? false)
+  /** Row the selection is nearest to, not the match: rows outnumber matches. */
   const [index, setIndex] = createSignal(0)
+  /** Paths whose matches are hidden behind their heading. */
+  const [folded, setFolded] = createSignal<ReadonlySet<string>>(new Set())
 
   let scanTimer: ReturnType<typeof setTimeout> | null = null
   onCleanup(() => {
@@ -69,6 +79,9 @@ export function SearchPanel(props: SearchPanelProps) {
   const type = (value: string) => {
     setQuery(value)
     setIndex(0)
+    // The folds belong to the result set they were made in; carrying them over
+    // leaves a fresh search with files already hidden for no visible reason.
+    setFolded(new Set<string>())
     if (props.scope !== 'project') return setScanned(value)
     if (scanTimer) clearTimeout(scanTimer)
     scanTimer = setTimeout(() => setScanned(value), SCAN_DEBOUNCE_MS)
@@ -84,15 +97,72 @@ export function SearchPanel(props: SearchPanelProps) {
       : searchText(props.activeContent, q, props.activePath ?? '')
   })
 
-  const selected = () => Math.min(index(), Math.max(0, matches().length - 1))
-  const current = () => matches()[selected()]
-
   /**
-   * The text that would take each hit's place, or '' when nothing would. Every row
-   * shows it beside the hit as it is typed, so the result is visible before anything
-   * is written — which is the whole reason to look at the list before pressing Enter.
+   * Matches grouped under their file. Grouping is what buys the line text the whole
+   * width: the old flat list spent 34 columns repeating the same path on every row.
    */
-  const swap = () => (replacing() ? replacement() : '')
+  const rows = createMemo<Row[]>(() => {
+    const out: Row[] = []
+    const all = matches()
+    const hidden = folded()
+    for (let i = 0; i < all.length; i++) {
+      const match = all[i]!
+      if (props.scope === 'project' && match.path !== all[i - 1]?.path) {
+        let count = 0
+        while (all[i + count]?.path === match.path) count++
+        const shut = hidden.has(match.path)
+        out.push({ kind: 'file', path: match.path, count, at: i, folded: shut })
+        if (shut) {
+          i += count - 1
+          continue
+        }
+      }
+      out.push({ kind: 'match', match, at: i })
+    }
+    return out
+  })
+
+  /** Index into `rows()` of the selected row, or -1 when there is nothing to select. */
+  const selected = createMemo(() => {
+    const all = rows()
+    if (all.length === 0) return -1
+    const from = Math.min(index(), all.length - 1)
+    for (let i = from; i < all.length; i++) if (selectable(all[i]!)) return i
+    for (let i = from - 1; i >= 0; i--) if (selectable(all[i]!)) return i
+    return -1
+  })
+
+  const cursor = () => rows()[selected()]
+  /** The selected match — a folded heading answers with the first it hides. */
+  const current = () => matches()[cursor()?.at ?? -1]
+
+  const move = (step: number) => {
+    const all = rows()
+    if (all.length === 0) return
+    let at = selected()
+    for (let n = 0; n < all.length; n++) {
+      at = (at + step + all.length) % all.length
+      if (selectable(all[at]!)) break
+    }
+    setIndex(at)
+  }
+
+  const toggleFold = () => {
+    const row = cursor()
+    if (!row) return
+    const path = row.kind === 'file' ? row.path : row.match.path
+    const folding = !folded().has(path)
+    setFolded(prev => {
+      const next = new Set(prev)
+      if (folding) next.add(path)
+      else next.delete(path)
+      return next
+    })
+    // The rows just moved under the selection: folding takes its matches away, so
+    // land on the heading that now stands for them, and unfolding gives them back.
+    const heading = rows().findIndex(row => row.kind === 'file' && row.path === path)
+    if (heading >= 0) setIndex(folding ? heading : heading + 1)
+  }
 
   /**
    * The widest of the modals, and deliberately so: every other one shows short
@@ -101,6 +171,13 @@ export function SearchPanel(props: SearchPanelProps) {
   const width = () => modalWidth(dimensions().width, 0.86, 64, 160)
   /** Inside the border *and* the padding — miss either and every long row wraps. */
   const contentWidth = () => width() - 2 - PAD * 2
+
+  /**
+   * The text that would take each hit's place, or '' when nothing would. Every row
+   * shows it beside the hit as it is typed, so the result is visible before anything
+   * is written — which is the whole reason to look at the list before pressing Enter.
+   */
+  const swap = () => (replacing() ? replacement() : '')
 
   /** Surroundings of the selected match, or null when there is no room to show them. */
   const preview = createMemo<Context | null>(() => {
@@ -122,32 +199,12 @@ export function SearchPanel(props: SearchPanelProps) {
     return Math.max(2, Math.min(18, dimensions().height - chrome))
   }
 
-  /**
-   * Matches grouped under their file. Grouping is what buys the line text the whole
-   * width: the old flat list spent 34 columns repeating the same path on every row.
-   */
-  const rows = createMemo<Row[]>(() => {
-    const out: Row[] = []
-    const all = matches()
-    for (let i = 0; i < all.length; i++) {
-      const match = all[i]!
-      if (props.scope === 'project' && match.path !== all[i - 1]?.path) {
-        let count = 0
-        while (all[i + count]?.path === match.path) count++
-        out.push({ kind: 'file', path: match.path, count })
-      }
-      out.push({ kind: 'match', match, at: i })
-    }
-    return out
-  })
-
-  /** The window of rows on screen, kept over the selected match. */
+  /** The window of rows on screen, kept over the selected row. */
   const windowed = createMemo(() => {
     const all = rows()
     const size = resultRows()
-    const cursor = all.findIndex(row => row.kind === 'match' && row.at === selected())
     // One row of lead-in, so the file heading above the selection stays visible.
-    const start = Math.max(0, Math.min(cursor - size + 2, all.length - size))
+    const start = Math.max(0, Math.min(selected() - size + 2, all.length - size))
     return {
       start: Math.max(0, start),
       rows: all.slice(Math.max(0, start), Math.max(0, start) + size),
@@ -156,21 +213,27 @@ export function SearchPanel(props: SearchPanelProps) {
 
   useKeyboard((key: KeyEvent) => {
     const k = key.name
-    const count = Math.max(1, matches().length)
     if (k === 'up') {
       key.preventDefault()
-      setIndex(i => (i - 1 + count) % count)
+      move(-1)
     } else if (k === 'down') {
       key.preventDefault()
-      setIndex(i => (i + 1) % count)
+      move(1)
     } else if (k === 'tab' && props.onReplaceAll) {
       key.preventDefault()
       setReplacing(r => !r)
+      // Tab is the replace toggle wherever replacing is offered, so folding only
+      // takes it in project search — which is also the only scope with headings.
+    } else if (k === 'tab' && props.scope === 'project') {
+      key.preventDefault()
+      toggleFold()
     } else if (key.ctrl && k === 'a' && replacing() && props.onReplaceAll) {
       key.preventDefault()
       props.onReplaceAll(query(), replacement())
     } else if (k === 'return' || k === 'enter') {
       key.preventDefault()
+      // A heading is only ever selected while folded, where Enter is the way back in.
+      if (cursor()?.kind === 'file') return toggleFold()
       const match = current()
       if (!match) return
       // Replacing one match at a time is the point of the mode; the whole file goes
@@ -192,7 +255,7 @@ export function SearchPanel(props: SearchPanelProps) {
     const files = new Set(all.map(m => m.path)).size
     const capped = all.length >= 200 ? '+' : ''
     const where = props.scope === 'project' ? ` in ${files} file${files === 1 ? '' : 's'}` : ''
-    return `${selected() + 1} of ${all.length}${capped}${where}`
+    return `${(cursor()?.at ?? 0) + 1} of ${all.length}${capped}${where}`
   }
 
   const label = (path: string) => relative(props.rootDir, path) || basename(path)
@@ -230,22 +293,26 @@ export function SearchPanel(props: SearchPanelProps) {
         <text fg={ui.panelBg} bg={ui.panelBg} content="" />
 
         <For each={windowed().rows}>
-          {row => {
+          {(row, i) => {
+            const at = () => windowed().start + i()
+            const active = () => at() === selected()
+
             if (row.kind === 'file') {
+              const bg = () => (active() ? ui.treeSelectedBg : ui.barBg)
               return (
-                <box flexDirection="row" backgroundColor={ui.barBg}>
+                <box flexDirection="row" backgroundColor={bg()}>
                   <text
                     fg={ui.folder}
-                    bg={ui.barBg}
+                    bg={bg()}
                     flexShrink={0}
-                    content={` ${label(row.path)} `}
+                    content={`${row.folded ? '▸' : '▾'} ${label(row.path)} `}
                     attributes={TextAttributes.BOLD}
                   />
                   {/* Spacer first, so the count lands on the right edge. */}
-                  <box flexGrow={1} backgroundColor={ui.barBg} />
+                  <box flexGrow={1} backgroundColor={bg()} />
                   <text
-                    fg={ui.faint}
-                    bg={ui.barBg}
+                    fg={active() ? ui.accent : ui.faint}
+                    bg={bg()}
                     flexShrink={0}
                     content={`${row.count} match${row.count === 1 ? '' : 'es'} `}
                   />
@@ -253,7 +320,6 @@ export function SearchPanel(props: SearchPanelProps) {
               )
             }
 
-            const active = () => row.at === selected()
             const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
             const gutter = () => `${row.match.line + 1}`.padStart(5)
             // Room left after the marker (1), the line number and its gap (7) and the
@@ -380,7 +446,7 @@ export function SearchPanel(props: SearchPanelProps) {
               ? replacing()
                 ? '↑↓ move · Enter replace · Ctrl+A replace all · Tab back · Esc close'
                 : '↑↓ move · Enter jump · Tab replace · Esc close'
-              : '↑↓ move · Enter jump · Esc close'
+              : '↑↓ move · Enter jump · Tab fold file · Esc close'
           }
         />
       </box>

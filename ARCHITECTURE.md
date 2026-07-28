@@ -209,21 +209,11 @@ vim mode).
   else in the app branches on it; `Ctrl+B`, the tree, search and git all work normally
   because `rootDir` is still a real directory.
 - **One move function, because a folder move invalidates paths in bulk.** `movePath` in
-  `App.tsx` backs renaming, dropping and `x`/`p` alike: it renames on disk and then
+  `App.tsx` backs renaming and `x`/`p` alike: it renames on disk and then
   remaps every tab, buffer, preview and expanded entry *at or under* the old path. A
   buffer left pointing at the old path saves the file back to where it used to be,
   recreating the folder that was just moved. Anything that relocates a path goes through
   here.
-- **Tree rows activate on mouse *up*, not down.** Pressing to start a drag must not
-  toggle the folder under the pointer: that collapsed the folder being dragged and took
-  the destination rows off the screen mid-gesture. The row remembers the press, the
-  release either activates it or completes a drag.
-- **Drag release arrives as `up`, not `drop`.** OpenTUI only sends `drop`/`drag-end` to a
-  renderable it has taken capture of, which does not happen for tree rows — logging every
-  event type the scrollbox saw during a drag showed `down`, `drag`×n, `up`, `up` and
-  nothing else. `up` bubbles up from the row under the pointer, which is enough because
-  the destination was resolved during the drag. It fires twice, so the handler has to be
-  idempotent.
 - **A one-column drag target needs capture on its parent.** Both draggable edges — the
   editor's scrollbar and the sidebar's divider — are one column wide, and a pointer
   leaves that within the first few rows of a vertical drag. Each event goes to whatever

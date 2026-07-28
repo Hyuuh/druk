@@ -1,5 +1,3 @@
-import { dirname } from 'node:path'
-
 import { TextAttributes } from '@opentui/core'
 import type { MouseEvent, ScrollBoxRenderable } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
@@ -25,8 +23,6 @@ export interface FileTreeProps {
   onActivate: (node: TreeNode) => void
   onPin: (node: TreeNode) => void
   onFocus: () => void
-  /** Dropped or pasted: move `from` into the folder `dir`. */
-  onMove: (from: string, dir: string) => void
 }
 
 const DOUBLE_CLICK_MS = 400
@@ -163,35 +159,6 @@ export function FileTree(props: FileTreeProps) {
     if (isDouble) props.onPin(node)
   }
 
-  /**
-   * Drag and drop. The row that was pressed is only remembered here — it becomes a
-   * drag once a drag event actually arrives, so an ordinary click still selects and
-   * opens as it always did.
-   */
-  let pressed: TreeNode | null = null
-  const [dragged, setDragged] = createSignal<TreeNode | null>(null)
-  /** Folder the pointer is currently over, which is where a release would drop. */
-  const [dropDir, setDropDir] = createSignal<string | null>(null)
-
-  /** Row index under a screen row, whether or not anything is there. */
-  const rowAt = (screenY: number) => scrollTop() + screenY - (box?.y ?? 0)
-
-  const aim = (screenY: number) => {
-    const node = props.nodes[rowAt(screenY)]
-    // Over a file, the destination is the folder holding it — dropping "onto" a file
-    // can only sensibly mean "in with that file".
-    setDropDir(node ? (node.isDir ? node.path : dirname(node.path)) : null)
-  }
-
-  const finishDrag = () => {
-    const node = dragged()
-    const dir = dropDir()
-    pressed = null
-    setDragged(null)
-    setDropDir(null)
-    if (node && dir) props.onMove(node.path, dir)
-  }
-
   return (
     <box
       width={props.width}
@@ -209,9 +176,6 @@ export function FileTree(props: FileTreeProps) {
         />
         <text fg={ui.faint} bg={ui.panelBg} content="explorer" />
       </box>
-      {/* Drag handling sits on the scrollbox, not the rows: a row is one line tall,
-          so the pointer leaves it on the first movement, and each event goes to
-          whatever it is over at the time. */}
       <scrollbox
         ref={el => {
           box = el
@@ -222,18 +186,6 @@ export function FileTree(props: FileTreeProps) {
         scrollbarOptions={{
           trackOptions: { foregroundColor: ui.scrollbar, backgroundColor: ui.panelBg },
         }}
-        onMouseDrag={(event: MouseEvent) => {
-          if (!pressed) return
-          setDragged(pressed)
-          aim(event.y)
-        }}
-        /* `up`, not `drop` or `drag-end`: those two are only delivered to a
-           renderable the renderer has taken capture of, which does not happen for
-           these rows — verified by logging every type the scrollbox sees during a
-           drag. `up` bubbles here from the row under the pointer, which is all this
-           needs, since `dropDir` was worked out while dragging. It arrives twice;
-           `finishDrag` clears its own state, so the second is a no-op. */
-        onMouseUp={finishDrag}
       >
         {/* Spacers keep the scrollable extent honest while only a window exists. */}
         <box height={visible().start} flexShrink={0} backgroundColor={ui.panelBg} />
@@ -243,42 +195,24 @@ export function FileTree(props: FileTreeProps) {
               node.path === props.selectedPath || props.markedPaths.includes(node.path)
             const bg = () =>
               selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.panelBg
-            /** Waiting to be moved, by either route: drawn as already gone. */
-            const leaving = () =>
-              props.cutPaths.includes(node.path) || node.path === dragged()?.path
-            const isTarget = () => dropDir() === node.path
-            // The destination is marked in the arrow column rather than by a
-            // background: selection already owns the background, and two highlights
-            // that mean different things are worse than none.
-            const arrow = () =>
-              isTarget() ? '→' : node.isDir ? (props.expanded.has(node.path) ? '▾' : '▸') : '·'
+            /** Taken with `x` and waiting for a destination: drawn as already gone. */
+            const leaving = () => props.cutPaths.includes(node.path)
+            const arrow = () => (node.isDir ? (props.expanded.has(node.path) ? '▾' : '▸') : '·')
             const status = () => statusOf(node)
             const nameColor = () =>
               leaving()
                 ? ui.faint
-                : isTarget()
-                  ? ui.accent
-                  : status()
-                    ? statusColor(status()!)
-                    : node.isDir
-                      ? ui.folder
-                      : ui.text
+                : status()
+                  ? statusColor(status()!)
+                  : node.isDir
+                    ? ui.folder
+                    : ui.text
             return (
               <box
                 height={1}
                 flexDirection="row"
                 backgroundColor={bg()}
-                /* Activation waits for the release. A press that turns out to be
-                   the start of a drag must not toggle the folder underneath it —
-                   doing that collapsed the very folder being dragged and took the
-                   destination rows off the screen mid-gesture. */
-                onMouseDown={() => {
-                  pressed = node
-                  props.onFocus()
-                }}
-                onMouseUp={() => {
-                  if (!dragged()) click(node)
-                }}
+                onMouseDown={() => click(node)}
               >
                 {/* Everything but the name is flexShrink={0}. Flex shrinks every
                     item by default, so one long filename squeezed the indent and
@@ -292,7 +226,7 @@ export function FileTree(props: FileTreeProps) {
                   content={` ${'│ '.repeat(node.depth)}`}
                 />
                 <text
-                  fg={isTarget() ? ui.accent : node.isDir ? ui.dim : ui.faint}
+                  fg={node.isDir ? ui.dim : ui.faint}
                   bg={bg()}
                   flexShrink={0}
                   content={`${arrow()} `}
@@ -304,7 +238,7 @@ export function FileTree(props: FileTreeProps) {
                     fg={nameColor()}
                     bg={bg()}
                     content={node.name}
-                    attributes={node.isDir || isTarget() ? TextAttributes.BOLD : undefined}
+                    attributes={node.isDir ? TextAttributes.BOLD : undefined}
                   />
                 </box>
                 <Show when={status()}>

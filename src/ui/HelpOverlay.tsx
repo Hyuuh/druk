@@ -28,7 +28,6 @@ export const ROWS: [string, string][] = [
   ['Shift+Tab', 'Outdent'],
   ['Esc', 'Editor → tree'],
   ['x / c / p', 'Cut / copy / paste here (in tree)'],
-  ['drag', 'Drop a file on a folder to move it'],
   ['↑ / ↓', 'Move in tree / popup'],
   ['Shift+↑ / ↓', 'Select a range (in tree)'],
   ['→ / ←', 'Expand / collapse folder'],

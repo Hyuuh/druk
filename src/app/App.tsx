@@ -1240,10 +1240,6 @@ export function App(props: {
             onActivate={activateNode}
             onPin={node => pinTab(node.path)}
             onFocus={() => setFocus('tree')}
-            onMove={(from, dir) =>
-              // Dragging any one of a marked set takes the whole set with it.
-              moveAllInto(marked().includes(from) ? marked() : [from], dir)
-            }
           />
           {/* Drag handle: one column, drawn as a rule so the grab target can be seen
               and aimed at. A left border is what fills a box this narrow — its own

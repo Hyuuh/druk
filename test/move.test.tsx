@@ -187,7 +187,7 @@ describe('moving a folder', () => {
   })
 })
 
-describe('dragging a row onto a folder', () => {
+describe('clicking a row', () => {
   /**
    * Screen row carrying exactly `name`, or -1. Matched on the label with the tree
    * glyphs stripped, not by substring — the panel header is the temp directory's
@@ -201,29 +201,11 @@ describe('dragging a row onto a folder', () => {
         row =>
           row
             .slice(0, 28)
-            .replaceAll(/[│▾▸·→]/g, '')
+            .replaceAll(/[│▾▸·]/g, '')
             .trim() === name,
       )
 
-  test('drops it in', async () => {
-    const dir = fixture(PROJECT)
-    const t = await launch(dir)
-    const from = rowOf(t, 'alpha.ts')
-    const onto = rowOf(t, 'src')
-    expect(from).toBeGreaterThan(0)
-    expect(onto).toBeGreaterThan(0)
-
-    await t.mockMouse.drag(4, from, 4, onto)
-    await settle(t)
-    // `drag` leaves the button down; the release is what drops.
-    await t.mockMouse.release(4, onto)
-    await settle(t)
-
-    expect(existsSync(join(dir, 'src/alpha.ts'))).toBe(true)
-    expect(t.captureCharFrame()).toContain('Moved alpha.ts to src/')
-  })
-
-  test('a plain click still just selects and opens', async () => {
+  test('selects and opens it, and moves nothing', async () => {
     const dir = fixture(PROJECT)
     const t = await launch(dir)
     const row = rowOf(t, 'alpha.ts')
@@ -231,26 +213,8 @@ describe('dragging a row onto a folder', () => {
     await t.mockMouse.click(4, row)
     await settle(t)
 
-    // Opened, and nothing moved.
     expect(t.captureCharFrame()).toContain('const alpha = 1')
     expect(existsSync(join(dir, 'alpha.ts'))).toBe(true)
     expect(t.captureCharFrame()).not.toContain('Moved')
-  })
-
-  test('dropping a folder into its own child is refused, not half-done', async () => {
-    const dir = fixture({ 'a/b/c.ts': 'x\n' })
-    const t = await launch(dir)
-    // Expand `a` so `a/b` has a row.
-    await t.mockMouse.click(4, rowOf(t, 'a'))
-    await settle(t)
-
-    const child = rowOf(t, 'b')
-    await t.mockMouse.drag(4, rowOf(t, 'a'), 4, child)
-    await settle(t)
-    await t.mockMouse.release(4, child)
-    await settle(t)
-
-    expect(t.captureCharFrame()).toContain('into itself')
-    expect(existsSync(join(dir, 'a/b/c.ts'))).toBe(true)
   })
 })

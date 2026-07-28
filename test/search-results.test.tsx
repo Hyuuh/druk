@@ -104,6 +104,62 @@ describe('the preview under the results', () => {
   })
 })
 
+describe('folding a file in the results', () => {
+  test('Tab hides its matches behind the heading, and gives them back', async () => {
+    const t = await search('capture')
+    // Selection sits on the one hit in docs/long.md.
+    await press(t, input => input.pressTab())
+    let rows = panel(t)
+
+    expect(rows.some(row => row.includes('docs/long.md') && row.includes('▸'))).toBe(true)
+    expect(rows.some(row => row.includes('…') && row.includes('capture'))).toBe(false)
+    // The other files are untouched.
+    expect(rows.some(row => row.includes('const capture = 1'))).toBe(true)
+
+    await press(t, input => input.pressTab())
+    rows = panel(t)
+    expect(rows.some(row => row.includes('docs/long.md') && row.includes('▾'))).toBe(true)
+    expect(rows.some(row => row.includes('…') && row.includes('capture'))).toBe(true)
+  })
+
+  test('the selection lands on the heading, and moves past the hidden matches', async () => {
+    const t = await search('capture')
+    await press(t, input => input.pressArrow('down')) // src/alpha.ts, first of three
+    await press(t, input => input.pressTab())
+
+    // The heading stands in for the matches it hides: the count still reads as the
+    // first of them, and the preview still shows it. Only the result rows are gone.
+    expect(panel(t).some(row => row.includes('2 of 5'))).toBe(true)
+    expect(panel(t).filter(row => row.includes('function captureAll')).length).toBe(1)
+
+    // One step down skips all three and reaches src/beta.ts, not alpha's second hit.
+    await press(t, input => input.pressArrow('down'))
+    expect(panel(t).some(row => row.includes('5 of 5'))).toBe(true)
+  })
+
+  test('Enter on a folded file opens it back up instead of jumping', async () => {
+    const t = await search('capture')
+    await press(t, input => input.pressTab())
+    await press(t, input => input.pressEnter())
+
+    const rows = panel(t)
+    // Still the search panel, with the file unfolded — not the editor.
+    expect(rows.some(row => row.includes('docs/long.md') && row.includes('▾'))).toBe(true)
+    expect(rows.some(row => row.includes('Enter jump'))).toBe(true)
+  })
+
+  test('typing a new query starts with every file open', async () => {
+    const t = await search('capture')
+    await press(t, input => input.pressTab())
+    expect(panel(t).some(row => row.includes('▸'))).toBe(true)
+
+    await press(t, input => void input.typeText('A'))
+    await settle(t, 300)
+    expect(panel(t).some(row => row.includes('▸'))).toBe(false)
+    expect(panel(t).some(row => row.includes('captureAll'))).toBe(true)
+  })
+})
+
 describe('contextAround', () => {
   const TEXT = 'one\ntwo\nthree\nfour\nfive\n'
 
