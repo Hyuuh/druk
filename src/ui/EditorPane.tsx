@@ -7,10 +7,12 @@ import { copyToClipboard, readClipboard } from '../core/clipboard'
 import type { LineChange } from '../core/git'
 import { changeRows } from '../editor/changes'
 import { History } from '../editor/history'
+import { duplicateLines, moveLines, toggleComment } from '../editor/lines'
 import { handleTyping } from '../editor/typing'
 import { handleVimKey, initialVimState } from '../editor/vim'
 import type { VimMode } from '../editor/vim'
-import { logicalWindow } from '../editor/window'
+import { lineAt, logicalWindow } from '../editor/window'
+import { commentPrefix } from '../languages'
 import { computeHighlights, getSyntaxStyle, segmentsIn, STALE } from '../languages/highlight'
 import type { Highlighted, Segment } from '../languages/highlight'
 import { ui } from '../themes'
@@ -27,6 +29,13 @@ export interface EditorPaneProps {
   goto: { line: number; col: number; key: number } | null
   /** Undo/redo requested from the palette; bumped `key` re-applies. */
   history: { kind: 'undo' | 'redo'; key: number } | null
+  /**
+   * Text replaced from outside as one *undoable* step — search replace, trim on
+   * save. Distinct from `reloadKey`, which adopts outside text and wipes history.
+   */
+  edit: { content: string; key: number } | null
+  /** A line edit asked for from the palette; bumped `key` re-applies. */
+  lineOp: { op: 'comment' | 'up' | 'down' | 'duplicate'; key: number } | null
   vim: boolean
   tabSize: number
   /** True while a modal owns the keyboard; the editor must ignore all keys. */
@@ -138,6 +147,7 @@ export function ignoreScrollOutsideBounds(el: TextareaRenderable) {
 
 export function EditorPane(props: EditorPaneProps) {
   const dimensions = useTerminalDimensions()
+  const renderer = useRenderer()
   /** LineNumberRenderable takes `minWidth` in its constructor only, and Solid's
    * reconciler builds elements bare, so the width has to be poked in by hand. */
   interface GutterHost {
@@ -203,12 +213,7 @@ export function EditorPane(props: EditorPaneProps) {
     return visualToLogical
   }
 
-  /** The line a visual row belongs to. Identity when nothing wraps. */
-  const lineAtRow = (row: number): number => {
-    const map = wrapMap()
-    if (map.length === 0) return row
-    return map[Math.max(0, Math.min(map.length - 1, row))] ?? row
-  }
+  const lineAtRow = (row: number): number => lineAt(wrapMap(), row)
 
   /**
    * The first visual row of a line — the inverse of `lineAtRow`, by binary
@@ -228,13 +233,23 @@ export function EditorPane(props: EditorPaneProps) {
     return low
   }
 
+  // Counted without split(): this re-runs on every keystroke, and allocating an
+  // array of every line just to count them is the expensive way to find '\n'.
+  const lineCount = createMemo(() => {
+    let lines = 1
+    for (let at = props.content.indexOf('\n'); at >= 0; at = props.content.indexOf('\n', at + 1)) {
+      lines++
+    }
+    return lines
+  })
+
   /** Track geometry, shared by the painter and the drag handler. */
   const scrollMetrics = createMemo(() => {
     const measured = viewport()
     // The textarea reports height 0 until the first layout, so until then fall
     // back to the terminal minus the tab bar and status bar.
     const height = measured.height || dimensions().height - 2
-    const total = measured.total || props.content.split('\n').length
+    const total = measured.total || lineCount()
     if (height <= 0 || total <= height) return null
     const size = Math.max(1, Math.round((height * height) / total))
     // `top` counts visual rows and `total` counts lines. Left mixed, a wrapped
@@ -258,7 +273,7 @@ export function EditorPane(props: EditorPaneProps) {
   /** True between grabbing the scrollbar thumb and letting go. */
   const [dragging, setDragging] = createSignal(false)
 
-  const gutterWidth = () => String(props.content.split('\n').length).length + 2
+  const gutterWidth = () => String(lineCount()).length + 2
 
   createEffect(() => {
     const width = gutterWidth()
@@ -339,7 +354,6 @@ export function EditorPane(props: EditorPaneProps) {
   }
 
   /** Keep the viewport (plus overscan) highlighted, touching only what changed. */
-  /** Keep the viewport (plus overscan) highlighted, touching only what changed. */
   const applyWindow = (force = false) => {
     if (!editor) return
     syncViewport()
@@ -364,7 +378,7 @@ export function EditorPane(props: EditorPaneProps) {
   }
 
   /**
-   * Put the row under the pointer at the middle of the thumb and scroll there.
+   * Scroll so line `wanted` is at the top (the buffer scrolls in visual rows).
    *
    * `scrollY` is read-only, and moving the caret would be wrong — dragging a
    * scrollbar must not retarget the cursor. So the move is delivered as the one
@@ -372,7 +386,6 @@ export function EditorPane(props: EditorPaneProps) {
    * The coordinates have to land inside the textarea or `ignoreScrollOutsideBounds`
    * drops it.
    */
-  /** `wanted` is a line; the buffer scrolls in visual rows. */
   const scrollTo = (wanted: number) => {
     if (!editor) return
     const delta = rowAtLine(Math.round(wanted)) - editor.scrollY
@@ -464,6 +477,65 @@ export function EditorPane(props: EditorPaneProps) {
     void runHighlight(text)
   }
 
+  /** The row an absolute character offset falls on. */
+  const rowOfOffset = (text: string, offset: number) => {
+    let row = 0
+    for (let at = text.indexOf('\n'); at >= 0 && at < offset; at = text.indexOf('\n', at + 1)) row++
+    return row
+  }
+
+  /** Rows a line edit applies to: the selection's span, else the cursor's line. */
+  const editRange = (text: string) => {
+    const selection = editor?.getSelection()
+    if (!selection || selection.start === selection.end) {
+      const row = editor!.logicalCursor.row
+      return { from: row, to: row }
+    }
+    const start = Math.min(selection.start, selection.end)
+    const end = Math.max(selection.start, selection.end)
+    // `end` is exclusive: a selection stopping at column 0 does not take that line.
+    return { from: rowOfOffset(text, start), to: rowOfOffset(text, Math.max(start, end - 1)) }
+  }
+
+  /** Replace the text as one undoable step and land the caret on `row`, `col`. */
+  const applyLineEdit = (content: string, row: number, col: number) => {
+    if (!editor) return
+    editor.setText(content)
+    editor.setCursor(row, col)
+    props.onChange(content)
+    rehighlight(content)
+    scheduleCursorSync()
+  }
+
+  const toggleCommentLines = () => {
+    if (!editor) return
+    const prefix = commentPrefix(props.filetype)
+    if (!prefix) return
+    const text = editor.plainText
+    const { from, to } = editRange(text)
+    const next = toggleComment(text, from, to, prefix)
+    const { row, col } = editor.logicalCursor
+    if (next !== text) applyLineEdit(next, row, col)
+  }
+
+  const moveSelectedLines = (delta: -1 | 1) => {
+    if (!editor) return
+    const text = editor.plainText
+    const { from, to } = editRange(text)
+    const { row, col } = editor.logicalCursor
+    const next = moveLines(text, from, to, delta)
+    if (next !== null) applyLineEdit(next, row + delta, col)
+  }
+
+  /** Duplicate below; the caret follows onto the copy only when asked downward. */
+  const duplicateSelectedLines = (follow: boolean) => {
+    if (!editor) return
+    const text = editor.plainText
+    const { from, to } = editRange(text)
+    const { row, col } = editor.logicalCursor
+    applyLineEdit(duplicateLines(text, from, to), follow ? row + (to - from + 1) : row, col)
+  }
+
   const stepHistory = (kind: 'undo' | 'redo') => {
     if (!editor) return
     const at = kind === 'undo' ? history.undo() : history.redo()
@@ -483,6 +555,25 @@ export function EditorPane(props: EditorPaneProps) {
       () => {
         const request = props.history
         if (request) stepHistory(request.kind)
+      },
+      { defer: true },
+    ),
+  )
+
+  createEffect(
+    on(
+      () => props.lineOp?.key,
+      () => {
+        switch (props.lineOp?.op) {
+          case 'comment':
+            return toggleCommentLines()
+          case 'up':
+            return moveSelectedLines(-1)
+          case 'down':
+            return moveSelectedLines(1)
+          case 'duplicate':
+            return duplicateSelectedLines(true)
+        }
       },
       { defer: true },
     ),
@@ -594,6 +685,9 @@ export function EditorPane(props: EditorPaneProps) {
         return
       }
       copyToClipboard(selected)
+      // OSC52 as well: the subprocess route reaches this machine's clipboard,
+      // the escape sequence reaches the one the terminal is really on over SSH.
+      renderer.copyToClipboardOSC52(selected)
       if (key.name === 'x') {
         editor.deleteSelection()
         applyWindow(true)
@@ -602,11 +696,27 @@ export function EditorPane(props: EditorPaneProps) {
     }
 
     if (key.ctrl && key.name === 'v') {
+      key.preventDefault()
       const text = readClipboard()
       if (text === null) return
-      key.preventDefault()
       editor.deleteSelection()
       editor.insertText(text)
+      return
+    }
+
+    // Ctrl+/ arrives as Ctrl+_ (0x1F) in most terminals, as '/' under the kitty
+    // protocol, and in some (Terminal.app) not at all — hence Ctrl+L as well.
+    if (key.ctrl && (key.name === '_' || key.name === '/' || key.name === 'l')) {
+      key.preventDefault()
+      toggleCommentLines()
+      return
+    }
+
+    // Opt+↑/↓ moves the line or selection; with Shift it duplicates instead.
+    if ((key.option || key.meta) && !key.ctrl && (key.name === 'up' || key.name === 'down')) {
+      key.preventDefault()
+      if (key.shift) duplicateSelectedLines(key.name === 'down')
+      else moveSelectedLines(key.name === 'up' ? -1 : 1)
       return
     }
 
@@ -635,7 +745,7 @@ export function EditorPane(props: EditorPaneProps) {
   createEffect(
     on(
       () => props.path,
-      path => {
+      () => {
         if (!editor) return
         scheduleCursorSync()
         if (editor.plainText !== props.content) editor.setText(props.content)
@@ -707,6 +817,27 @@ export function EditorPane(props: EditorPaneProps) {
     ),
   )
 
+  // As above, but the edit stays undoable: setText fires the buffer's
+  // content-changed event, whose handler records it — so no reset here.
+  createEffect(
+    on(
+      () => props.edit?.key,
+      () => {
+        const edit = props.edit
+        if (!edit || !editor || edit.content === editor.plainText) return
+        const at = editor.cursorOffset
+        editor.setText(edit.content)
+        editor.cursorOffset = Math.min(at, edit.content.length)
+        props.onChange(edit.content)
+        rehighlight(edit.content)
+        scheduleCursorSync()
+      },
+      { defer: true },
+    ),
+  )
+
+  // Not deferred: `druk file.ts:42` sets the target before this effect first
+  // runs, and a deferred effect would swallow exactly that initial value.
   createEffect(
     on(
       () => props.goto?.key,
@@ -716,7 +847,6 @@ export function EditorPane(props: EditorPaneProps) {
         editor.setCursor(target.line, target.col)
         editor.focus()
       },
-      { defer: true },
     ),
   )
 
@@ -862,7 +992,7 @@ export function EditorPane(props: EditorPaneProps) {
                   <text
                     fg={change ? CHANGE_COLORS[change]() : ui.bg}
                     bg={ui.bg}
-                    content={change ? '▪' : ' '}
+                    content={change ? '▎' : ' '}
                   />
                 )}
               </For>

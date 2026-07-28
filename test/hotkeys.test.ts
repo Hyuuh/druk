@@ -29,7 +29,6 @@ describe('what terminals can encode', () => {
     // is why the project search is not bound to one.
     expect(seq(ctrl('f')).shift).toBe(false)
     expect(seq(ctrl('n')).shift).toBe(false)
-    expect(seq(ctrl('f'))).toEqual(seq(ctrl('f')))
   })
 
   test('Ctrl+Opt+letter arrives as ctrl+meta, not ctrl+option', () => {

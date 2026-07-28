@@ -38,7 +38,6 @@ export function getSyntaxStyle(): SyntaxStyle {
   return syntaxStyle
 }
 
-/** Called on a theme switch: the next getSyntaxStyle() rebuilds from the new palette. */
 export function invalidateSyntaxStyle(): void {
   syntaxStyle = null
 }
@@ -68,7 +67,6 @@ export function filetypeForPath(path: string): string | undefined {
   return pathToFiletype(path) ?? undefined
 }
 
-/** Lazily start the tree-sitter worker. Returns null if it can't be initialized. */
 async function ensureClient(): Promise<TreeSitterClient | null> {
   if (clientDead) return null
   if (!initPromise) {
@@ -118,7 +116,6 @@ function specificity(group: string): number {
   return group.split('.').length
 }
 
-/** Offset each line starts at, so a line range maps to a slice of the text. */
 function lineStarts(content: string): number[] {
   const starts = [0]
   for (let i = 0; i < content.length; i++) {
@@ -191,7 +188,6 @@ function prepare(
   return { content, starts: lineStarts(content), ordered }
 }
 
-/** Parse `content` without segmenting it. */
 export async function computeHighlights(
   content: string,
   filetype: string | undefined,

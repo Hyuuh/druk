@@ -33,7 +33,6 @@ const AUTO_SHARE = 0.25
 const AUTO_MIN = 30
 const AUTO_MAX = 60
 
-/** Resolve `sidebarWidth` against the terminal. */
 export function sidebarColumns(width: number | 'auto', terminalWidth: number): number {
   if (width !== 'auto') return width
   return Math.max(AUTO_MIN, Math.min(AUTO_MAX, Math.round(terminalWidth * AUTO_SHARE)))
@@ -52,10 +51,11 @@ export interface Config {
    * Resizing with `[` / `]` or by dragging the divider pins an explicit number.
    */
   sidebarWidth: number | 'auto'
-  /** Check npm for a newer druk on startup. */
   checkUpdates: boolean
   /** Version whose update notice was dismissed; suppresses the banner for it. */
   skipUpdate: string
+  /** On save: strip trailing spaces and end the file with one newline. */
+  trimOnSave: boolean
 }
 
 export const DEFAULTS: Config = {
@@ -65,6 +65,7 @@ export const DEFAULTS: Config = {
   sidebarWidth: 'auto',
   checkUpdates: true,
   skipUpdate: '',
+  trimOnSave: false,
 }
 
 function parse(raw: unknown): Config {
@@ -78,6 +79,7 @@ function parse(raw: unknown): Config {
         : DEFAULTS.tabSize,
     checkUpdates: typeof obj.checkUpdates === 'boolean' ? obj.checkUpdates : DEFAULTS.checkUpdates,
     skipUpdate: typeof obj.skipUpdate === 'string' ? obj.skipUpdate : DEFAULTS.skipUpdate,
+    trimOnSave: typeof obj.trimOnSave === 'boolean' ? obj.trimOnSave : DEFAULTS.trimOnSave,
     sidebarWidth:
       typeof obj.sidebarWidth === 'number' &&
       obj.sidebarWidth >= SIDEBAR_MIN &&
@@ -97,7 +99,6 @@ export function loadConfig(): Config {
   }
 }
 
-/** Persist config to disk (best-effort). */
 export function saveConfig(config: Config): void {
   try {
     fs.mkdirSync(dirname(CONFIG_FILE), { recursive: true })

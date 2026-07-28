@@ -71,7 +71,7 @@ describe('deleting from the tree', () => {
   test('deleting an expanded folder lands after everything it held', async () => {
     const t = await launch(fixture({ 'src/one.ts': '1\n', 'src/two.ts': '2\n', 'z.ts': 'z\n' }))
     await press(t, input => input.pressArrow('down')) // src/
-    await press(t, input => input.pressEnter()) // expand it
+    await press(t, input => input.pressEnter())
     await deleteRow(t, 0) // still on src/, delete the folder and its files
 
     expect(selectedRow(t)).toContain('z.ts')

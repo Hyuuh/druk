@@ -11,6 +11,7 @@
  */
 import { THEMES, themeLabels } from '../themes'
 import type { ThemeName } from '../themes'
+import { ALT } from '../ui/keys'
 
 export interface Command {
   id: string
@@ -41,6 +42,7 @@ export interface CommandActions {
   paste: () => void
   remove: () => void
   closeTab: () => void
+  reopenTab: () => void
   nextTab: () => void
   prevTab: () => void
   toggleFocus: () => void
@@ -48,6 +50,8 @@ export interface CommandActions {
   setVim: (enabled: boolean) => void
   setTabSize: (size: number) => void
   setTheme: (name: ThemeName) => void
+  lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
+  toggleTrim: () => void
   showHelp: () => void
   quit: () => void
 }
@@ -56,6 +60,7 @@ export interface CommandContext {
   vimEnabled: boolean
   activeTheme: ThemeName
   tabSize: number
+  trimOnSave: boolean
 }
 
 const TAB_SIZES = [2, 4, 8]
@@ -94,7 +99,7 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       label: 'File',
       children: [
         { id: 'file.new', label: 'New file', hint: 'Ctrl+N', run: actions.newFile },
-        { id: 'file.newDir', label: 'New folder', hint: 'Ctrl+Opt+N', run: actions.newFolder },
+        { id: 'file.newDir', label: 'New folder', hint: `Ctrl+${ALT}+N`, run: actions.newFolder },
         { id: 'file.rename', label: 'Rename…', hint: 'r', run: actions.rename },
         { id: 'file.cut', label: 'Cut for moving', hint: 'x', run: actions.cutForMove },
         { id: 'file.copy', label: 'Copy', hint: 'c', run: actions.copyForPaste },
@@ -108,10 +113,16 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       children: [
         { id: 'tabs.switch', label: 'Switch to…', hint: 'Ctrl+T', run: actions.switchTab },
         { id: 'tabs.close', label: 'Close tab', hint: 'Ctrl+W', run: actions.closeTab },
+        {
+          id: 'tabs.reopen',
+          label: 'Reopen closed tab',
+          hint: `Ctrl+${ALT}+T`,
+          run: actions.reopenTab,
+        },
         { id: 'tabs.closeOthers', label: 'Close other tabs', run: actions.closeOthers },
         { id: 'tabs.closeAll', label: 'Close all tabs', run: actions.closeAll },
-        { id: 'tabs.next', label: 'Next tab', hint: 'Ctrl+Opt+→', run: actions.nextTab },
-        { id: 'tabs.prev', label: 'Previous tab', hint: 'Ctrl+Opt+←', run: actions.prevTab },
+        { id: 'tabs.next', label: 'Next tab', hint: `Ctrl+${ALT}+→`, run: actions.nextTab },
+        { id: 'tabs.prev', label: 'Previous tab', hint: `Ctrl+${ALT}+←`, run: actions.prevTab },
       ],
     },
     {
@@ -145,6 +156,32 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       id: 'editor',
       label: 'Editor',
       children: [
+        // Also commands because the chords are not always sendable: some layouts
+        // have no byte for Ctrl+/ at all.
+        {
+          id: 'editor.comment',
+          label: 'Toggle comment',
+          hint: 'Ctrl+/ · Ctrl+L',
+          run: () => actions.lineOp('comment'),
+        },
+        {
+          id: 'editor.lineUp',
+          label: 'Move line up',
+          hint: `${ALT}+↑`,
+          run: () => actions.lineOp('up'),
+        },
+        {
+          id: 'editor.lineDown',
+          label: 'Move line down',
+          hint: `${ALT}+↓`,
+          run: () => actions.lineOp('down'),
+        },
+        {
+          id: 'editor.duplicate',
+          label: 'Duplicate line',
+          hint: `${ALT}+Shift+↓`,
+          run: () => actions.lineOp('duplicate'),
+        },
         {
           id: 'editor.vimOn',
           label: `${check(ctx.vimEnabled)}Vim mode on`,
@@ -163,6 +200,11 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
             label: `${check(ctx.tabSize === size)}${size} spaces`,
             run: () => actions.setTabSize(size),
           })),
+        },
+        {
+          id: 'editor.trim',
+          label: `${check(ctx.trimOnSave)}Trim trailing whitespace on save`,
+          run: actions.toggleTrim,
         },
       ],
     },

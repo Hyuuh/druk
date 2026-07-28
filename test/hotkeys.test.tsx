@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { ROWS } from '../src/ui/HelpOverlay'
+import { ROWS } from '../src/ui/keys'
 import { fixture, launch, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
@@ -30,7 +30,6 @@ test('every advertised hotkey does something', async () => {
   const report: string[] = []
   const check = (name: string, ok: boolean) => report.push(`${ok ? 'ok  ' : 'DEAD'}  ${name}`)
 
-  // --- global chords, from the tree ---
   let t = await tree()
   await press(t, i => i.pressKey('p', { ctrl: true }))
   check('Ctrl+P palette', frame(t).includes('Commands'))
@@ -72,7 +71,6 @@ test('every advertised hotkey does something', async () => {
   await press(t, i => i.pressKey('w', { ctrl: true }))
   check('Ctrl+W close tab', frame(t).includes('no open files'))
 
-  // --- tree keys ---
   t = await tree()
   await press(t, i => i.pressArrow('down'))
   check('↓ moves in tree', frame(t).includes('a.ts'))
@@ -103,11 +101,20 @@ test('every advertised hotkey does something', async () => {
   await press(t, i => void i.typeText('d'))
   check('d delete (tree)', frame(t).includes('Delete'))
 
-  // --- editor keys ---
   t = await opened()
   await pressEscape(t)
   await press(t, i => i.pressArrow('down'))
   check('Esc editor → tree', frame(t).includes('explorer'))
+
+  // Cut and paste go through the system clipboard, so they can only be swept on
+  // a machine that has one — headless CI has no pbcopy/xclip to round-trip through.
+  const clipboard = ['pbcopy', 'wl-copy', 'xclip', 'xsel'].some(tool => Bun.which(tool))
+  if (!clipboard) {
+    const dead = report.filter(line => line.startsWith('DEAD'))
+    if (dead.length > 0) console.error(`\n${report.join('\n')}\n`)
+    expect(dead).toEqual([])
+    return
+  }
 
   // Cut: select with the mouse, since that is the only way to select now, then
   // Ctrl+X should remove it.
@@ -138,7 +145,7 @@ test('every advertised hotkey does something', async () => {
   // the dead keys, but the surrounding oks say how far the sweep got.
   if (dead.length > 0) console.error(`\n${report.join('\n')}\n`)
   expect(dead).toEqual([])
-}, 600000)
+}, 120000)
 
 test('the help table does not list one key twice with different meanings', () => {
   const keys = ROWS.map(([key]) => key)

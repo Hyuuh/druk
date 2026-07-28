@@ -2,7 +2,7 @@ import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 
-import type { Command } from '../app/commands'
+import type { Command, FlatCommand } from '../app/commands'
 import { flattenCommands } from '../app/commands'
 import { ui } from '../themes'
 import { listRows, modalWidth, PAD } from './modal'
@@ -12,12 +12,6 @@ import { TextInput } from './TextInput'
 export interface CommandPaletteProps {
   commands: Command[]
   onClose: () => void
-}
-
-interface Row {
-  command: Command
-  /** Ancestor labels, shown as "Themes > " while filtering. */
-  trail: string[]
 }
 
 export function CommandPalette(props: CommandPaletteProps) {
@@ -30,7 +24,7 @@ export function CommandPalette(props: CommandPaletteProps) {
   /** Border, input, blank line and footer. */
   const visibleRows = () => listRows(dimensions().height, 8, 18)
 
-  const rows = createMemo<Row[]>(() => {
+  const rows = createMemo<FlatCommand[]>(() => {
     const q = query().trim().toLowerCase()
     if (!q) {
       const parent = trail().at(-1)
@@ -52,7 +46,7 @@ export function CommandPalette(props: CommandPaletteProps) {
     return { start, rows: rows().slice(start, start + size) }
   })
 
-  const enter = (row: Row) => {
+  const enter = (row: FlatCommand) => {
     if (row.command.children) {
       setTrail(t => [...t, row.command])
       setQuery('')

@@ -79,11 +79,10 @@ describe('opening symlinks', () => {
     const { project } = linked()
     const t = await launch(project)
 
-    await press(t, input => input.pressArrow('down')) // broken.ts
+    await press(t, input => input.pressArrow('down')) // skills, the linked directory
     await press(t, input => input.pressEnter())
-    const frame = t.captureCharFrame()
 
-    expect(frame).not.toContain('EISDIR')
+    expect(t.captureCharFrame()).toContain('inside.ts')
   })
 
   test('a linked file opens its target’s contents', async () => {

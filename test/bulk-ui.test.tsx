@@ -48,7 +48,10 @@ describe('deleting a large folder', () => {
     await press(t, input => input.pressArrow('down'))
     await press(t, input => void input.typeText('d'))
     await press(t, input => input.pressEnter())
-    await settle(t, 1500)
+    // Poll instead of one long sleep: the delete usually finishes much sooner.
+    for (let waited = 0; waited < 5000 && !bar(t).includes('Deleted'); waited += 100) {
+      await settle(t, 100)
+    }
 
     expect(bar(t)).toContain('Deleted')
     expect(bar(t)).not.toContain('Deleting')

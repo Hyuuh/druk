@@ -70,7 +70,7 @@ test('it can never be written back to disk, because it is never a buffer', async
 test('text files still open normally afterwards', async () => {
   const t = await launch(project())
   await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter()) // refused
+  await press(t, i => i.pressEnter())
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
   await settle(t)

@@ -12,6 +12,12 @@ export interface Window {
   to: number
 }
 
+/** The line a visual row belongs to. Identity when nothing wraps. */
+export function lineAt(lineSources: readonly number[], row: number): number {
+  if (lineSources.length === 0) return row
+  return lineSources[Math.max(0, Math.min(lineSources.length - 1, row))] ?? row
+}
+
 export function logicalWindow(
   scrollY: number,
   height: number,
@@ -19,12 +25,8 @@ export function logicalWindow(
   lineSources: readonly number[],
   overscan: number,
 ): Window {
-  const at = (row: number) => {
-    if (lineSources.length === 0) return row
-    return lineSources[Math.max(0, Math.min(lineSources.length - 1, row))] ?? row
-  }
   return {
-    from: Math.max(0, at(scrollY) - overscan),
-    to: at(scrollY + height) + overscan,
+    from: Math.max(0, lineAt(lineSources, scrollY) - overscan),
+    to: lineAt(lineSources, scrollY + height) + overscan,
   }
 }

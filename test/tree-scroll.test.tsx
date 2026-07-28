@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { launch, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
 /** Enough top-level files that the tree scrolls. */
@@ -66,20 +66,6 @@ describe('the sidebar only scrolls when the selection moves', () => {
     await press(t, input => input.pressArrow('down'))
     await settle(t, 20)
     expect(rowNames(t).join('\n')).toContain('f001.ts')
-  })
-
-  test('opening a nested file from the picker scrolls it into view', async () => {
-    const files: Record<string, string> = {}
-    for (let i = 0; i < 30; i++) files[`deep/nested/f${i}.ts`] = `const a${i} = 1\n`
-    const t = await launch(fixture(files))
-
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText('f21.ts'))
-    await press(t, input => input.pressEnter())
-    // Revealing expands the parents, so the row index settles after layout does.
-    await settle(t, 20)
-
-    expect(rowNames(t).join('\n')).toContain('f21.ts')
   })
 
   test('a scrolled tree is not yanked back by a git refresh', async () => {

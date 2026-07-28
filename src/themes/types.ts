@@ -20,13 +20,11 @@ export interface ThemeUi {
   folder: string
   cursor: string
   scrollbar: string
-  /** Line-number gutter foreground. */
   gutter: string
   /** Background fill behind the line the cursor is on. Keep it near `bg`. */
   currentLine: string
   /** Indent guide column. Barely off `bg` — it should read as a hint, not a rule. */
   indentGuide: string
-  /** Git gutter marks. */
   gitAdded: string
   gitModified: string
   gitDeleted: string

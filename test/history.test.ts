@@ -12,7 +12,7 @@ describe('undo history', () => {
     history.record(at('hel'), 1080)
 
     expect(history.undo()?.content).toBe('')
-    expect(history.canUndo).toBe(false)
+    expect(history.undo()).toBeNull()
   })
 
   test('a pause starts a new step', () => {
@@ -31,11 +31,11 @@ describe('undo history', () => {
 
     expect(history.undo()?.content).toBe('')
     expect(history.redo()?.content).toBe('typed')
-    expect(history.canRedo).toBe(false)
+    expect(history.redo()).toBeNull()
 
     history.undo()
     history.record(at('other'), 5000)
-    expect(history.canRedo).toBe(false)
+    expect(history.redo()).toBeNull()
   })
 
   test('restores the cursor from before the edit', () => {
@@ -49,13 +49,12 @@ describe('undo history', () => {
     history.record(at('mine'), 1000)
     history.reset(at('theirs'))
 
-    expect(history.canUndo).toBe(false)
     expect(history.undo()).toBeNull()
   })
 
   test('ignores a change that leaves the text identical', () => {
     const history = new History(at('same'))
     history.record(at('same'), 1000)
-    expect(history.canUndo).toBe(false)
+    expect(history.undo()).toBeNull()
   })
 })

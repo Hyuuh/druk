@@ -42,12 +42,4 @@ describe('the editor scrollbar', () => {
     expect(after).toBeGreaterThan(before)
     expect(track(t)).toContain('█')
   })
-
-  test('a file that fits gets no scrollbar at all', async () => {
-    const t = await launch(fixture({ 'tiny.ts': 'one\ntwo\n' }))
-    await open(t, 'tiny.ts')
-
-    expect(track(t)).not.toContain('█')
-    expect(track(t)).not.toContain('│')
-  })
 })

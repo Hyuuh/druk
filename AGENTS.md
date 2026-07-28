@@ -10,9 +10,10 @@ A TUI code editor built on [OpenTUI](https://github.com/anomalyco/opentui) (Soli
 reconciler on a native Zig core). Shipped as a standalone binary — npm, Homebrew, a curl
 installer — and run as a CLI.
 
-Features: file tree, preview/pinned tabs, tree-sitter syntax highlighting, search
-(current file and project-wide), command palette, themes, vim mode, file watching with
-conflict prompts, per-project session restore, and a startup update check.
+Features: file tree with bulk file operations, preview/pinned tabs, tree-sitter syntax
+highlighting, search (current file and project-wide), command palette, themes, vim mode,
+git marks in tree/gutter/status bar, file watching with conflict prompts, per-project
+session restore, and a startup update check.
 
 ## Runtime and tooling
 
@@ -56,7 +57,7 @@ writes to your real `~/.config/druk`.
 ## Shipping
 
 `bun run build` produces one executable; `bun run release` turns the executables in
-`dist/` into npm packages and release archives. Four things about that are easy to break:
+`dist/` into npm packages and release archives. Five things about that are easy to break:
 
 - **Assets must be static `with { type: 'file' }` imports.** Bun embeds only what it can
   see at build time, so a computed specifier or an `import.meta.resolve` call leaves the
@@ -117,6 +118,7 @@ dependency rule, and recipes for the extension points:
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) |
 | command | `src/app/commands.ts` + implement the action in `src/app/App.tsx` |
+| keybinding | handler in `src/app/App.tsx` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay and Alt+/ peek) |
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 
@@ -214,7 +216,7 @@ The Solid transform is a Babel step, so it needs `bunfig.toml` preload entries f
 the app **and** `[test]`, and the build goes through `Bun.build` with
 `@opentui/solid/bun-plugin` (tsdown/rolldown cannot do it).
 
-Two element names differ from React's: `line_number`, `ascii_font`, `tab_select`.
+Some OpenTUI element names are snake_case (`line_number` is the one druk uses).
 
 ### Style
 

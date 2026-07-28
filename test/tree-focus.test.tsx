@@ -1,9 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 
 import { ui } from '../src/themes'
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { fixture, launch, press, pressEscape } from './helpers'
 
 interface Span {
   text: string
@@ -51,28 +49,6 @@ describe('focusing the tree', () => {
 
     await press(t, input => input.pressArrow('down'))
     expect(selectedRow(t.captureSpans() as unknown as Frame)).toContain('f22.ts')
-  })
-
-  test('a mouse-scrolled tree is not yanked back by a tree refresh', async () => {
-    const files: Record<string, string> = {}
-    for (let index = 0; index < 40; index++) files[`f${index}.ts`] = `const a${index} = 1\n`
-    const dir = fixture(files)
-    const t = await launch(dir)
-
-    await press(t, input => input.pressArrow('down')) // select the first row
-    const topRow = () => t.captureCharFrame().split('\n')[3]!.slice(0, 20)
-    const atTop = topRow()
-
-    for (let step = 0; step < 6; step++) await t.mockMouse.scroll(4, 8, 'down')
-    await settle(t)
-    const scrolled = topRow()
-    expect(scrolled).not.toBe(atTop)
-
-    // The watcher rebuilds the node list on any disk change; the view must stay put.
-    writeFileSync(join(dir, 'touched.ts'), 'const touched = 1\n')
-    await new Promise(resolve => setTimeout(resolve, 400))
-    await settle(t)
-    expect(topRow()).toBe(scrolled)
   })
 
   test('follows the active tab even while the editor has focus', async () => {

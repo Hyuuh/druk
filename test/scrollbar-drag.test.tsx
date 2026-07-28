@@ -116,6 +116,7 @@ describe('dragging the editor scrollbar', () => {
     const t = await openAlone('tiny.ts', 'one\ntwo\n')
 
     expect(track(t)).not.toContain('█')
+    expect(track(t)).not.toContain('│')
     // Pressing where the track would be must not scroll or crash.
     await t.mockMouse.pressDown(79, 10)
     await settle(t)

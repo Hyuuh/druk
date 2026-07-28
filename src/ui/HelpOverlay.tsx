@@ -1,46 +1,39 @@
-import { useTerminalDimensions } from '@opentui/solid'
-import { For } from 'solid-js'
+import { TextAttributes } from '@opentui/core'
+import type { KeyEvent } from '@opentui/core'
+import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { createSignal, For, Match, Switch } from 'solid-js'
 
 import { ui } from '../themes'
+import { SECTIONS } from './keys'
 import { modalWidth, PAD } from './modal'
 import { Overlay } from './Overlay'
 
-export const ROWS: [string, string][] = [
-  ['Ctrl+P', 'Command palette (+ themes)'],
-  ['Ctrl+O', 'Open file (fuzzy)'],
-  ['Ctrl+S', 'Save file'],
-  ['Ctrl+G', 'Go to line'],
-  ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
-  ['Ctrl+A', 'Select all'],
-  ['Ctrl+C', 'Copy selection — quits if none'],
-  ['Ctrl+X / Ctrl+V', 'Cut / paste'],
-  ['Ctrl+F', 'Find in file (Tab to replace)'],
-  ['Enter / Ctrl+A', 'Replace this match / all (in replace)'],
-  ['Ctrl+R', 'Find in project'],
-  ['Ctrl+N', 'New file'],
-  ['Ctrl+Opt+N', 'New folder'],
-  ['Ctrl+W', 'Close tab'],
-  ['Ctrl+Q', 'Quit'],
-  ['Ctrl+Opt+← / →', 'Previous / next tab'],
-  ['Ctrl+T', 'Switch to open tab'],
-  ['Ctrl+B', 'Show / hide sidebar'],
-  ['[ / ]', 'Narrow / widen sidebar (in tree)'],
-  ['Tab', 'Tree → editor · indent in editor'],
-  ['Shift+Tab', 'Outdent'],
-  ['Esc', 'Editor → tree'],
-  ['x / c / p', 'Cut / copy / paste here (in tree)'],
-  ['↑ / ↓', 'Move in tree / popup'],
-  ['Shift+↑ / ↓', 'Select a range (in tree)'],
-  ['→ / ←', 'Expand / collapse folder'],
-  ['Enter', 'Open file / toggle folder'],
-  ['a / A', 'New file / folder (in tree)'],
-  ['r / d', 'Rename / delete (in tree)'],
-  ['Mouse', 'Click tabs, tree rows, editor'],
-]
+type Line =
+  | { kind: 'header'; text: string }
+  | { kind: 'key'; key: string; label: string }
+  | { kind: 'gap' }
+
+/** The sections flattened to display lines, so one window can scroll them all. */
+const LINES: Line[] = SECTIONS.flatMap((section, index) => [
+  ...(index > 0 ? [{ kind: 'gap' } as const] : []),
+  { kind: 'header', text: section.title } as const,
+  ...section.rows.map(([key, label]) => ({ kind: 'key', key, label }) as const),
+])
 
 export function HelpOverlay() {
   const dimensions = useTerminalDimensions()
   const width = () => modalWidth(dimensions().width, 0.52, 58, 84)
+  // The full table outgrows a 24-row terminal, so only a window is drawn.
+  const visible = () => Math.max(3, Math.min(LINES.length, dimensions().height - 7))
+  const [top, setTop] = createSignal(0)
+  const overflowing = () => visible() < LINES.length
+
+  useKeyboard((key: KeyEvent) => {
+    const step = key.name === 'up' ? -1 : key.name === 'down' ? 1 : 0
+    if (step === 0) return
+    key.preventDefault()
+    setTop(at => Math.max(0, Math.min(LINES.length - visible(), at + step)))
+  })
 
   return (
     <Overlay zIndex={200}>
@@ -58,20 +51,43 @@ export function HelpOverlay() {
         paddingTop={1}
         paddingBottom={1}
       >
-        <For each={ROWS}>
-          {([key, desc]) => (
-            <box flexDirection="row">
-              <box width={20} flexShrink={0}>
-                <text fg={ui.accent} bg={ui.panelBg} content={key} />
-              </box>
-              <box flexGrow={1}>
-                <text fg={ui.text} bg={ui.panelBg} content={desc} />
-              </box>
-            </box>
+        <For each={LINES.slice(top(), top() + visible())}>
+          {line => (
+            <Switch>
+              <Match when={line.kind === 'header' && line}>
+                {(header: () => { text: string }) => (
+                  <text
+                    fg={ui.accent}
+                    bg={ui.panelBg}
+                    content={header().text}
+                    attributes={TextAttributes.BOLD}
+                  />
+                )}
+              </Match>
+              <Match when={line.kind === 'key' && line}>
+                {(row: () => { key: string; label: string }) => (
+                  <box flexDirection="row">
+                    <box width={20} flexShrink={0} paddingLeft={1}>
+                      <text fg={ui.text} bg={ui.panelBg} content={row().key} />
+                    </box>
+                    <box flexGrow={1}>
+                      <text fg={ui.dim} bg={ui.panelBg} content={row().label} />
+                    </box>
+                  </box>
+                )}
+              </Match>
+              <Match when={line.kind === 'gap'}>
+                <text fg={ui.panelBg} bg={ui.panelBg} content="" />
+              </Match>
+            </Switch>
           )}
         </For>
         <text fg={ui.dim} bg={ui.panelBg} content="" />
-        <text fg={ui.dim} bg={ui.panelBg} content="Press Esc to close" />
+        <text
+          fg={ui.dim}
+          bg={ui.panelBg}
+          content={overflowing() ? '↑↓ scroll · Esc close' : 'Press Esc to close'}
+        />
       </box>
     </Overlay>
   )

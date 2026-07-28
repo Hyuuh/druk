@@ -15,8 +15,6 @@ export interface FilePickerProps {
   /** Candidates to choose from. Defaults to every file in the project. */
   files?: string[]
   title?: string
-  /** How a candidate is shown and matched. Defaults to its project-relative path. */
-  display?: (value: string) => string
   onPick: (path: string) => void
   onClose: () => void
 }
@@ -33,7 +31,7 @@ export function FilePicker(props: FilePickerProps) {
   // Scanned once per open: a project's file list does not move under you mid-search.
   const files = props.files ?? listFiles(props.rootDir, 5000)
 
-  const label = (value: string) => props.display?.(value) ?? relative(props.rootDir, value)
+  const label = (value: string) => relative(props.rootDir, value)
 
   const matches = createMemo(() => {
     const q = query().trim()

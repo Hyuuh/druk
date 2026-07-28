@@ -158,9 +158,9 @@ describe('moving a folder', () => {
     const dir = fixture({ 'a/b/c.ts': 'x\n', 'other.ts': 'y\n' })
     const t = await launch(dir)
     await selectNth(t, 1) // a
-    await press(t, input => input.pressEnter()) // expand
+    await press(t, input => input.pressEnter())
     await settle(t)
-    await press(t, input => void input.typeText('x')) // cut a
+    await press(t, input => void input.typeText('x'))
     await press(t, input => input.pressArrow('down')) // onto a/b
     await press(t, input => void input.typeText('p'))
     await settle(t)
@@ -236,7 +236,7 @@ test('a batch move takes the open tabs with it', async () => {
   await pressEscape(t)
   await press(t, i => i.pressArrow('up')) // one.ts
   await press(t, i => i.pressArrow('down', { shift: true })) // mark one.ts and two.ts
-  await press(t, i => void i.typeText('x')) // cut both
+  await press(t, i => void i.typeText('x'))
   await press(t, i => i.pressArrow('up'))
   await press(t, i => i.pressArrow('up')) // lib
   await press(t, i => void i.typeText('p'))
@@ -246,7 +246,7 @@ test('a batch move takes the open tabs with it', async () => {
 
   // Saving the still-open tab must write where the file went. Without the
   // remap it writes the old path back, resurrecting a file that was moved.
-  await press(t, i => i.pressTab()) // focus follows to the editor
+  await press(t, i => i.pressTab())
   await press(t, i => void i.typeText('X'))
   await press(t, i => i.pressKey('s', { ctrl: true }))
   await settle(t, 100)

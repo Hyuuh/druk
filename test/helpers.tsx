@@ -27,13 +27,14 @@ export async function launch(
   /** Terminal size, for anything that has to degrade on a small screen. */
   size: { width?: number; height?: number } = {},
   /** `openFile` renders single-file mode, as `druk <file>` does. */
-  options: { openFile?: string } = {},
+  options: { openFile?: string; openLine?: number } = {},
 ) {
   const t = await testRender(
     () =>
       App({
         rootDir: dir,
         openFile: options.openFile ?? null,
+        openLine: options.openLine ?? null,
         initialConfig: { ...DEFAULTS, checkUpdates: false, ...config },
       }),
     {

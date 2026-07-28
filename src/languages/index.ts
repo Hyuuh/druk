@@ -147,6 +147,46 @@ export const LANGUAGES: Language[] = [
   },
 ]
 
+/**
+ * Line-comment prefix per filetype, for the Ctrl+/ toggle. Absent means the
+ * language has no line comments (json, html, css…) and the toggle does nothing.
+ */
+const LINE_COMMENTS: Record<string, string> = {
+  javascript: '//',
+  typescript: '//',
+  javascriptreact: '//',
+  typescriptreact: '//',
+  zig: '//',
+  scss: '//',
+  less: '//',
+  rust: '//',
+  go: '//',
+  java: '//',
+  kotlin: '//',
+  scala: '//',
+  c: '//',
+  cpp: '//',
+  csharp: '//',
+  php: '//',
+  swift: '//',
+  dart: '//',
+  sass: '//',
+  python: '#',
+  ruby: '#',
+  elixir: '#',
+  bash: '#',
+  toml: '#',
+  yaml: '#',
+  dotenv: '#',
+  ini: '#',
+  lua: '--',
+  sql: '--',
+}
+
+export function commentPrefix(filetype: string | undefined): string | undefined {
+  return filetype ? LINE_COMMENTS[filetype] : undefined
+}
+
 const BY_ID = new Map(LANGUAGES.map(lang => [lang.id, lang]))
 
 export function languageFor(filetype: string | undefined): Language | undefined {

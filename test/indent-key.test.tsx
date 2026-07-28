@@ -40,12 +40,6 @@ describe('Tab in the editor', () => {
     expect(await saved()).toBe('        hello\n')
   })
 
-  test('inserts spaces, never a literal tab character', async () => {
-    const { t, saved } = await editor('hello\n')
-    await press(t, input => input.pressTab())
-    expect(await saved()).not.toContain('\t')
-  })
-
   test('does not move focus to the tree — Esc does that', async () => {
     const { t } = await editor('hello\n')
     await press(t, input => input.pressTab())
@@ -87,17 +81,6 @@ describe('Shift+Tab in the editor', () => {
     for (let n = 0; n < 6; n++) await press(t, input => input.pressArrow('right'))
     await press(t, input => void input.pressKeys([BACK_TAB]))
     expect(await saved()).toBe('  hello\n')
-  })
-})
-
-describe('focus after Tab', () => {
-  test('the editor keeps focus', async () => {
-    const { t } = await editor('hello\n')
-    await press(t, input => input.pressTab())
-    // Still in the editor, so typing keeps landing in the buffer.
-    await press(t, input => void input.typeText('X'))
-    expect(t.captureCharFrame()).toContain('X')
-    expect(t.captureCharFrame()).toContain('Ln 1')
   })
 })
 

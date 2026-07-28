@@ -31,14 +31,13 @@ describe('deleting in the background', () => {
     expect(seen.at(-1)).toMatchObject({ done: 12, total: 12 })
   })
 
-  test('counts up, and names what it is working on', async () => {
+  test('counts up one entry at a time', async () => {
     const { dir } = heavyDir(5)
     const seen: BulkProgress[] = []
 
     await removeAll([dir], progress => seen.push({ ...progress }))
 
     expect(seen.map(p => p.done)).toEqual([1, 2, 3, 4, 5])
-    expect(seen.every(p => p.current.startsWith('pkg-'))).toBe(true)
   })
 
   test('hands the loop back between entries', async () => {

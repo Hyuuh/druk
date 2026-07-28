@@ -48,9 +48,10 @@ The npm and bun packages are a launcher that downloads that same binary on insta
 ## Open a project
 
 ```bash
-druk               # the current directory
-druk ./my-app      # a directory
-druk src/main.ts   # a single file
+druk                  # the current directory
+druk ./my-app         # a directory
+druk src/main.ts      # a single file
+druk src/main.ts:42   # …opened at line 42
 ```
 
 `npx druk` and `bunx druk` work without installing anything.
@@ -70,12 +71,15 @@ status bar with the branch, unsaved state and cursor position.
 - `Ctrl+S` saves. Closing a tab with unsaved edits asks first.
 - `Ctrl+P` opens the command palette — every feature is in there, and typing filters it,
   so you never have to remember a shortcut. `Ctrl+P` → `Keyboard shortcuts` shows them all.
+- `Ctrl+K` peeks: a strip over the status bar listing every key that works right now,
+  gone again on the next keypress.
 
 ## Shortcuts
 
 | Key | Does |
 | --- | --- |
 | `Ctrl+P` | Command palette |
+| `Ctrl+K` | Peek at every key for the pane you are in |
 | `Ctrl+O` | Open any file in the project (fuzzy) |
 | `Ctrl+T` | Switch between open tabs |
 | `Ctrl+S` | Save |
@@ -87,7 +91,11 @@ status bar with the branch, unsaved state and cursor position.
 | `Ctrl+B` | Show / hide the sidebar |
 | `Ctrl+Q` | Quit |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
-| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste (system clipboard) |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste (system clipboard, OSC52 over SSH) |
+| `Ctrl+/` or `Ctrl+L` | Toggle comment |
+| `Opt+↑` / `↓` | Move line or selection |
+| `Opt+Shift+↑` / `↓` | Duplicate line or selection |
+| `Ctrl+Opt+T` | Reopen closed tab |
 | `Ctrl+Opt+←` / `→` | Previous / next tab |
 
 In the tree: `a` new file, `A` new folder, `r` rename, `d` delete, `x` cut, `c` copy,
@@ -97,6 +105,13 @@ Two things worth knowing: `Ctrl+C` copies when text is selected and quits when n
 so it never throws away unsaved work. And there are no `Ctrl+Shift` shortcuts — most
 terminals cannot tell them apart from plain `Ctrl` — so a second modifier is always
 `Ctrl+Opt`.
+
+### The Opt / Alt key
+
+druk names the key for your OS: `Opt` (Option, ⌥) on macOS, `Alt` everywhere else.
+Every shortcut works in a stock terminal — nothing to configure. The line commands are
+also in the palette (`Ctrl+P`). Some terminals (macOS Terminal.app among them) cannot
+send `Ctrl+/` at all — that is why *Toggle comment* also answers to `Ctrl+L`.
 
 ## Search
 
@@ -109,6 +124,9 @@ the file you are on, so one file with forty hits stops burying the rest.
 
 In file search, `Tab` opens the replace field instead: `Enter` replaces the selected match,
 `Ctrl+A` replaces every match in the file.
+
+`Ctrl+C`, `Ctrl+W` and `Ctrl+R` toggle case-sensitive, whole-word and regex matching
+while the search is open; the active ones are shown beside the match count.
 
 ## Files
 

@@ -1,6 +1,6 @@
 import type { Theme } from './types'
 
-/** GitHub Light Default. */
+/** Palette from https://github.com/primer/github-vscode-theme (Light Default). */
 export const githubLight: Theme = {
   name: 'GitHub Light',
   ui: {

@@ -23,7 +23,7 @@ const hex = (fg?: { buffer: Uint8Array }) =>
 const track = (t: Harness) => {
   const frame = t.captureSpans() as unknown as Frame
   return frame.lines.flatMap(line =>
-    line.spans.filter(span => span.text.includes('▪')).map(span => hex(span.fg)),
+    line.spans.filter(span => span.text.includes('▎')).map(span => hex(span.fg)),
   )
 }
 
@@ -53,12 +53,6 @@ async function open(dir: string) {
 }
 
 describe('the change track', () => {
-  test('marks changes in the gutter’s colours', async () => {
-    const t = await open(await repoWith(lines => (lines[5] = '// changed')))
-
-    expect(track(t)).toContain(ui.gitModified)
-  })
-
   test('shows changes far below the viewport, which is the point of it', async () => {
     // Line 380 of 400 is nowhere near the first screen.
     const t = await open(await repoWith(lines => (lines[380] = '// changed down here')))
@@ -78,13 +72,13 @@ describe('the change track', () => {
     expect(track(t)).toEqual([])
   })
 
-  test('the minimap is gone: no shape bars, only change marks', async () => {
+  test('marks are git colours only — the minimap’s syntax bars are gone', async () => {
     const t = await open(await repoWith(lines => (lines[5] = '// changed')))
     const marks = track(t)
 
+    expect(marks).toContain(ui.gitModified)
     // Every mark is a git colour — none of the syntax colours the strip used.
     const gitColors = new Set([ui.gitAdded, ui.gitModified, ui.gitDeleted])
-    expect(marks.length).toBeGreaterThan(0)
     expect(marks.every(color => gitColors.has(color))).toBe(true)
   })
 })
@@ -124,7 +118,7 @@ describe('the track agrees with the scrollbar', () => {
     // were placed per line: on a wrapped file the two pointed at different parts
     // of the same file.
     const t = await open(await wrappedRepo(150))
-    const mark = rowsOf(t, '▪')[0]!
+    const mark = rowsOf(t, '▎')[0]!
 
     // Halfway down the file by line, which is where the mark is.
     await press(t, input => input.pressKey('g', { ctrl: true }))
@@ -144,7 +138,7 @@ describe('the track agrees with the scrollbar', () => {
       .captureCharFrame()
       .split('\n')
       .filter(row => row.length > 0)
-    const mark = rowsOf(t, '▪')[0]!
+    const mark = rowsOf(t, '▎')[0]!
 
     expect(mark).toBeGreaterThan(rows.length * 0.8)
   }, 30000)

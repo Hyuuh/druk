@@ -5,8 +5,8 @@ import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 
-import type { Context, Match } from '../core/search'
-import { contextAround, contextIn, searchProject, searchText } from '../core/search'
+import type { Context, Match, SearchOptions } from '../core/search'
+import { buildQuery, contextAround, contextIn, searchProject, searchText } from '../core/search'
 import { ui } from '../themes'
 import { modalWidth, PAD } from './modal'
 import { Overlay } from './Overlay'
@@ -25,9 +25,9 @@ export interface SearchPanelProps {
   replacing?: boolean
   onPick: (match: Match) => void
   /** Replace the selected match only. Absent for project-wide search. */
-  onReplaceOne?: (match: Match, query: string, replacement: string) => void
+  onReplaceOne?: (match: Match, replacement: string) => void
   /** Replace every match in the open file. Absent for project-wide search. */
-  onReplaceAll?: (query: string, replacement: string) => void
+  onReplaceAll?: (query: string, replacement: string, options: SearchOptions) => void
   onClose: () => void
 }
 
@@ -70,6 +70,7 @@ export function SearchPanel(props: SearchPanelProps) {
   const [index, setIndex] = createSignal(0)
   /** Paths whose matches are hidden behind their heading. */
   const [folded, setFolded] = createSignal<ReadonlySet<string>>(new Set())
+  const [options, setOptions] = createSignal<SearchOptions>({})
 
   let scanTimer: ReturnType<typeof setTimeout> | null = null
   onCleanup(() => {
@@ -93,8 +94,8 @@ export function SearchPanel(props: SearchPanelProps) {
     const q = scanned()
     if (q.length < MIN_QUERY) return []
     return props.scope === 'project'
-      ? searchProject(props.rootDir, q)
-      : searchText(props.activeContent, q, props.activePath ?? '')
+      ? searchProject(props.rootDir, q, options())
+      : searchText(props.activeContent, q, props.activePath ?? '', options())
   })
 
   /**
@@ -211,9 +212,25 @@ export function SearchPanel(props: SearchPanelProps) {
     }
   })
 
+  /** Ctrl+C / Ctrl+W / Ctrl+R flips an option; the results recompute from scratch. */
+  const toggleOption = (name: keyof SearchOptions) => {
+    setOptions(prev => ({ ...prev, [name]: !prev[name] }))
+    setIndex(0)
+    setFolded(new Set<string>())
+  }
+  const OPTION_KEYS: Partial<Record<string, keyof SearchOptions>> = {
+    c: 'caseSensitive',
+    w: 'wholeWord',
+    r: 'regex',
+  }
+
   useKeyboard((key: KeyEvent) => {
     const k = key.name
-    if (k === 'up') {
+    const option = key.ctrl ? OPTION_KEYS[k] : undefined
+    if (option) {
+      key.preventDefault()
+      toggleOption(option)
+    } else if (k === 'up') {
       key.preventDefault()
       move(-1)
     } else if (k === 'down') {
@@ -229,7 +246,7 @@ export function SearchPanel(props: SearchPanelProps) {
       toggleFold()
     } else if (key.ctrl && k === 'a' && replacing() && props.onReplaceAll) {
       key.preventDefault()
-      props.onReplaceAll(query(), replacement())
+      props.onReplaceAll(query(), replacement(), options())
     } else if (k === 'return' || k === 'enter') {
       key.preventDefault()
       // A heading is only ever selected while folded, where Enter is the way back in.
@@ -238,7 +255,7 @@ export function SearchPanel(props: SearchPanelProps) {
       if (!match) return
       // Replacing one match at a time is the point of the mode; the whole file goes
       // through Ctrl+A, which is the harder move to make by accident.
-      if (replacing() && props.onReplaceOne) props.onReplaceOne(match, query(), replacement())
+      if (replacing() && props.onReplaceOne) props.onReplaceOne(match, replacement())
       else props.onPick(match)
     } else if (k === 'escape') {
       key.preventDefault()
@@ -246,16 +263,25 @@ export function SearchPanel(props: SearchPanelProps) {
     }
   })
 
+  /** The active toggles, said the way the footer names them. */
+  const flags = () => {
+    const on = options()
+    const parts = [on.caseSensitive && 'case', on.wholeWord && 'word', on.regex && 'regex']
+    const active = parts.filter(Boolean)
+    return active.length > 0 ? ` · ${active.join(' ')}` : ''
+  }
+
   const summary = () => {
-    if (query().length < MIN_QUERY) return 'Type at least 2 characters'
+    if (query().length < MIN_QUERY) return `Type at least 2 characters${flags()}`
     // Say so rather than showing the previous query's count as if it were current.
-    if (pending()) return 'Searching…'
+    if (pending()) return `Searching…${flags()}`
+    if (options().regex && !buildQuery(scanned(), options())) return `Invalid regex${flags()}`
     const all = matches()
-    if (all.length === 0) return 'No matches'
+    if (all.length === 0) return `No matches${flags()}`
     const files = new Set(all.map(m => m.path)).size
     const capped = all.length >= 200 ? '+' : ''
     const where = props.scope === 'project' ? ` in ${files} file${files === 1 ? '' : 's'}` : ''
-    return `${(cursor()?.at ?? 0) + 1} of ${all.length}${capped}${where}`
+    return `${(cursor()?.at ?? 0) + 1} of ${all.length}${capped}${where}${flags()}`
   }
 
   const label = (path: string) => relative(props.rootDir, path) || basename(path)
@@ -328,8 +354,8 @@ export function SearchPanel(props: SearchPanelProps) {
             const cut = () =>
               sliceAround(row.match.text, row.match.col, contentWidth() - 9 - swap().length)
             const head = () => cut().text.slice(0, cut().col)
-            const hit = () => cut().text.slice(cut().col, cut().col + scanned().length)
-            const tail = () => cut().text.slice(cut().col + scanned().length)
+            const hit = () => cut().text.slice(cut().col, cut().col + row.match.length)
+            const tail = () => cut().text.slice(cut().col + row.match.length)
 
             return (
               <box flexDirection="row" backgroundColor={bg()}>
@@ -409,7 +435,7 @@ export function SearchPanel(props: SearchPanelProps) {
                                 fg={ui.gitDeleted}
                                 bg={ui.currentLine}
                                 flexShrink={0}
-                                content={line.slice(match().col, match().col + scanned().length)}
+                                content={line.slice(match().col, match().col + match().length)}
                                 attributes={TextAttributes.STRIKETHROUGH}
                               />
                               <text
@@ -423,7 +449,7 @@ export function SearchPanel(props: SearchPanelProps) {
                                 <text
                                   fg={ui.text}
                                   bg={ui.currentLine}
-                                  content={line.slice(match().col + scanned().length)}
+                                  content={line.slice(match().col + match().length)}
                                 />
                               </box>
                             </box>
@@ -445,8 +471,8 @@ export function SearchPanel(props: SearchPanelProps) {
             props.onReplaceAll
               ? replacing()
                 ? '↑↓ move · Enter replace · Ctrl+A replace all · Tab back · Esc close'
-                : '↑↓ move · Enter jump · Tab replace · Esc close'
-              : '↑↓ move · Enter jump · Tab fold file · Esc close'
+                : '↑↓ move · Enter jump · Tab replace · Ctrl+C/W/R case/word/regex · Esc close'
+              : '↑↓ move · Enter jump · Tab fold · Ctrl+C/W/R case/word/regex · Esc close'
           }
         />
       </box>

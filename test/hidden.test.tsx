@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 import { listDir } from '../src/core/fs'
 import { listFiles } from '../src/core/search'
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch } from './helpers'
 
 const PROJECT = { 'src/main.ts': 'const a = 1\n', '.DS_Store': 'junk\n', '.gitignore': 'dist\n' }
 
@@ -20,14 +20,6 @@ describe('the tree lists everything', () => {
     const frame = (await launch(fixture(PROJECT))).captureCharFrame()
     expect(frame).toContain('.gitignore')
     expect(frame).toContain('.DS_Store')
-  })
-
-  test('and there is no command to hide them', async () => {
-    const t = await launch(fixture(PROJECT))
-    await press(t, i => i.pressKey('p', { ctrl: true }))
-    await press(t, i => void i.typeText('Hidden'))
-    await settle(t)
-    expect(t.captureCharFrame()).not.toContain('Hide them')
   })
 })
 
@@ -44,7 +36,6 @@ describe('the VCS store is not project content', () => {
     const t = await launch(repo())
     const frame = t.captureCharFrame()
     expect(frame).toContain('.gitignore')
-    expect(frame).not.toContain('.git\n')
     // Nothing in the frame is a row for `.git` itself.
     const rows = frame.split('\n').map(row => row.slice(0, 30).trim())
     expect(rows).not.toContain('.git')
@@ -71,47 +62,5 @@ describe('the VCS store is not project content', () => {
     // It is text, and there is no reason to pretend it is not there.
     writeFileSync(join(dir, '.git'), 'gitdir: /elsewhere\n')
     expect(listDir(dir).map(node => node.name)).toContain('.git')
-  })
-})
-
-describe('a file druk cannot display', () => {
-  const withBlob = () => {
-    const dir = fixture({ 'a.ts': 'const a = 1\n' })
-    writeFileSync(join(dir, 'blob.bin'), Buffer.from([0, 1, 2, 0]))
-    return dir
-  }
-
-  test('is listed, but opening it says so instead of opening a tab', async () => {
-    const t = await launch(withBlob())
-    expect(t.captureCharFrame()).toContain('blob.bin')
-
-    await press(t, i => i.pressKey('o', { ctrl: true }))
-    await press(t, i => void i.typeText('blob.bin'))
-    await press(t, i => i.pressEnter())
-    await settle(t)
-
-    const frame = t.captureCharFrame()
-    expect(frame).toContain('blob.bin cannot be shown')
-    // Drawn over the pane, but never opened: no tab.
-    expect(frame.split('\n')[0]).not.toContain('blob.bin')
-  })
-
-  test('does not disturb the tab that is already open', async () => {
-    const t = await launch(withBlob())
-    await press(t, i => i.pressKey('o', { ctrl: true }))
-    await press(t, i => void i.typeText('a.ts'))
-    await press(t, i => i.pressEnter())
-    await settle(t)
-    expect(t.captureCharFrame()).toContain('const a = 1')
-
-    await press(t, i => i.pressKey('o', { ctrl: true }))
-    await press(t, i => void i.typeText('blob.bin'))
-    await press(t, i => i.pressEnter())
-    await settle(t)
-
-    const frame = t.captureCharFrame()
-    expect(frame).toContain('cannot be shown')
-    // The tab it covers is untouched underneath.
-    expect(frame.split('\n')[0]).toContain('a.ts')
   })
 })

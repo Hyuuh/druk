@@ -6,8 +6,30 @@ export interface Match {
   line: number
   /** 0-based column of the match start. */
   col: number
-  /** The whole line, for display. */
+  /** Characters matched — equals the query's length except in regex mode. */
+  length: number
   text: string
+}
+
+export interface SearchOptions {
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  regex?: boolean
+}
+
+/**
+ * The query as a per-line RegExp, or null when it is an invalid pattern.
+ * One place builds it so search, replace-one and replace-all can never
+ * disagree about what a match is.
+ */
+export function buildQuery(query: string, options: SearchOptions = {}): RegExp | null {
+  const escaped = options.regex ? query : query.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
+  const wrapped = options.wholeWord ? `\\b(?:${escaped})\\b` : escaped
+  try {
+    return new RegExp(wrapped, options.caseSensitive ? 'g' : 'gi')
+  } catch {
+    return null
+  }
 }
 
 /** Lines around a match, for a preview. */
@@ -37,11 +59,6 @@ export function contextAround(path: string, line: number, radius: number): Conte
   }
 }
 
-export interface SearchOptions {
-  caseSensitive?: boolean
-  limit?: number
-}
-
 const DEFAULT_LIMIT = 200
 
 /** Directories never worth walking, for both the search and the fuzzy finder. */
@@ -61,53 +78,64 @@ export function searchText(
   query: string,
   path: string,
   options: SearchOptions = {},
+  limit = DEFAULT_LIMIT,
 ): Match[] {
   if (!query) return []
-  const limit = options.limit ?? DEFAULT_LIMIT
-  const needle = options.caseSensitive ? query : query.toLowerCase()
+  const pattern = buildQuery(query, options)
+  if (!pattern) return []
   const matches: Match[] = []
 
   const lines = text.split('\n')
   for (let line = 0; line < lines.length && matches.length < limit; line++) {
     const raw = lines[line]!
-    const haystack = options.caseSensitive ? raw : raw.toLowerCase()
-    let col = haystack.indexOf(needle)
-    while (col >= 0 && matches.length < limit) {
-      matches.push({ path, line, col, text: raw })
-      col = haystack.indexOf(needle, col + needle.length)
+    pattern.lastIndex = 0
+    for (let hit = pattern.exec(raw); hit && matches.length < limit; hit = pattern.exec(raw)) {
+      // A pattern like `a*` matches the empty string at every column; skipping
+      // those (and stepping past them) is what keeps this loop finite.
+      if (hit[0].length === 0) {
+        pattern.lastIndex++
+        continue
+      }
+      matches.push({ path, line, col: hit.index, length: hit[0].length, text: raw })
     }
   }
   return matches
 }
 
-/** Search every text file under `root`, breadth-first, stopping at the limit. */
-export function searchProject(root: string, query: string, options: SearchOptions = {}): Match[] {
-  if (!query) return []
-  const limit = options.limit ?? DEFAULT_LIMIT
-  const matches: Match[] = []
+// Breadth-first, so the files nearest the root are found before any limit cuts off.
+function* filesUnder(root: string): Generator<string> {
   const queue: string[] = [root]
-
-  while (queue.length > 0 && matches.length < limit) {
+  while (queue.length > 0) {
     const dir = queue.shift()!
     for (const node of listDir(dir)) {
-      if (matches.length >= limit) break
       if (node.isDir) {
         if (!SKIPPED_DIRS.has(node.name)) queue.push(node.path)
-        continue
+      } else {
+        yield node.path
       }
-      let content: string
-      try {
-        content = readFile(node.path)
-      } catch {
-        continue // binary or unreadable
-      }
-      matches.push(
-        ...searchText(content, query, node.path, {
-          ...options,
-          limit: limit - matches.length,
-        }),
-      )
     }
+  }
+}
+
+/** Search every text file under `root`, breadth-first, stopping at the limit. */
+export function searchProject(
+  root: string,
+  query: string,
+  options: SearchOptions = {},
+  limit = DEFAULT_LIMIT,
+): Match[] {
+  if (!query) return []
+  const matches: Match[] = []
+
+  for (const path of filesUnder(root)) {
+    if (matches.length >= limit) break
+    let content: string
+    try {
+      content = readFile(path)
+    } catch {
+      continue // binary or unreadable
+    }
+    matches.push(...searchText(content, query, path, options, limit - matches.length))
   }
   return matches
 }
@@ -135,54 +163,36 @@ export function fuzzyScore(text: string, query: string): number | null {
 /** Every file under `root`, breadth-first, so the nearest ones survive the limit. */
 export function listFiles(root: string, limit = 5000): string[] {
   const files: string[] = []
-  const queue: string[] = [root]
-  while (queue.length > 0 && files.length < limit) {
-    const dir = queue.shift()!
-    for (const node of listDir(dir, 0)) {
-      if (node.isDir) {
-        if (!SKIPPED_DIRS.has(node.name)) queue.push(node.path)
-      } else if (files.length < limit) {
-        files.push(node.path)
-      }
-    }
+  for (const path of filesUnder(root)) {
+    if (files.length >= limit) break
+    files.push(path)
   }
   return files
 }
 
-/**
- * Case-insensitive replace of every occurrence, mirroring searchText.
- *
- * Matched by regex against the original text, never by indexing it with offsets
- * taken from a lowercased copy: `toLowerCase` is not length-preserving (U+0130
- * becomes two code units), so those offsets drift and eat characters.
- */
-export function replaceAll(text: string, query: string, replacement: string): string {
+/** Replace every occurrence, matching exactly what `searchText` matched. */
+export function replaceAll(
+  text: string,
+  query: string,
+  replacement: string,
+  options: SearchOptions = {},
+): string {
   if (!query) return text
-  const escaped = query.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
+  const pattern = buildQuery(query, options)
+  if (!pattern) return text
   // Function form, so `$&` and `$1` in the replacement are inserted literally.
-  return text.replace(new RegExp(escaped, 'gi'), () => replacement)
+  return text.replace(pattern, hit => (hit.length === 0 ? hit : replacement))
 }
 
 /**
  * Replace the one occurrence `match` points at, leaving every other alone.
- *
- * `match.col` counts characters within its line, so the offset is the sum of the
- * lines above it plus their newlines — the same arithmetic `searchText` implies,
- * done in reverse. A match whose line has since changed length is refused rather
- * than applied at a drifted offset.
+ * A match whose line has since changed is refused rather than applied at a
+ * drifted offset.
  */
-export function replaceMatch(
-  text: string,
-  match: Match,
-  query: string,
-  replacement: string,
-): string | null {
-  if (!query) return null
+export function replaceMatch(text: string, match: Match, replacement: string): string | null {
   const lines = text.split('\n')
   if (lines[match.line] !== match.text) return null
   const line = lines[match.line]!
-  const found = line.slice(match.col, match.col + query.length)
-  if (found.toLowerCase() !== query.toLowerCase()) return null
-  lines[match.line] = line.slice(0, match.col) + replacement + line.slice(match.col + query.length)
+  lines[match.line] = line.slice(0, match.col) + replacement + line.slice(match.col + match.length)
   return lines.join('\n')
 }

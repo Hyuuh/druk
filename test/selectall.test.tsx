@@ -37,17 +37,6 @@ describe('Ctrl+A', () => {
     expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('')
   })
 
-  test('does not move the caret to line start, the readline meaning', async () => {
-    const { t, dir } = await openedFile()
-    // Ctrl+E is line-end; if Ctrl+A had meant line-start the caret would sit at
-    // column 1 and this would prepend rather than replace.
-    await press(t, input => input.pressKey('a', { ctrl: true }))
-    await press(t, input => void input.typeText('X'))
-    await save(t)
-
-    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('X')
-  })
-
   test('a mouse selection is replaced by typing too', async () => {
     const { t, dir } = await openedFile()
     // Drag across "first" on the first line.

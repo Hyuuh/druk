@@ -47,7 +47,6 @@ describe('languages', () => {
     // The point of `label` is that OpenTUI's filetype name is a mouthful. One that
     // is not shorter is a label with no reason to exist.
     for (const lang of LANGUAGES.filter(l => l.label)) {
-      expect(`${lang.id} -> ${lang.label}`).toBe(`${lang.id} -> ${lang.label}`)
       expect(lang.label!.length).toBeLessThan(lang.id.length)
     }
   })

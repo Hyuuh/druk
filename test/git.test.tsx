@@ -124,7 +124,7 @@ test('every file inside a brand-new directory is marked, not just the directory'
   // And the tree shows the mark on the files, with the folders inheriting it.
   const t = await launch(dir)
   await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter()) // expand newdir
+  await press(t, i => i.pressEnter())
   const frame = t.captureCharFrame()
   expect(frame).toContain('newdir')
   expect(frame).toContain('a.ts')

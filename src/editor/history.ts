@@ -28,14 +28,6 @@ export class History {
 
   constructor(private current: Snapshot) {}
 
-  get canUndo(): boolean {
-    return this.pending !== null || this.undoStack.length > 0
-  }
-
-  get canRedo(): boolean {
-    return this.redoStack.length > 0
-  }
-
   /** Record an edit. `now` is injectable so tests do not have to sleep. */
   record(next: Snapshot, now: number): void {
     if (next.content === this.current.content) return

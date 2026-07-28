@@ -11,19 +11,19 @@ test('reopening a project restores tabs, active file and expanded folders', asyn
 
   const first = await launch(dir)
   await press(first, i => i.pressArrow('down')) // src/
-  await press(first, i => i.pressEnter()) // expand
+  await press(first, i => i.pressEnter())
   await press(first, i => i.pressArrow('down')) // src/main.ts
-  await press(first, i => i.pressEnter()) // open
+  await press(first, i => i.pressEnter())
   await pressEscape(first)
   await press(first, i => i.pressArrow('down')) // notes.md
-  await press(first, i => i.pressEnter()) // open
+  await press(first, i => i.pressEnter())
 
   const second = await launch(dir)
   const frame = second.captureCharFrame()
-  expect(frame).toContain('main.ts') // tab restored
-  expect(frame).toContain('notes.md') // tab restored
-  expect(frame).toContain('# hi') // active file restored
-  expect(frame).toContain('▾ src') // folder still expanded
+  expect(frame).toContain('main.ts')
+  expect(frame).toContain('notes.md')
+  expect(frame).toContain('# hi')
+  expect(frame).toContain('▾ src')
 })
 
 test('files deleted since last time are dropped', async () => {

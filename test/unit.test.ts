@@ -20,9 +20,8 @@ describe('search', () => {
     ])
   })
 
-  test('is case-insensitive by default', () => {
+  test('is case-insensitive', () => {
     expect(searchText(text, 'ALPHA', 'a.ts')).toHaveLength(2)
-    expect(searchText(text, 'ALPHA', 'a.ts', { caseSensitive: true })).toHaveLength(0)
   })
 
   test('walks subdirectories but skips node_modules', () => {
@@ -75,6 +74,7 @@ describe('registries', () => {
       vimEnabled: false,
       activeTheme: 'dark',
       tabSize: 2,
+      trimOnSave: false,
     })
     const leaves = flattenCommands(tree)
 

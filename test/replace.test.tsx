@@ -27,21 +27,13 @@ test('a character that changes length when lowercased does not shift the match',
 
 test('replaceMatch touches the one occurrence it is given', () => {
   const text = 'old one\nold two\n'
-  const match = { path: 'a.ts', line: 1, col: 0, text: 'old two' }
-  expect(replaceMatch(text, match, 'old', 'new')).toBe('old one\nnew two\n')
-})
-
-test('replaceMatch ignores case, as the search that found it does', () => {
-  const match = { path: 'a.ts', line: 0, col: 2, text: 'a OLD b' }
-  expect(replaceMatch('a OLD b', match, 'old', 'new')).toBe('a new b')
+  const match = { path: 'a.ts', line: 1, col: 0, length: 3, text: 'old two' }
+  expect(replaceMatch(text, match, 'new')).toBe('old one\nnew two\n')
 })
 
 test('replaceMatch refuses a match whose line has moved on', () => {
-  const stale = { path: 'a.ts', line: 0, col: 0, text: 'old one' }
-  expect(replaceMatch('edited since\n', stale, 'old', 'new')).toBeNull()
-  // Right line, but the text there is no longer the query.
-  const moved = { path: 'a.ts', line: 0, col: 4, text: 'xxx old' }
-  expect(replaceMatch('xxx old', moved, 'zzz', 'new')).toBeNull()
+  const stale = { path: 'a.ts', line: 0, col: 0, length: 3, text: 'old one' }
+  expect(replaceMatch('edited since\n', stale, 'new')).toBeNull()
 })
 
 /** Open the fixture's only file, then find `query` with the replacement typed in. */
@@ -112,4 +104,16 @@ test('the panel stays open, so the next match can go too', async () => {
   await press(t, i => i.pressKey('s', { ctrl: true }))
 
   expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('const fresh = 1\nconst fresh2 = old + 1\n')
+})
+
+test('a replacement is undoable — it must not wipe the history', async () => {
+  const dir = fixture({ 'a.ts': 'const old = 1\n' })
+  const t = await openReplace(dir, 'old', 'fresh')
+
+  await press(t, i => i.pressEnter())
+  await pressEscape(t)
+  await press(t, i => i.pressKey('z', { ctrl: true }))
+  await press(t, i => i.pressKey('s', { ctrl: true }))
+
+  expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('const old = 1\n')
 })

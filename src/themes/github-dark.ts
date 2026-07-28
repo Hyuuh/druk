@@ -1,6 +1,6 @@
 import type { Theme } from './types'
 
-/** GitHub Dark Default. */
+/** Palette from https://github.com/primer/github-vscode-theme (Dark Default). */
 export const githubDark: Theme = {
   name: 'GitHub Dark',
   ui: {

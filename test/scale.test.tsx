@@ -29,10 +29,12 @@ const nthEntry = (count: number, index: number) =>
   Array.from({ length: count }, (_, i) => `f${i}.ts`).toSorted((a, b) => a.localeCompare(b))[index]!
 
 describe('the file tree', () => {
+  // Not shared between tests: the session is keyed by project path, so a second
+  // launch of the same directory restores the first test's expanded state.
   test('expands a directory far larger than the renderable ceiling', async () => {
     const t = await launch(wideDir(OVER_THE_CEILING))
     await press(t, input => input.pressArrow('down')) // select many/
-    await press(t, input => input.pressEnter()) // expand it
+    await press(t, input => input.pressEnter())
     await settle(t)
 
     // Unwindowed, the core runs out of renderables and the tree paints nothing.

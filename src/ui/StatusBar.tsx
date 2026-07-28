@@ -5,8 +5,8 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'so
 import { MODE_LABELS } from '../editor/vim'
 import type { VimMode } from '../editor/vim'
 import { ui } from '../themes'
+import { hintsFor } from './keys'
 
-/** How loudly a status message asks to be read. */
 export type Tone = 'info' | 'warn' | 'error'
 
 export interface StatusBarProps {
@@ -22,7 +22,6 @@ export interface StatusBarProps {
   behind: number
   /** Files differing from HEAD in the working tree. */
   changed: number
-  /** Which pane the keyboard is in, so the hints match what the keys do. */
   focus: 'tree' | 'editor'
   /** A long file operation in flight; replaces the message while it runs. */
   busy: { label: string; done: number; total: number } | null
@@ -36,30 +35,6 @@ const TONE_COLORS: Record<Tone, () => string> = {
   info: () => ui.dim,
   warn: () => ui.dirty,
   error: () => ui.error,
-}
-
-/**
- * Keys worth advertising, per pane, most useful first — the tail is what gets
- * dropped when the bar runs out of room.
- */
-const HINTS: Record<'tree' | 'editor', ReadonlyArray<readonly [string, string]>> = {
-  tree: [
-    ['Ctrl+P', 'commands'],
-    ['Enter', 'open'],
-    ['Ctrl+N', 'new file'],
-    ['↑↓', 'move'],
-    ['r', 'rename'],
-    ['x p', 'move'],
-    ['d', 'delete'],
-    ['[ ]', 'width'],
-    ['Tab', 'editor'],
-  ],
-  editor: [
-    ['Ctrl+P', 'commands'],
-    ['Ctrl+S', 'save'],
-    ['Ctrl+F', 'find'],
-    ['Esc', 'tree'],
-  ],
 }
 
 const SEPARATOR = '  '
@@ -147,7 +122,7 @@ export function StatusBar(props: StatusBarProps) {
     const room = budget()
     const shown: Array<readonly [string, string]> = []
     let used = 0
-    for (const hint of HINTS[props.focus]) {
+    for (const hint of hintsFor(props.focus)) {
       const width = hint[0].length + 1 + hint[1].length + SEPARATOR.length
       if (used + width > room) break
       shown.push(hint)

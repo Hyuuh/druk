@@ -32,5 +32,7 @@ test('a .yaml file opens and reports its filetype', async () => {
   await press(t, i => i.pressEnter())
   const frame = t.captureCharFrame()
   expect(frame).toContain('autoInstallPeers')
-  expect(frame).toContain('yaml')
+  // The status bar, not the tab — 'config.yaml' up there matches 'yaml' on its own.
+  // The frame ends with a newline, so the bar is the last row but one.
+  expect(frame.split('\n').at(-2)).toContain('yaml')
 })

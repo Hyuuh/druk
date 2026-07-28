@@ -14,6 +14,7 @@ function rowOf(label: string): number {
     vimEnabled: false,
     activeTheme: 'dark',
     tabSize: 2,
+    trimOnSave: false,
   })
   return tree.findIndex(command => command.label === label)
 }
@@ -26,9 +27,9 @@ const PROJECT = {
 /** Expand src/ and open src/main.ts from the tree. */
 async function openMain(t: Harness) {
   await press(t, i => i.pressArrow('down')) // src/
-  await press(t, i => i.pressEnter()) // expand
+  await press(t, i => i.pressEnter())
   await press(t, i => i.pressArrow('down')) // src/main.ts
-  await press(t, i => i.pressEnter()) // open
+  await press(t, i => i.pressEnter())
 }
 
 describe('editor', () => {
@@ -47,7 +48,9 @@ describe('editor', () => {
     expect(frame).toContain('const a = 1')
     expect(frame).toContain('main.ts')
     expect(frame).toContain(' 1 ') // gutter
-    expect(frame).toContain('ts') // status bar, where the label stands in for the id
+    // The status bar, not the tab — 'main.ts' up there matches 'ts' on its own.
+    // The frame ends with a newline, so the bar is the last row but one.
+    expect(frame.split('\n').at(-2)).toContain('ts')
   })
 
   test('typing then Ctrl+S writes to disk', async () => {
@@ -98,21 +101,11 @@ describe('search', () => {
   })
 })
 
-test('the status bar spells out the cursor position', async () => {
-  const t = await launch(fixture({ 'a.ts': 'const alpha = 1\nconst beta = 22\n' }))
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter())
-  expect(t.captureCharFrame()).toContain('Ln 1, Col 1')
-
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressArrow('right'))
-  expect(t.captureCharFrame()).toContain('Ln 2, Col 2')
-})
-
-test('vertical moves alone update the readout', async () => {
+test('the status bar tracks the cursor, on vertical-only moves too', async () => {
   const t = await launch(fixture({ 'a.ts': 'one\ntwo\nthree\nfour\n' }))
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
+  expect(t.captureCharFrame()).toContain('Ln 1, Col 1')
 
   // Arrow-down emits no cursor-change event, so this only holds while the
   // readout is refreshed after the key rather than from the event payload.
@@ -122,4 +115,7 @@ test('vertical moves alone update the readout', async () => {
 
   await press(t, i => i.pressArrow('up'))
   expect(t.captureCharFrame()).toContain('Ln 2, Col 1')
+
+  await press(t, i => i.pressArrow('right'))
+  expect(t.captureCharFrame()).toContain('Ln 2, Col 2')
 })

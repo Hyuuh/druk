@@ -54,28 +54,15 @@ describe('saving a file that changed underneath', () => {
     expect(t.captureCharFrame()).not.toContain('unsaved edits')
   })
 
-  test('saving clears the warning too', async () => {
-    const { t } = await clash()
-    await save(t)
-    await choose(t, 0) // overwrite with my version
-    await new Promise(resolve => setTimeout(resolve, 300))
-    await settle(t)
-
-    expect(t.captureCharFrame()).not.toContain('unsaved edits')
-  })
-
-  test('the unsaved buffer survives the outside write until the choice is made', async () => {
-    const { t } = await clash()
-    expect(t.captureCharFrame()).toContain('EDITmine')
-    expect(t.captureCharFrame()).toContain('unsaved edits')
-  })
-
-  test('Overwrite writes my version', async () => {
+  test('Overwrite writes my version and clears the warning', async () => {
     const { t, file } = await clash()
     await save(t)
     await choose(t, 0)
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await settle(t)
 
     expect(readFileSync(file, 'utf8')).toBe('EDITmine\n')
+    expect(t.captureCharFrame()).not.toContain('unsaved edits')
   })
 
   test('Reload takes the outside version and drops mine', async () => {

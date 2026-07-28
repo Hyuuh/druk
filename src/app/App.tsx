@@ -30,6 +30,7 @@ import { replaceAll, replaceMatch } from '../core/search'
 import { loadSession, saveSession } from '../core/session'
 import { checkForUpdate } from '../core/update'
 import type { UpdateInfo } from '../core/update'
+import { trimTrailing } from '../editor/lines'
 import type { VimMode } from '../editor/vim'
 import { languageLabel } from '../languages'
 import { filetypeForPath, invalidateSyntaxStyle } from '../languages/highlight'
@@ -42,6 +43,7 @@ import { EditorPane } from '../ui/EditorPane'
 import { FilePicker } from '../ui/FilePicker'
 import { FileTree } from '../ui/FileTree'
 import { HelpOverlay } from '../ui/HelpOverlay'
+import { KeyPeek } from '../ui/KeyPeek'
 import { PromptModal } from '../ui/PromptModal'
 import { SearchPanel } from '../ui/SearchPanel'
 import type { SearchScope } from '../ui/SearchPanel'
@@ -92,21 +94,16 @@ interface Confirmation {
   danger: boolean
 }
 
-/**
- * Prompts answered with text, and the title their input box carries. Having a
- * title here is what makes a prompt a text prompt — every other kind is a
- * yes/no confirm, so the two sets can never fall out of step.
- */
 /** Columns the editor keeps for itself, whatever width the sidebar was saved at. */
 const EDITOR_MIN = 20
 
 /** True for Ctrl+Opt+<key>, however this terminal spells the second modifier. */
 const chord = (key: KeyEvent) => key.shift || key.option || key.meta
 
-/** Idle: the footer shows contextual key hints instead of a message. */
 /** Rows the divider's grip occupies — long enough to aim at, short enough to be a grip. */
 const GRIP = [0, 1, 2, 3, 4]
 
+/** Idle: the footer shows contextual key hints instead of a message. */
 const READY = ''
 /**
  * Prefixes of the watcher's clash warnings, so it can recognise its own message and
@@ -116,6 +113,11 @@ const READY = ''
 const CLASH_CHANGED = 'Changed on disk with unsaved edits: '
 const CLASH_DELETED = 'Deleted on disk with unsaved edits: '
 
+/**
+ * Prompts answered with text, and the title their input box carries. Having a
+ * title here is what makes a prompt a text prompt — every other kind is a
+ * yes/no confirm, so the two sets can never fall out of step.
+ */
 const PROMPT_TITLES: Partial<Record<PromptKind, string>> = {
   newFile: 'New file name',
   newFolder: 'New folder name',
@@ -127,6 +129,8 @@ export function App(props: {
   rootDir: string
   /** `druk file.ts`: the one file to open, instead of the project's saved session. */
   openFile?: string | null
+  /** `druk file.ts:42`: 0-based line to land on in `openFile`. */
+  openLine?: number | null
   initialConfig: Config
 }) {
   const renderer = useRenderer()
@@ -212,6 +216,8 @@ export function App(props: {
   const [focus, setFocus] = createSignal<Focus>(restored.sidebar ? 'tree' : 'editor')
   const [prompt, setPrompt] = createSignal<Prompt>(null)
   const [help, setHelp] = createSignal(false)
+  /** The Opt+/ strip of every key alive in this pane; any next key closes it. */
+  const [peek, setPeek] = createSignal(false)
   const [palette, setPalette] = createSignal(false)
   const [vimMode, setVimMode] = createSignal<VimMode | null>(
     props.initialConfig.vim ? 'normal' : null,
@@ -251,6 +257,19 @@ export function App(props: {
   const [resizing, setResizing] = createSignal(false)
   const [history, setHistory] = createSignal<{ kind: 'undo' | 'redo'; key: number } | null>(null)
   const [goto, setGoto] = createSignal<{ line: number; col: number; key: number } | null>(null)
+  /** Outside text pushed into the editor as one undoable step. */
+  const [edit, setEdit] = createSignal<{ content: string; key: number } | null>(null)
+  /**
+   * Line edits requested from the palette. Commands as well as chords, because
+   * the chords are not always sendable — Ctrl+/ has no byte on some layouts and
+   * Opt needs "Option as Esc+" on macOS terminals.
+   */
+  const [lineOp, setLineOp] = createSignal<{
+    op: 'comment' | 'up' | 'down' | 'duplicate'
+    key: number
+  } | null>(null)
+  /** Paths of closed tabs, oldest first, for "reopen closed tab". */
+  const [recentlyClosed, setRecentlyClosed] = createSignal<string[]>([])
   const [cursor, setCursor] = createSignal({ line: 0, col: 0 })
   /** A long file operation in flight, so the bar can count instead of freezing. */
   const [busy, setBusy] = createSignal<{ label: string; done: number; total: number } | null>(null)
@@ -436,19 +455,10 @@ export function App(props: {
   }
 
   /**
-   * Rename or move `from` to `to`, carrying the editor's own state along.
-   *
-   * Paths *under* `from` move with it, and that is the whole reason this is one
-   * function: moving or renaming a folder invalidates the absolute path of every
-   * tab, buffer and expanded entry inside it, and a buffer left pointing at the old
-   * path saves the file back to where it used to be — recreating the folder that was
-   * just moved. Returns an error message, or null on success.
-   */
-  /**
    * Point everything that remembers a path at where the file went: open tabs, their
    * buffers, the active and preview tabs, the selection and the expanded folders.
-   * A batch move needs this as much as a single one — without it the tabs of moved
-   * files keep pointing at paths that no longer exist.
+   * Paths *under* `from` move with it — a buffer left pointing at the old path
+   * saves the file back to where it used to be, recreating the folder just moved.
    */
   const adoptMove = (from: string, to: string) => {
     const inside = `${from}/`
@@ -479,6 +489,9 @@ export function App(props: {
     return null
   }
 
+  /** `dir` is `path` itself or sits inside it — moving or copying there is circular. */
+  const within = (dir: string, path: string) => dir === path || dir.startsWith(`${path}/`)
+
   /**
    * Why one path cannot go into `dir`, or null when it can. Separated from doing the
    * move so a batch can report which of its files were refused and still move the rest.
@@ -487,9 +500,7 @@ export function App(props: {
     if (dirname(path) === dir) return `${basename(path)} is already there`
     // A folder cannot be moved inside itself: the destination would travel with the
     // source, and `fs.renameSync` reports EINVAL for it.
-    if (dir === path || dir.startsWith(`${path}/`)) {
-      return `Cannot move ${basename(path)} into itself`
-    }
+    if (within(dir, path)) return `Cannot move ${basename(path)} into itself`
     return null
   }
 
@@ -564,7 +575,7 @@ export function App(props: {
     // writing. Its own parent is fine, and is how a folder gets duplicated.
     const refused: string[] = []
     const copyable = paths.filter(path => {
-      if (dir !== path && !dir.startsWith(`${path}/`)) return true
+      if (!within(dir, path)) return true
       refused.push(basename(path))
       return false
     })
@@ -640,6 +651,21 @@ export function App(props: {
     }
     if (previewPath() === path) setPreviewPath(null)
     discardBuffer(path)
+    setRecentlyClosed(prev => [...prev.filter(p => p !== path), path])
+  }
+
+  /** Bring back the most recently closed tab whose file still exists. */
+  const reopenTab = () => {
+    const stack = [...recentlyClosed()]
+    while (stack.length > 0) {
+      const path = stack.pop()!
+      if (exists(path)) {
+        setRecentlyClosed(stack)
+        return openFile(path)
+      }
+    }
+    setRecentlyClosed([])
+    say('No closed tab to reopen', 'warn')
   }
 
   /** Close a batch, asking once if any of them has unsaved edits. */
@@ -659,12 +685,15 @@ export function App(props: {
     openFile(list[(idx + delta + list.length) % list.length]!)
   }
 
+  /** Push `content` into the active editor as one undoable step. */
+  const pushEdit = (content: string) => setEdit(prev => ({ content, key: (prev?.key ?? 0) + 1 }))
+
   /** Put replaced text into the buffer. The tab is pinned first: an edited preview
    * tab must never be recycled out from under the edit. */
   const applyReplacement = (path: string, next: string) => {
     pinTab(path)
     setBuffers(path, { content: next, dirty: true })
-    setReloadKey(k => k + 1)
+    pushEdit(next)
   }
 
   const jumpTo = (match: Match) => {
@@ -676,12 +705,16 @@ export function App(props: {
 
   /** Write the buffer to disk unconditionally and re-sync its mtime. */
   const writeBuffer = (path: string, content: string) => {
-    const err = writeFile(path, content)
+    const final = config.trimOnSave ? trimTrailing(content) : content
+    const err = writeFile(path, final)
     if (err) {
       say(`Save failed: ${err}`, 'error')
       return
     }
-    setBuffers(path, { content, dirty: false, mtime: mtimeOf(path) })
+    setBuffers(path, { content: final, dirty: false, mtime: mtimeOf(path) })
+    // The trim changed the text on disk; the editor has to show the same thing —
+    // and as an undoable step, not a history-wiping reload.
+    if (final !== content && path === activePath()) pushEdit(final)
     setGitRevision(n => n + 1)
     say(`Saved ${basename(path)}`)
   }
@@ -1005,6 +1038,7 @@ export function App(props: {
         copyForPaste: () => takeForPaste('copy'),
         paste,
         closeTab: () => void (activePath() && closeTab(activePath()!)),
+        reopenTab,
         nextTab: () => switchTab(1),
         prevTab: () => switchTab(-1),
         toggleFocus: () => (focus() === 'tree' ? setFocus('editor') : focusTree()),
@@ -1012,6 +1046,11 @@ export function App(props: {
         setVim: applyVim,
         setTabSize: applyTabSize,
         setTheme: applyTheme,
+        lineOp: op => setLineOp(prev => ({ op, key: (prev?.key ?? 0) + 1 })),
+        toggleTrim: () => {
+          patchConfig({ trimOnSave: !config.trimOnSave })
+          say(`Trim on save ${config.trimOnSave ? 'on' : 'off'}`)
+        },
         showHelp: () => setHelp(true),
         quit,
       },
@@ -1019,6 +1058,7 @@ export function App(props: {
         vimEnabled: config.vim,
         activeTheme: config.theme,
         tabSize: config.tabSize,
+        trimOnSave: config.trimOnSave,
       },
     ),
   )
@@ -1027,6 +1067,12 @@ export function App(props: {
     // Same refusal `druk file.ts` deserves as opening one from the tree, and for the
     // same reason: an empty editor with a status line under it looks like a bug.
     if (restored.failed) setNotice({ name: basename(single!), reason: restored.failed })
+    const line = props.openLine
+    const buffer = activeBuffer()
+    if (line != null && buffer) {
+      const total = buffer.content.split('\n').length
+      setGoto({ line: Math.min(line, total - 1), col: 0, key: 1 })
+    }
   })
 
   onMount(() => {
@@ -1138,6 +1184,11 @@ export function App(props: {
       run()
     }
 
+    // Peek toggles on Ctrl+K and folds on any other key, which is what lets it
+    // stand in for "hold to see" on terminals that never report a key release.
+    if (key.ctrl && k === 'k') return claim(() => setPeek(p => !p))
+    if (peek()) setPeek(false)
+
     if (key.ctrl && k === 'q') return claim(quit)
     // Ctrl+C quits from the tree. In the editor it belongs to EditorPane, which is
     // the only place that knows whether there is a selection to copy instead — the
@@ -1146,6 +1197,7 @@ export function App(props: {
     if (key.ctrl && k === 'c' && focus() !== 'editor') return claim(quit)
     if (key.ctrl && k === 'p') return claim(() => setPalette(true))
     if (key.ctrl && k === 'o') return claim(() => setPicker('files'))
+    if (key.ctrl && chord(key) && k === 't') return claim(reopenTab)
     // Ctrl+E is line-end in every terminal; keep the tab family on the arrows.
     if (key.ctrl && (k === 't' || k === 'up')) return claim(() => setPicker('tabs'))
     if (key.ctrl && k === 'g') return claim(() => setPrompt({ kind: 'gotoLine' }))
@@ -1336,6 +1388,8 @@ export function App(props: {
           reloadKey={reloadKey()}
           goto={goto()}
           history={history()}
+          edit={edit()}
+          lineOp={lineOp()}
           vim={config.vim}
           tabSize={config.tabSize}
           gitLines={gitLines()}
@@ -1399,11 +1453,11 @@ export function App(props: {
             onPick={jumpTo}
             onReplaceOne={
               open().scope === 'file'
-                ? (match, query, replacement) => {
+                ? (match, replacement) => {
                     const path = activePath()
                     const buffer = path ? buffers[path] : undefined
                     if (!path || !buffer) return
-                    const next = replaceMatch(buffer.content, match, query, replacement)
+                    const next = replaceMatch(buffer.content, match, replacement)
                     // Refused when the line has moved on since the scan — say so rather
                     // than writing the replacement at a drifted offset.
                     if (next === null) return say('That match is gone', 'warn')
@@ -1413,11 +1467,11 @@ export function App(props: {
             }
             onReplaceAll={
               open().scope === 'file'
-                ? (query, replacement) => {
+                ? (query, replacement, options) => {
                     const path = activePath()
                     const buffer = path ? buffers[path] : undefined
                     if (!path || !buffer) return
-                    const next = replaceAll(buffer.content, query, replacement)
+                    const next = replaceAll(buffer.content, query, replacement, options)
                     setSearch(null)
                     if (next === buffer.content) return say('Nothing to replace')
                     applyReplacement(path, next)
@@ -1483,6 +1537,9 @@ export function App(props: {
             }}
           />
         )}
+      </Show>
+      <Show when={peek()}>
+        <KeyPeek pane={focus()} />
       </Show>
       <Show when={help()}>
         <HelpOverlay />

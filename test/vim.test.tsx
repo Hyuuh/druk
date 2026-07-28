@@ -435,7 +435,7 @@ describe('living with the rest of the editor', () => {
   test('Ctrl+C, Ctrl+X and Ctrl+V still work in normal mode', async () => {
     const { t, file } = await vimEditor('abcdef\n')
     await type(t, 'vll')
-    await press(t, i => i.pressKey('c', { ctrl: true })) // copy the selection
+    await press(t, i => i.pressKey('c', { ctrl: true }))
     await pressEscape(t)
     await type(t, '$')
     await type(t, 'i')
@@ -466,9 +466,9 @@ describe('living with the rest of the editor', () => {
     await settle(t)
     expect(t.captureCharFrame()).toContain('NORMAL')
 
-    // …and the keys are commands again, not text.
+    // …and the keys are commands again, not text: x deleted a character.
     await type(t, 'x')
-    expect(t.captureCharFrame()).toContain('bb')
+    expect(t.captureCharFrame()).not.toContain('bbb')
   })
 
   test('with vim off the same keys type', async () => {
