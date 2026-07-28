@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 
 import { flagOutput } from '../src/core/cli'
-import { updateCommand } from '../src/core/update'
 import { VENDORED_LANGUAGES } from '../src/languages'
 import { GRAMMARS } from '../src/languages/grammars'
 
@@ -21,16 +20,6 @@ describe('flags', () => {
   test('a path is not a flag', () => {
     expect(flagOutput('src')).toBeNull()
     expect(flagOutput(undefined)).toBeNull()
-  })
-})
-
-describe('update instructions', () => {
-  test('name the installer that put this copy there', () => {
-    expect(updateCommand('/opt/homebrew/Cellar/druk/0.2.0/bin/druk')).toContain('brew')
-    expect(updateCommand('/home/me/.druk/bin/druk', '/home/me')).toContain('druk.letstri.dev')
-    expect(updateCommand('/usr/local/lib/node_modules/druk/bin/druk.js', '/home/me')).toContain(
-      'npm',
-    )
   })
 })
 

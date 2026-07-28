@@ -23,6 +23,7 @@ describe('update banner', () => {
     const frame = t.captureCharFrame()
     expect(frame).toContain('Update available')
     expect(frame).toContain('99.0.0')
+    expect(frame).toContain('druk update')
   })
 
   test('Enter dismisses the banner', async () => {

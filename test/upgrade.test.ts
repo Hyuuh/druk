@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
 import { HELP } from '../src/core/cli'
-import { updateCommand } from '../src/core/update'
 import { detectInstall, runUpgrade, upgradeCommand } from '../src/core/upgrade'
 
 const HOME = '/Users/dev'
@@ -63,19 +62,6 @@ describe('the command each install is upgraded with', () => {
     ] as const) {
       expect(upgradeCommand(install)).toContain('druk@latest')
     }
-  })
-})
-
-describe('the banner and the command agree', () => {
-  test('the suggestion shown in the editor is what `druk update` runs', () => {
-    // One detection, two callers: a banner telling a Homebrew user to run npm
-    // sends them off to install a second druk their PATH may not find.
-    for (const path of [
-      '/opt/homebrew/bin/druk',
-      `${HOME}/.druk/bin/druk`,
-      `${HOME}/.bun/bin/druk`,
-    ])
-      expect(updateCommand(path, HOME, '')).toBe(upgradeCommand(detect(path)))
   })
 })
 

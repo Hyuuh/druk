@@ -1,7 +1,6 @@
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard } from '@opentui/solid'
 
-import { updateCommand } from '../core/update'
 import type { UpdateInfo } from '../core/update'
 import { ui } from '../themes'
 import { Overlay } from './Overlay'
@@ -46,7 +45,7 @@ export function UpdateBanner(props: UpdateBannerProps) {
           content={`druk ${props.update.current} is installed, ${props.update.latest} is out.`}
         />
         <text fg={ui.dim} bg={ui.panelBg} content="" />
-        <text fg={ui.accent} bg={ui.panelBg} content={`  ${updateCommand()}`} />
+        <text fg={ui.accent} bg={ui.panelBg} content="  druk update" />
         <text fg={ui.dim} bg={ui.panelBg} content="" />
         <text
           fg={ui.dim}
