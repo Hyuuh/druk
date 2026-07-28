@@ -48,14 +48,14 @@ function enlargeThumb(box: ScrollBoxRenderable) {
     Math.min(slider.height * 2, Math.max(size(), MIN_THUMB_ROWS * 2))
 }
 
-const MARKS: Record<FileStatus, string> = {
+export const MARKS: Record<FileStatus, string> = {
   untracked: 'U',
   added: 'A',
   modified: 'M',
   deleted: 'D',
 }
 
-const statusColor = (status: FileStatus) =>
+export const statusColor = (status: FileStatus) =>
   status === 'untracked' || status === 'added'
     ? ui.gitAdded
     : status === 'deleted'

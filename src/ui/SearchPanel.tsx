@@ -346,6 +346,7 @@ export function SearchPanel(props: SearchPanelProps) {
               )
             }
 
+            
             const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
             const gutter = () => `${row.match.line + 1}`.padStart(5)
             // Room left after the marker (1), the line number and its gap (7) and the

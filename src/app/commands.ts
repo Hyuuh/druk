@@ -53,6 +53,14 @@ export interface CommandActions {
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   toggleTrim: () => void
   toggleAutoSave: () => void
+  gitCommit: () => void
+  gitCommitStaged: () => void
+  gitUndoCommit: () => void
+  gitPush: () => void
+  gitFetch: () => void
+  gitPull: () => void
+  gitStash: () => void
+  gitStashPop: () => void
   showHelp: () => void
   quit: () => void
 }
@@ -107,6 +115,20 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         { id: 'file.copy', label: 'Copy', hint: 'c', run: actions.copyForPaste },
         { id: 'file.paste', label: 'Paste here', hint: 'p', run: actions.paste },
         { id: 'file.delete', label: 'Delete…', hint: 'd', run: actions.remove },
+      ],
+    },
+    {
+      id: 'git',
+      label: 'Git',
+      children: [
+        { id: 'git.commit', label: 'Commit…', run: actions.gitCommit },
+        { id: 'git.commitStaged', label: 'Commit staged…', run: actions.gitCommitStaged },
+        { id: 'git.undo', label: 'Undo last commit', run: actions.gitUndoCommit },
+        { id: 'git.push', label: 'Push', run: actions.gitPush },
+        { id: 'git.fetch', label: 'Fetch', run: actions.gitFetch },
+        { id: 'git.pull', label: 'Pull (fast-forward only)', run: actions.gitPull },
+        { id: 'git.stash', label: 'Stash changes', run: actions.gitStash },
+        { id: 'git.stashPop', label: 'Stash pop', run: actions.gitStashPop },
       ],
     },
     {

@@ -1,0 +1,185 @@
+import { basename, dirname, join } from 'node:path'
+
+import { createMemo, createSignal } from 'solid-js'
+
+import { createDir, createFile, isDirectory } from '../core/fs'
+import { commitPaths, commitStaged, undoLastCommit } from '../core/git'
+import type { EditorBridge } from './editor'
+import type { FileOps } from './fileOps'
+import type { GitOp } from './git'
+import type { Panes } from './panes'
+import type { Status } from './status'
+import type { Tree } from './tree'
+import type { Confirmation, Prompt, PromptKind } from './types'
+import type { Workspace } from './workspace'
+
+/**
+ * Prompts answered with text, and the title their input box carries. Having a
+ * title here is what makes a prompt a text prompt — every other kind is a
+ * yes/no confirm, so the two sets can never fall out of step.
+ */
+const PROMPT_TITLES: Partial<Record<PromptKind, string>> = {
+  newFile: 'New file name',
+  newFolder: 'New folder name',
+  rename: 'Rename to',
+  gotoLine: 'Go to line',
+  commit: 'Commit message',
+}
+
+/**
+ * The prompt signal alone, created before the controllers so that any of them can
+ * open a prompt — the handlers below need those same controllers to answer one.
+ */
+export function createPromptState() {
+  const [prompt, setPrompt] = createSignal<Prompt>(null)
+  return { prompt, setPrompt }
+}
+
+export type PromptState = ReturnType<typeof createPromptState>
+
+/** Answering prompts: what each one asks, and what saying yes actually does. */
+export function createPromptHandlers(deps: {
+  rootDir: string
+  renderer: { destroy: () => void }
+  state: PromptState
+  status: Status
+  tree: Tree
+  panes: Panes
+  editor: EditorBridge
+  workspace: Workspace
+  fileOps: FileOps
+  gitOp: GitOp
+}) {
+  const { rootDir, renderer, state, status, tree, panes, editor, workspace, fileOps, gitOp } = deps
+  const { prompt, setPrompt } = state
+  const { say } = status
+
+  const quit = (discardUnsaved = false) => {
+    const dirty = workspace.dirtyPaths()
+    if (!discardUnsaved && dirty.length > 0) {
+      return setPrompt({ kind: 'quitDirty', names: dirty.map(path => basename(path)) })
+    }
+    renderer.destroy()
+    process.exit(0)
+  }
+
+  const submitPrompt = (value: string) => {
+    const name = value.trim()
+    const p = prompt()
+    setPrompt(null)
+    if (!p || !PROMPT_TITLES[p.kind]) return
+    if (!name) return say('Nothing entered', 'warn')
+
+    if (p.kind === 'gotoLine') {
+      const asked = Number.parseInt(name, 10)
+      if (!Number.isInteger(asked) || asked < 1) return say(`Not a line number: ${name}`, 'error')
+      const total = workspace.activeBuffer()?.content.split('\n').length ?? 1
+      const line = Math.min(asked, total)
+      editor.requestGoto(line - 1, 0)
+      panes.setFocus('editor')
+      say(line === asked ? `Line ${line}` : `Line ${line} — the file ends there`)
+    } else if (p.kind === 'newFile') {
+      const path = join(p.dir, name)
+      const err = createFile(path)
+      if (err) return say(err, 'error')
+      tree.expand(p.dir)
+      workspace.openFile(path)
+      say(`Created ${name}`)
+    } else if (p.kind === 'newFolder') {
+      const path = join(p.dir, name)
+      const err = createDir(path)
+      if (err) return say(err, 'error')
+      tree.expand(path)
+      tree.setSelectedPath(path)
+      say(`Created ${name}/`)
+    } else if (p.kind === 'rename') {
+      const err = fileOps.movePath(p.target, join(dirname(p.target), name))
+      if (err) return say(err, 'error')
+      say(`Renamed to ${name}`)
+    } else if (p.kind === 'commit') {
+      const paths = p.paths
+      gitOp('Committing', () =>
+        paths ? commitPaths(rootDir, name, paths) : commitStaged(rootDir, name),
+      )
+    }
+  }
+
+  /** Carry out whatever the open confirm prompt was asking about. */
+  const confirmPrompt = () => {
+    const p = prompt()
+    setPrompt(null)
+    switch (p?.kind) {
+      case 'delete':
+        return fileOps.deleteTargets(p.targets)
+      case 'closeDirty': {
+        for (const path of p.paths) workspace.closeTab(path, true)
+        return say(`Discarded unsaved edits in ${p.names.join(', ')}`, 'warn')
+      }
+      case 'quitDirty':
+        return quit(true)
+      case 'undoCommit':
+        return gitOp('Undoing commit', () => undoLastCommit(rootDir), {
+          done: () => `Undid "${p.subject}" — its changes are staged`,
+        })
+    }
+  }
+
+  const promptTitle = () => {
+    const p = prompt()
+    return p ? PROMPT_TITLES[p.kind] : undefined
+  }
+  const promptValue = () => {
+    const p = prompt()
+    return p?.kind === 'rename' ? basename(p.target) : ''
+  }
+
+  /**
+   * What the confirm modal asks, per prompt kind. Narrowing on `p.kind` is what
+   * types the payload fields here, so the JSX needs no casts.
+   */
+  const confirmation = createMemo<Confirmation | null>(() => {
+    const p = prompt()
+    switch (p?.kind) {
+      case 'delete': {
+        const only = p.targets.length === 1 ? p.targets[0]! : null
+        return {
+          title: 'Delete',
+          verb: 'delete',
+          danger: true,
+          // Naming several files would run past the modal; the count is the thing
+          // worth checking before agreeing to this one.
+          message: only
+            ? `Delete "${basename(only)}"${isDirectory(only) ? ' and its contents' : ''}?`
+            : `Delete these ${p.targets.length} items and anything inside them?`,
+        }
+      }
+      case 'closeDirty':
+        return {
+          title: 'Unsaved changes',
+          verb: 'close without saving',
+          danger: true,
+          message: `Unsaved edits in ${p.names.join(', ')} will be lost. Close anyway?`,
+        }
+      case 'quitDirty':
+        return {
+          title: 'Unsaved changes',
+          verb: 'quit without saving',
+          danger: true,
+          message: `Unsaved edits in ${p.names.join(', ')} will be lost. Quit anyway?`,
+        }
+      case 'undoCommit':
+        return {
+          title: 'Undo last commit',
+          verb: 'undo it',
+          danger: false,
+          message: `Undo "${p.subject}"? Its changes come back as staged edits.`,
+        }
+      default:
+        return null
+    }
+  })
+
+  return { quit, submitPrompt, confirmPrompt, promptTitle, promptValue, confirmation }
+}
+
+export type PromptHandlers = ReturnType<typeof createPromptHandlers>

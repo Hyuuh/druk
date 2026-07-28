@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
@@ -6,8 +6,10 @@ export type LineChange = 'added' | 'modified' | 'deleted'
 export type FileStatus = 'untracked' | 'added' | 'modified' | 'deleted'
 
 /**
- * Read-only: druk reports what git says and never asks it to change anything. Every
- * call here is a query behind the gutter marks, the tree marks or the status bar.
+ * Queries run synchronously (`git`) — they sit behind the gutter marks, tree marks
+ * and status bar, and finish in milliseconds. Mutations run through `mutate`,
+ * asynchronously: a push or fetch talks to the network and would freeze the whole
+ * TUI for its duration if awaited on the render thread's clock.
  *
  * `spawnSync` truncates at 1 MB by default and reports ENOBUFS, which every caller
  * here reads as "no output" — `status` would lose files in a large repository.
@@ -134,4 +136,118 @@ export function upstreamOf(cwd: string): Upstream | null {
   const counts = git(cwd, ['rev-list', '--left-right', '--count', '@{u}...HEAD'])
   const [behind, ahead] = (counts.stdout ?? '').trim().split(/\s+/).map(Number)
   return { name: ref.stdout.trim(), ahead: ahead ?? 0, behind: behind ?? 0 }
+}
+
+export function inRepository(cwd: string): boolean {
+  return git(cwd, ['rev-parse', '--is-inside-work-tree'], 3000).stdout?.trim() === 'true'
+}
+
+/** True when the index differs from HEAD — whether "Commit staged" has anything to do. */
+export function hasStaged(cwd: string): boolean {
+  // Exit 1 is the answer "yes, there are differences", not a failure; on an
+  // unborn branch git compares the index against the empty tree, so a fresh
+  // repository with staged files still reports correctly.
+  return git(cwd, ['diff', '--cached', '--quiet'], 3000).status === 1
+}
+
+/** Subject of HEAD, or null with no commits yet — what "undo last commit" names. */
+export function lastCommitSubject(cwd: string): string | null {
+  const run = git(cwd, ['log', '-1', '--format=%s'], 3000)
+  if (run.status !== 0) return null
+  const subject = run.stdout.trim()
+  return subject.length > 0 ? subject : null
+}
+
+export interface GitResult {
+  ok: boolean
+  /** One status-bar line: the first thing git said worth repeating. */
+  detail: string
+}
+
+/** Long enough for a slow push; nothing druk runs should legitimately outlast it. */
+const MUTATE_TIMEOUT = 60_000
+
+function firstLine(text: string): string {
+  return (
+    text
+      .split('\n')
+      .map(line => line.trim())
+      .find(line => line.length > 0) ?? ''
+  )
+}
+
+function mutate(cwd: string, args: string[]): Promise<GitResult> {
+  return new Promise(resolve => {
+    const child = spawn('git', args, {
+      cwd,
+      // Without this an https remote with no cached credential makes git *prompt*
+      // on the terminal druk owns — an invisible question the TUI hangs behind.
+      // Failing fast turns it into a status-bar error instead.
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', chunk => (stdout += chunk))
+    child.stderr.on('data', chunk => (stderr += chunk))
+    const timer = setTimeout(() => child.kill('SIGKILL'), MUTATE_TIMEOUT)
+    // 'error' (spawn failure) and 'close' can both fire; the first one answers.
+    let settled = false
+    const finish = (result: GitResult) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+    child.on('error', err => finish({ ok: false, detail: err.message }))
+    child.on('close', code => {
+      // Success chatter (push progress, fetch summaries) arrives on stderr too,
+      // so on failure stderr is the answer and on success either will do.
+      const ok = code === 0
+      finish({ ok, detail: firstLine(ok ? stdout || stderr : stderr || stdout) })
+    })
+  })
+}
+
+export function commitStaged(cwd: string, message: string): Promise<GitResult> {
+  return mutate(cwd, ['commit', '-m', message])
+}
+
+/** Stage and commit exactly `paths`; anything staged for other paths stays staged. */
+export async function commitPaths(
+  cwd: string,
+  message: string,
+  paths: string[],
+): Promise<GitResult> {
+  // -A scoped to the paths: it is what stages a deletion or an untracked file.
+  const add = await mutate(cwd, ['add', '-A', '--', ...paths])
+  if (!add.ok) return add
+  return mutate(cwd, ['commit', '-m', message, '--', ...paths])
+}
+
+/** Soft reset: the commit is gone, its changes stay staged. */
+export function undoLastCommit(cwd: string): Promise<GitResult> {
+  return mutate(cwd, ['reset', '--soft', 'HEAD~1'])
+}
+
+export function stashPush(cwd: string): Promise<GitResult> {
+  // -u: "stash my changes" from an editor includes the files just created.
+  return mutate(cwd, ['stash', 'push', '-u'])
+}
+
+export function stashPop(cwd: string): Promise<GitResult> {
+  return mutate(cwd, ['stash', 'pop'])
+}
+
+export function push(cwd: string, branch: string, hasUpstream: boolean): Promise<GitResult> {
+  return mutate(cwd, hasUpstream ? ['push'] : ['push', '--set-upstream', 'origin', branch])
+}
+
+export function fetchRemote(cwd: string): Promise<GitResult> {
+  return mutate(cwd, ['fetch'])
+}
+
+export function pull(cwd: string): Promise<GitResult> {
+  // --ff-only: a real merge wants an editor and a conflict UI druk does not have.
+  return mutate(cwd, ['pull', '--ff-only'])
 }
