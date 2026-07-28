@@ -18,8 +18,22 @@ scripts/
   release.ts         stages the npm package + release archives from dist/
   formula.ts         Homebrew formula for the current version's archives
   app/
-    App.tsx          all application state + keybindings
+    App.tsx          composition root: creates the controllers, wires them, renders layout
     commands.ts      command tree  ← the feature index (Ctrl+P palette)
+    actions.ts       binds the command tree's actions to the controllers
+    keyboard.ts      the global keymap (chords + tree keys)
+    Overlays.tsx     overlay state + the modal stack (search, pickers, palette, help…)
+    context.ts       AppContext: every controller, typed, for the wiring that spans them
+    workspace.ts     buffers + tabs: open/close/save, disk sync, session persistence
+    tree.ts          file-tree state: expansion, selection, marked ranges
+    fileOps.ts       move/copy/delete batches and the x/c/p clipboard
+    git.ts           git signals, the serialised mutation runner, refresh effects
+    prompts.ts       prompt/confirm state machine (and quit, which may prompt)
+    panes.ts         focus + sidebar visibility
+    editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
+    settings.ts      config store + the actions that patch and persist it
+    status.ts        status-bar message + the one busy/progress slot
+    types.ts         shared app types (FileBuffer, Prompt, Conflict…)
   core/
     cli.ts           argv -> project directory + optional single file
     config.ts        user settings, persisted to ~/.config/druk/config.json
@@ -58,7 +72,12 @@ scripts/
 ```
 
 Dependency direction is one-way: `ui/` and feature folders never import from `app/`.
-`App.tsx` owns state and passes it down; components take props and call callbacks.
+State lives in the `app/` controllers — factories (`createWorkspace`, `createTree`, …)
+that `App.tsx` calls once, in dependency order, inside the component body, so their
+signals and effects live under the app's render root. Components take props and call
+callbacks. Cross-cutting wiring (the keymap, the palette actions, the modal stack)
+takes the whole `AppContext` instead of a dependency list — it touches everything by
+nature, and threading twenty props would say less.
 
 ## Extension points
 
@@ -132,9 +151,11 @@ defaults, so a hand-edited config can never break startup.
 ### Add a command
 
 Add an action to `CommandActions` and an entry to `buildCommands` in
-[`src/app/commands.ts`](src/app/commands.ts), then implement the action in `App.tsx`.
-For a keybinding, also add a case to the `useKeyboard` handler in `App.tsx` and set the
-command's `hint`.
+[`src/app/commands.ts`](src/app/commands.ts), then bind it in
+[`src/app/actions.ts`](src/app/actions.ts) — the implementation itself belongs in
+whichever controller owns that state (`workspace.ts`, `fileOps.ts`, `git.ts`, …).
+For a keybinding, also add a case to the handler in
+[`src/app/keyboard.ts`](src/app/keyboard.ts) and set the command's `hint`.
 
 Commands form a tree: an entry either runs (`run`) or opens a submenu (`children`),
 never both. Group related commands under a parent to keep the root list short —
@@ -154,7 +175,7 @@ vim mode).
 - **Global chords must claim their key.** OpenTUI's textarea has its own Ctrl bindings
   (`Ctrl+W` deletes a word, `Ctrl+F`/`Ctrl+B` move the caret, `Ctrl+←`/`→` jump a word), so
   a chord App handles without `preventDefault()` fires twice — closing a tab used to eat a
-  word on the way out. `App.tsx`'s `claim()` wrapper exists for this.
+  word on the way out. The `claim()` wrapper in `src/app/keyboard.ts` exists for this.
 - **`Ctrl+Shift` is not deliverable.** Outside the kitty keyboard protocol
   `Ctrl+Shift+<letter>` arrives byte-identical to `Ctrl+<letter>` with `shift: false`, so a
   shifted chord silently runs the unshifted command. Bindings accept `Ctrl+Opt` as well.
@@ -222,7 +243,7 @@ vim mode).
   else in the app branches on it; `Ctrl+B`, the tree, search and git all work normally
   because `rootDir` is still a real directory.
 - **One move function, because a folder move invalidates paths in bulk.** `movePath` in
-  `App.tsx` backs renaming and `x`/`p` alike: it renames on disk and then
+  `src/app/fileOps.ts` backs renaming and `x`/`p` alike: it renames on disk and then
   remaps every tab, buffer, preview and expanded entry *at or under* the old path. A
   buffer left pointing at the old path saves the file back to where it used to be,
   recreating the folder that was just moved. Anything that relocates a path goes through

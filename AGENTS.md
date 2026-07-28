@@ -12,8 +12,9 @@ installer — and run as a CLI.
 
 Features: file tree with bulk file operations, preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide), command palette, themes, vim mode,
-git marks in tree/gutter/status bar, file watching with conflict prompts, per-project
-session restore, and a startup update check.
+git marks in tree/gutter/status bar plus palette commands for commit/undo/stash/push/
+fetch/pull, file watching with conflict prompts, per-project session restore, and a
+startup update check.
 
 ## Runtime and tooling
 
@@ -117,13 +118,15 @@ dependency rule, and recipes for the extension points:
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts` |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) |
-| command | `src/app/commands.ts` + implement the action in `src/app/App.tsx` |
-| keybinding | handler in `src/app/App.tsx` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay and Alt+/ peek) |
+| command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
+| keybinding | handler in `src/app/keyboard.ts` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay and Alt+/ peek) |
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 
 `ui/` and the feature folders (`core/`, `languages/`, `themes/`, `editor/`) must never
-import from `app/`. State lives in `App.tsx` and flows down as props.
+import from `app/`. State lives in the `app/` controller modules (`createWorkspace`,
+`createTree`, …), which `App.tsx` creates once in dependency order and composes;
+components take props and call callbacks.
 
 ## Rules
 
