@@ -7,26 +7,50 @@
 import type { StyleDefinitionInput } from '@opentui/core'
 import { createStore } from 'solid-js/store'
 
+import { catppuccinFrappe } from './catppuccin-frappe'
 import { catppuccinLatte } from './catppuccin-latte'
+import { catppuccinMacchiato } from './catppuccin-macchiato'
 import { catppuccinMocha } from './catppuccin-mocha'
 import { dracula } from './dracula'
+import { everforestDark } from './everforest-dark'
+import { everforestLight } from './everforest-light'
 import { githubDark } from './github-dark'
 import { githubLight } from './github-light'
 import { gruvboxDark } from './gruvbox-dark'
+import { gruvboxLight } from './gruvbox-light'
 import { nord } from './nord'
+import { oneDark } from './one-dark'
+import { rosePine } from './rose-pine'
+import { rosePineDawn } from './rose-pine-dawn'
+import { rosePineMoon } from './rose-pine-moon'
+import { solarizedDark } from './solarized-dark'
+import { solarizedLight } from './solarized-light'
 import { tokyoNight } from './tokyo-night'
 import type { Theme, ThemeUi } from './types'
 
 export type { Theme, ThemeUi }
 
+// Mocha before Macchiato: the palette matches a query in order, so the flavor
+// whose name is a prefix of the other's search hits must come first.
 export const THEMES = {
   'dark': githubDark,
   'light': githubLight,
   'catppuccin-mocha': catppuccinMocha,
+  'catppuccin-macchiato': catppuccinMacchiato,
+  'catppuccin-frappe': catppuccinFrappe,
   'catppuccin-latte': catppuccinLatte,
   dracula,
-  nord,
+  'everforest-dark': everforestDark,
+  'everforest-light': everforestLight,
   'gruvbox': gruvboxDark,
+  'gruvbox-light': gruvboxLight,
+  nord,
+  'one-dark': oneDark,
+  'rose-pine': rosePine,
+  'rose-pine-moon': rosePineMoon,
+  'rose-pine-dawn': rosePineDawn,
+  'solarized-dark': solarizedDark,
+  'solarized-light': solarizedLight,
   'tokyo-night': tokyoNight,
 }
 

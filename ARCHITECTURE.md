@@ -38,8 +38,10 @@ scripts/
   themes/
     index.ts         theme registry  ← add a theme here
     types.ts         Theme / ThemeUi shape
-    github-dark.ts   one file per theme: also github-light, catppuccin-mocha,
-                     catppuccin-latte, dracula, nord, gruvbox-dark, tokyo-night
+    github-dark.ts   one file per theme: also github-light, the four catppuccin
+                     flavors, dracula, everforest-dark/light, gruvbox-dark/light,
+                     nord, one-dark, the three rosé pine variants,
+                     solarized-dark/light, tokyo-night
   editor/
     vim.ts           modal editing state machine (normal / insert / visual)
     history.ts       undo/redo, coalesced per edit burst
@@ -95,6 +97,12 @@ the file header, as the shipped themes do. Change the colors, and register it in
 [`src/themes/index.ts`](src/themes/index.ts). It appears in the command palette
 automatically. `ui` covers the chrome; `syntax` maps tree-sitter capture groups to
 styles, and sub-scopes fall back to their parent (`type.builtin` → `type`).
+
+Where a published palette maps onto a capture group, follow the scheme's own highlighting
+guide too — most upstreams ship one (catppuccin's style guide, everforest's `palette.md`,
+solarized's vim colorscheme), and matching it is what makes the theme recognisable. Only
+`currentLine` and `indentGuide` are usually absent from a palette; blend them off `bg`
+yourself, within the bounds `test/unit.test.ts` and `test/indent.test.tsx` assert.
 
 `setTheme()` **replaces** `syntaxTheme` rather than merging into it. Themes do not all
 define the same capture groups, and a leftover group from the previous theme renders in

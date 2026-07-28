@@ -1,0 +1,63 @@
+import type { Theme } from './types'
+
+/**
+ * Solarized Dark. Palette from https://github.com/altercation/solarized; the
+ * capture groups follow that repository's own vim colorscheme — Statement is
+ * green, Constant cyan, Identifier blue, Type yellow, Special red.
+ */
+export const solarizedDark: Theme = {
+  name: 'Solarized Dark',
+  ui: {
+    bg: '#002b36',
+    panelBg: '#002b36',
+    barBg: '#073642',
+    statusBg: '#268bd2',
+    statusFg: '#002b36',
+    text: '#839496',
+    dim: '#657b83',
+    faint: '#586e75',
+    accent: '#268bd2',
+    activeTabFg: '#93a1a1',
+    inactiveTabFg: '#657b83',
+    treeSelectedBg: '#073642',
+    treeFocusBg: '#04313c',
+    dirty: '#b58900',
+    error: '#dc322f',
+    folder: '#839496',
+    cursor: '#839496',
+    scrollbar: '#586e75',
+    gutter: '#586e75',
+    currentLine: '#073642',
+    indentGuide: '#05333e',
+    gitAdded: '#859900',
+    gitModified: '#b58900',
+    gitDeleted: '#dc322f',
+  },
+  syntax: {
+    'comment': { fg: '#586e75', italic: true },
+    'keyword': { fg: '#859900' },
+    'string': { fg: '#2aa198' },
+    'number': { fg: '#2aa198' },
+    'boolean': { fg: '#2aa198' },
+    'constant': { fg: '#2aa198' },
+    'function': { fg: '#268bd2' },
+    'type': { fg: '#b58900' },
+    'variable': { fg: '#839496' },
+    'property': { fg: '#268bd2' },
+    'tag': { fg: '#dc322f' },
+    'operator': { fg: '#859900' },
+    'punctuation': { fg: '#839496' },
+    'label': { fg: '#859900' },
+    'escape': { fg: '#dc322f' },
+    'embedded': { fg: '#839496' },
+    'error': { fg: '#dc322f' },
+    'markup.heading': { fg: '#268bd2', bold: true },
+    'markup.strong': { fg: '#839496', bold: true },
+    'markup.italic': { fg: '#839496', italic: true },
+    'markup.raw': { fg: '#2aa198' },
+    'markup.link': { fg: '#2aa198' },
+    'markup.link.url': { fg: '#2aa198', underline: true },
+    'markup.list': { fg: '#859900' },
+    'markup.quote': { fg: '#586e75', italic: true },
+  },
+}
