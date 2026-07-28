@@ -5,10 +5,12 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from
 
 import { copyToClipboard, readClipboard } from '../core/clipboard'
 import type { LineChange } from '../core/git'
+import { changeRows } from '../editor/changes'
 import { History } from '../editor/history'
 import { handleTyping } from '../editor/typing'
 import { handleVimKey, initialVimState } from '../editor/vim'
 import type { VimMode } from '../editor/vim'
+import { logicalWindow } from '../editor/window'
 import { computeHighlights, getSyntaxStyle, segmentsIn, STALE } from '../languages/highlight'
 import type { Highlighted, Segment } from '../languages/highlight'
 import { ui } from '../themes'
@@ -59,6 +61,13 @@ const DEBOUNCE_MS = 16
 const OVERSCAN = 60
 
 const SIGN_GLYPH: Record<LineChange, string> = { added: '▎', modified: '▎', deleted: '▁' }
+
+/** Read at paint time: `ui` is a store, so a table built at module scope freezes. */
+const CHANGE_COLORS: Record<LineChange, () => string> = {
+  added: () => ui.gitAdded,
+  modified: () => ui.gitModified,
+  deleted: () => ui.gitDeleted,
+}
 
 /** Per renderer, the one renderable a mouse selection may start in. */
 const selectionHosts = new WeakMap<object, unknown>()
@@ -158,8 +167,67 @@ export function EditorPane(props: EditorPaneProps) {
 
   const [editorEl, setEditorEl] = createSignal<TextareaRenderable | null>(null)
   const [cursorLine, setCursorLine] = createSignal(0)
-  /** Scroll position of the textarea, mirrored so the scrollbar can react to it. */
-  const [viewport, setViewport] = createSignal({ top: 0, height: 0, total: 0 })
+  /**
+   * Scroll position of the textarea, mirrored so the scrollbar can react to it.
+   * Three signals rather than one object: a single `{top, height, total}` gets a
+   * new identity on every scroll step, so anything reading it for the height
+   * alone would recompute on each arrow key.
+   */
+  const [viewTop, setViewTop] = createSignal(0)
+  const [viewHeight, setViewHeight] = createSignal(0)
+  const [viewTotal, setViewTotal] = createSignal(0)
+  const viewport = () => ({ top: viewTop(), height: viewHeight(), total: viewTotal() })
+  /**
+   * Visual row to logical line. Wrapping makes those two different things, and
+   * `scrollY` counts visual rows while highlights are addressed by logical line:
+   * on a lockfile whose lines wrap four times, scrolling to line 1500 asked for
+   * a window around line 5970 — past the end of a 3000-line file, so nothing was
+   * highlighted and the text went white.
+   *
+   * The table costs ~2ms to fetch on such a file, so it is cached and rebuilt
+   * only when the text or the width changes.
+   */
+  let visualToLogical: number[] | null = null
+  const forgetWrapMap = () => {
+    visualToLogical = null
+  }
+
+  /**
+   * Not guarded on `virtualLineCount`: that reports the viewport's rows, not the
+   * buffer's — it says 22 on a file whose 3 000 lines wrap to 12 000 — so the
+   * table is the only honest answer.
+   */
+  const wrapMap = (): number[] => {
+    if (!editor) return []
+    if (!visualToLogical) visualToLogical = editor.lineInfo.lineSources as number[]
+    return visualToLogical
+  }
+
+  /** The line a visual row belongs to. Identity when nothing wraps. */
+  const lineAtRow = (row: number): number => {
+    const map = wrapMap()
+    if (map.length === 0) return row
+    return map[Math.max(0, Math.min(map.length - 1, row))] ?? row
+  }
+
+  /**
+   * The first visual row of a line — the inverse of `lineAtRow`, by binary
+   * search, since the table is non-decreasing. Scrolling has to be expressed in
+   * rows even when everything else is counted in lines.
+   */
+  const rowAtLine = (line: number): number => {
+    const map = wrapMap()
+    if (map.length === 0) return line
+    let low = 0
+    let high = map.length - 1
+    while (low < high) {
+      const mid = (low + high) >> 1
+      if ((map[mid] ?? 0) < line) low = mid + 1
+      else high = mid
+    }
+    return low
+  }
+
   /** Track geometry, shared by the painter and the drag handler. */
   const scrollMetrics = createMemo(() => {
     const measured = viewport()
@@ -169,7 +237,10 @@ export function EditorPane(props: EditorPaneProps) {
     const total = measured.total || props.content.split('\n').length
     if (height <= 0 || total <= height) return null
     const size = Math.max(1, Math.round((height * height) / total))
-    return { height, total, size, span: height - size, top: measured.top }
+    // `top` counts visual rows and `total` counts lines. Left mixed, a wrapped
+    // file drives the thumb to the bottom while the change marks — which are
+    // per line — still sit halfway, so the two disagree about the same place.
+    return { height, total, size, span: height - size, top: lineAtRow(measured.top) }
   })
 
   /**
@@ -216,7 +287,9 @@ export function EditorPane(props: EditorPaneProps) {
 
   const syncViewport = () => {
     if (!editor) return
-    setViewport({ top: editor.scrollY, height: editor.height, total: editor.lineCount })
+    setViewTop(editor.scrollY)
+    setViewHeight(editor.height)
+    setViewTotal(editor.lineCount)
   }
 
   /**
@@ -266,6 +339,7 @@ export function EditorPane(props: EditorPaneProps) {
   }
 
   /** Keep the viewport (plus overscan) highlighted, touching only what changed. */
+  /** Keep the viewport (plus overscan) highlighted, touching only what changed. */
   const applyWindow = (force = false) => {
     if (!editor) return
     syncViewport()
@@ -273,8 +347,7 @@ export function EditorPane(props: EditorPaneProps) {
       editor.clearAllHighlights()
       appliedLines.clear()
     }
-    const from = Math.max(0, editor.scrollY - OVERSCAN)
-    const to = editor.scrollY + editor.height + OVERSCAN
+    const { from, to } = logicalWindow(editor.scrollY, editor.height, wrapMap(), OVERSCAN)
 
     for (const line of appliedLines) {
       if (line < from || line > to) {
@@ -299,12 +372,10 @@ export function EditorPane(props: EditorPaneProps) {
    * The coordinates have to land inside the textarea or `ignoreScrollOutsideBounds`
    * drops it.
    */
-  const dragTo = (screenY: number) => {
-    const m = scrollMetrics()
-    if (!m || !editor || !track) return
-    const within = Math.max(0, Math.min(m.span, screenY - track.y - Math.floor(m.size / 2)))
-    const wanted = m.span === 0 ? 0 : Math.round((within / m.span) * (m.total - m.height))
-    const delta = wanted - editor.scrollY
+  /** `wanted` is a line; the buffer scrolls in visual rows. */
+  const scrollTo = (wanted: number) => {
+    if (!editor) return
+    const delta = rowAtLine(Math.round(wanted)) - editor.scrollY
     if (delta === 0) return
     const host = editor as unknown as { onMouseEvent: (event: unknown) => void }
     host.onMouseEvent({
@@ -315,6 +386,16 @@ export function EditorPane(props: EditorPaneProps) {
     })
     syncViewport()
     applyWindow()
+  }
+
+  const dragTo = (screenY: number) => {
+    const m = scrollMetrics()
+    if (!m || !track) return
+    const within = Math.max(0, Math.min(m.span, screenY - track.y - Math.floor(m.size / 2)))
+    // Across lines, matching the thumb: `m.height` counts rows, and a wrapped
+    // file shows far fewer lines than that, so subtracting it here would stop
+    // the drag short of the end of the file.
+    scrollTo(m.span === 0 ? 0 : (within / m.span) * Math.max(0, m.total - 1))
   }
 
   let cursorSync: ReturnType<typeof setTimeout> | null = null
@@ -376,6 +457,7 @@ export function EditorPane(props: EditorPaneProps) {
 
   /** The text changed: drop the stale segments before re-highlighting the new text. */
   const rehighlight = (text: string) => {
+    forgetWrapMap()
     parsed = null
     byLine = new Map()
     segmented.clear()
@@ -414,6 +496,27 @@ export function EditorPane(props: EditorPaneProps) {
   }
 
   /**
+   * Git changes down the track, so the whole file's changes are visible and not
+   * only the part on screen. Cheap: one pass over the changed lines, no reading
+   * of the text at all.
+   */
+  const changeTrack = createMemo(() => {
+    const m = scrollMetrics()
+    const height = m?.height ?? viewHeight()
+    const total = m?.total ?? viewTotal()
+    if (height <= 0) return []
+    return changeRows(props.gitLines, total, height)
+  })
+
+  /** Click the track to jump there, the way dragging the thumb does. */
+  const jumpToRow = (row: number) => {
+    const m = scrollMetrics()
+    if (!m || !editor) return
+    const line = Math.round((row / Math.max(1, m.height - 1)) * (m.total - 1))
+    scrollTo(Math.max(0, line - Math.floor(editor.height / 2)))
+  }
+
+  /**
    * Closing the last tab swaps the textarea for the fallback and destroys the
    * native buffer while `editor` still points at it. Both pending timers touch
    * it, so they have to die with the renderable, not with the whole pane.
@@ -437,6 +540,36 @@ export function EditorPane(props: EditorPaneProps) {
     if (props.blocked || !editor || !props.focused) return
     scheduleCursorSync()
     cursorBeforeEdit = editor.cursorOffset
+
+    // The textarea reads Ctrl+A as line-start, the readline habit; claim it first
+    // so it means select-all, as it does in every GUI editor.
+    if (key.ctrl && key.name === 'a') {
+      key.preventDefault()
+      editor.selectAll()
+      applyWindow(true)
+      return
+    }
+
+    // Typing over a selection has to replace it. The buffer inserts at the caret
+    // and leaves the selected text in place, so the delete is done here — for a
+    // Ctrl+A selection and an ordinary mouse drag alike. Not in vim's command
+    // modes, where a visual selection is live and d/y/c are commands, not text.
+    if (editor.hasSelection() && (!props.vim || vimState.mode === 'insert')) {
+      const typed = key.sequence
+      // Backspace and friends arrive as a one-character sequence too, so the
+      // check is on the character being printable, not on its length.
+      const printable =
+        typed?.length === 1 && typed >= ' ' && typed !== '\u007F' && !key.ctrl && !key.meta
+      if (key.name === 'backspace' || key.name === 'delete' || printable) {
+        key.preventDefault()
+        editor.deleteSelection()
+        if (printable) editor.insertText(typed!)
+        props.onChange(editor.plainText)
+        scheduleHighlight()
+        applyWindow(true)
+        return
+      }
+    }
 
     // Ctrl+Shift+Z is not encodable in every terminal, so Ctrl+Y redoes too.
     if (key.ctrl && key.name === 'z') {
@@ -675,6 +808,10 @@ export function EditorPane(props: EditorPaneProps) {
                 afterResize(el, () => {
                   applyLineSigns()
                   syncViewport()
+                  // A resize re-wraps every line, so the visual-to-logical table
+                  // built at the old width no longer describes this one.
+                  forgetWrapMap()
+                  applyWindow(true)
                 })
                 allowSelectionOnlyInEditor(el)
                 onCleanup(releaseEditor)
@@ -708,6 +845,29 @@ export function EditorPane(props: EditorPaneProps) {
               }}
             />
           </line_number>
+          {/* Git changes for the whole file, beside the scrollbar rather than in
+              it: the thumb says where you are, and a mark under it would be
+              hidden exactly when you are reading that part of the file. */}
+          <Show when={changeTrack().some(Boolean)}>
+            <box
+              width={1}
+              flexShrink={0}
+              backgroundColor={ui.bg}
+              onMouseDown={(event: MouseEvent) => {
+                if (!dragging()) jumpToRow(event.y - (editor?.y ?? 0))
+              }}
+            >
+              <For each={changeTrack()}>
+                {change => (
+                  <text
+                    fg={change ? CHANGE_COLORS[change]() : ui.bg}
+                    bg={ui.bg}
+                    content={change ? '▪' : ' '}
+                  />
+                )}
+              </For>
+            </box>
+          </Show>
           <Show when={scrollbar().length > 0}>
             <box
               ref={(el: { y: number }) => {

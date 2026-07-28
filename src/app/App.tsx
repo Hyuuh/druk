@@ -2,15 +2,15 @@ import { basename, dirname, join, relative } from 'node:path'
 
 import type { KeyEvent, MouseEvent } from '@opentui/core'
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
+import { copyAll, moveAll, removeAll } from '../core/bulk'
 import { saveConfig, sidebarColumns, SIDEBAR_MIN, SIDEBAR_MAX } from '../core/config'
 import type { Config } from '../core/config'
 import type { TreeNode } from '../core/fs'
 import {
   BinaryFileError,
-  copy,
   createDir,
   createFile,
   exists,
@@ -19,7 +19,6 @@ import {
   isDirectory,
   mtimeOf,
   readFile,
-  remove,
   rename,
   watchTree,
   writeFile,
@@ -105,6 +104,9 @@ const EDITOR_MIN = 20
 const chord = (key: KeyEvent) => key.shift || key.option || key.meta
 
 /** Idle: the footer shows contextual key hints instead of a message. */
+/** Rows the divider's grip occupies — long enough to aim at, short enough to be a grip. */
+const GRIP = [0, 1, 2, 3, 4]
+
 const READY = ''
 /**
  * Prefixes of the watcher's clash warnings, so it can recognise its own message and
@@ -250,6 +252,9 @@ export function App(props: {
   const [history, setHistory] = createSignal<{ kind: 'undo' | 'redo'; key: number } | null>(null)
   const [goto, setGoto] = createSignal<{ line: number; col: number; key: number } | null>(null)
   const [cursor, setCursor] = createSignal({ line: 0, col: 0 })
+  /** A long file operation in flight, so the bar can count instead of freezing. */
+  const [busy, setBusy] = createSignal<{ label: string; done: number; total: number } | null>(null)
+
   const [status, setStatus] = createSignal<{ msg: string; tone: Tone }>({
     msg: READY,
     tone: 'info',
@@ -278,6 +283,17 @@ export function App(props: {
   }
 
   const say = (msg: string, tone: Tone = 'info') => setStatus({ msg, tone })
+
+  /**
+   * One at a time. The operations run in the background now, so a second delete
+   * started while the first is going would share the one progress slot and clear
+   * it early — and both would be rewriting the same tree underneath each other.
+   */
+  const whileFree = (run: () => void) => {
+    const running = busy()
+    if (running) return say(`${running.label} already — let it finish`, 'warn')
+    run()
+  }
   // Bump the Set identity so `nodes` recomputes and re-reads the filesystem.
   const refreshTree = () => setExpanded(prev => new Set(prev))
   const expand = (path: string) => setExpanded(prev => new Set(prev).add(path))
@@ -428,10 +444,13 @@ export function App(props: {
    * path saves the file back to where it used to be — recreating the folder that was
    * just moved. Returns an error message, or null on success.
    */
-  const movePath = (from: string, to: string): string | null => {
-    const err = rename(from, to)
-    if (err) return err
-
+  /**
+   * Point everything that remembers a path at where the file went: open tabs, their
+   * buffers, the active and preview tabs, the selection and the expanded folders.
+   * A batch move needs this as much as a single one — without it the tabs of moved
+   * files keep pointing at paths that no longer exist.
+   */
+  const adoptMove = (from: string, to: string) => {
     const inside = `${from}/`
     const remap = (path: string) =>
       path === from ? to : path.startsWith(inside) ? to + path.slice(from.length) : path
@@ -451,6 +470,12 @@ export function App(props: {
     setSelectedPath(to)
     // Fresh Set identity, so this doubles as the tree refresh.
     setExpanded(prev => new Set([...prev].map(remap)))
+  }
+
+  const movePath = (from: string, to: string): string | null => {
+    const err = rename(from, to)
+    if (err) return err
+    adoptMove(from, to)
     return null
   }
 
@@ -485,21 +510,39 @@ export function App(props: {
    */
   const moveAllInto = (paths: string[], dir: string) => {
     if (paths.length === 1) return moveInto(paths[0]!, dir)
-    let moved = 0
+    // Refusals are decided up front — they are cheap checks, and the ones that
+    // survive go through the incremental mover so the bar can count them.
     const refused: string[] = []
-    for (const path of paths) {
-      if (whyNotMove(path, dir) || movePath(path, join(dir, basename(path)))) {
-        refused.push(basename(path))
-        continue
-      }
-      moved++
-    }
+    const movable = paths.filter(path => {
+      if (!whyNotMove(path, dir)) return true
+      refused.push(basename(path))
+      return false
+    })
     setMarked([])
     setAnchor(null)
-    if (moved > 0) expand(dir)
-    const where = relative(rootDir, dir) || basename(rootDir)
-    if (refused.length === 0) return say(`Moved ${moved} items to ${where}/`)
-    say(`Moved ${moved} to ${where}/ — left ${refused.join(', ')}`, 'warn')
+
+    whileFree(
+      () =>
+        void (async () => {
+          setBusy({ label: 'Moving', done: 0, total: movable.length })
+          const { done, failed, moved } = await moveAll(
+            movable,
+            dir,
+            (into, base) => join(into, base),
+            progress => setBusy({ label: 'Moving', done: progress.done, total: progress.total }),
+          )
+          setBusy(null)
+          // Tabs, buffers and the selection follow the files, exactly as they do
+          // when a single file is moved.
+          for (const { from, to } of moved) adoptMove(from, to)
+          if (done > 0) expand(dir)
+          refreshTree()
+          const where = relative(rootDir, dir) || basename(rootDir)
+          const left = [...refused, ...failed]
+          if (left.length === 0) return say(`Moved ${done} items to ${where}/`)
+          say(`Moved ${done} to ${where}/ — left ${left.join(', ')}`, 'warn')
+        })(),
+    )
   }
 
   const activateNode = (node: TreeNode) => {
@@ -516,37 +559,41 @@ export function App(props: {
     return node.isDir ? node.path : dirname(node.path)
   }
 
-  /**
-   * Copy one path into `dir`, never over anything: a name already taken there gets
-   * the `copy` suffix, which is what makes pasting beside the original work at all.
-   * Returns false when it could not be done, so a batch can count what it managed.
-   */
-  const copyInto = (path: string, dir: string): boolean => {
-    // A folder cannot be copied into itself — `cpSync` would walk the copy it is
-    // writing. Its own parent is fine, and is exactly how a folder is duplicated.
-    if (dir === path || dir.startsWith(`${path}/`)) {
-      say(`Cannot copy ${basename(path)} into itself`, 'warn')
-      return false
-    }
-    const err = copy(path, freePath(dir, basename(path)))
-    if (err) {
-      say(err, 'error')
-      return false
-    }
-    return true
-  }
-
   const copyAllInto = (paths: string[], dir: string) => {
-    let copied = 0
-    for (const path of paths) if (copyInto(path, dir)) copied++
+    // A folder cannot be copied into itself: the copy would walk the copy it is
+    // writing. Its own parent is fine, and is how a folder gets duplicated.
+    const refused: string[] = []
+    const copyable = paths.filter(path => {
+      if (dir !== path && !dir.startsWith(`${path}/`)) return true
+      refused.push(basename(path))
+      return false
+    })
     setMarked([])
     setAnchor(null)
-    if (copied === 0) return
-    expand(dir)
-    refreshTree()
-    const where = relative(rootDir, dir) || basename(rootDir)
-    const what = copied === 1 ? basename(paths[0]!) : `${copied} items`
-    say(`Copied ${what} to ${where}/`)
+    // Nothing left to do: say why rather than reporting "copied 0 items", which
+    // describes the outcome without naming the reason.
+    if (copyable.length === 0) {
+      return say(`Cannot copy ${refused.join(', ')} into itself`, 'warn')
+    }
+
+    whileFree(
+      () =>
+        void (async () => {
+          setBusy({ label: 'Copying', done: 0, total: copyable.length })
+          const { done, failed } = await copyAll(copyable, dir, freePath, progress =>
+            setBusy({ label: 'Copying', done: progress.done, total: progress.total }),
+          )
+          setBusy(null)
+          if (done === 0) return
+          expand(dir)
+          refreshTree()
+          const where = relative(rootDir, dir) || basename(rootDir)
+          const what = done === 1 ? basename(copyable[0]!) : `${done} items`
+          const left = [...refused, ...failed]
+          if (left.length > 0) return say(`Copied ${what} — left ${left.join(', ')}`, 'warn')
+          say(`Copied ${what} to ${where}/`)
+        })(),
+    )
   }
 
   /** Take the selection for a move or a copy; `p` drops it into the folder chosen next. */
@@ -779,26 +826,41 @@ export function App(props: {
     setPrompt(null)
     switch (p?.kind) {
       case 'delete': {
-        const failed: string[] = []
         for (const target of p.targets) {
-          const err = remove(target)
-          if (err) {
-            failed.push(basename(target))
-            continue
-          }
           if (tabs().includes(target)) closeTab(target, true)
         }
+        // Land on whatever took the deleted row's place, rather than clearing
+        // the selection: with nothing selected the next arrow key jumps back to
+        // the top of the tree instead of carrying on from here.
         const gone = selectedPath()
-        if (gone && p.targets.includes(gone)) setSelectedPath(null)
+        const wasAt =
+          gone && p.targets.includes(gone) ? nodes().findIndex(n => n.path === gone) : -1
         setMarked([])
         setAnchor(null)
-        refreshTree()
-        if (failed.length > 0) return say(`Could not delete ${failed.join(', ')}`, 'error')
-        return say(
-          p.targets.length === 1
-            ? `Deleted ${basename(p.targets[0]!)}`
-            : `Deleted ${p.targets.length} items`,
+
+        const targets = p.targets
+        whileFree(
+          () =>
+            void (async () => {
+              setBusy({ label: 'Deleting', done: 0, total: 0 })
+              const { failed } = await removeAll(targets, progress =>
+                setBusy({ label: 'Deleting', done: progress.done, total: progress.total }),
+              )
+              setBusy(null)
+              refreshTree()
+              if (wasAt >= 0) {
+                const rows = nodes()
+                setSelectedPath(rows[Math.min(wasAt, rows.length - 1)]?.path ?? null)
+              }
+              if (failed.length > 0) return say(`Could not delete ${failed.join(', ')}`, 'error')
+              say(
+                targets.length === 1
+                  ? `Deleted ${basename(targets[0]!)}`
+                  : `Deleted ${targets.length} items`,
+              )
+            })(),
         )
+        return
       }
       case 'closeDirty': {
         for (const path of p.paths) closeTab(path, true)
@@ -1241,23 +1303,29 @@ export function App(props: {
             onPin={node => pinTab(node.path)}
             onFocus={() => setFocus('tree')}
           />
-          {/* Drag handle: one column, drawn as a rule so the grab target can be seen
-              and aimed at. A left border is what fills a box this narrow — its own
-              width is the border's. `scrollbar` is the palette's colour for exactly
-              this, a quiet rule that is still legible on both panel and editor
-              backgrounds. The sidebar starts at column 0, so the pointer's x is the
+          {/* Drag handle: the whole column is the grab target, but only a short
+              grip is drawn at its middle — a full-height rule is a heavy line
+              down the screen for something you touch once. The spacers centre it
+              without anyone having to know the pane's height. `scrollbar` is the
+              palette's quiet rule colour, and the accent while dragging says the
+              grab took. The sidebar starts at column 0, so the pointer's x is the
               width asked for. */}
           <box
             width={1}
             flexShrink={0}
-            border={['left']}
-            borderColor={ui.scrollbar}
-            backgroundColor={ui.barBg}
+            flexDirection="column"
+            backgroundColor={ui.bg}
             onMouseDown={(event: MouseEvent) => {
               setResizing(true)
               resizeSidebar(event.x)
             }}
-          />
+          >
+            <box flexGrow={1} backgroundColor={ui.bg} />
+            <For each={GRIP}>
+              {() => <text fg={resizing() ? ui.accent : ui.scrollbar} bg={ui.bg} content="│" />}
+            </For>
+            <box flexGrow={1} backgroundColor={ui.bg} />
+          </box>
         </Show>
         <EditorPane
           path={activePath()}
@@ -1294,6 +1362,7 @@ export function App(props: {
         behind={upstream()?.behind ?? 0}
         changed={gitStatus().size}
         focus={focus()}
+        busy={busy()}
       />
 
       <Show when={promptTitle()}>

@@ -6,6 +6,8 @@ export interface TreeNode {
   path: string
   isDir: boolean
   depth: number
+  /** Points elsewhere: shown with a mark, opened as whatever it resolves to. */
+  symlink?: boolean
 }
 
 /**
@@ -118,25 +120,48 @@ export function listDir(dir: string, depth = 0): TreeNode[] {
   }
   return entries
     .filter(e => !(e.isDirectory() && VCS_DIRS.has(e.name)))
-    .map(e => ({
-      name: e.name,
-      path: join(dir, e.name),
-      isDir: e.isDirectory(),
-      depth,
-    }))
+    .map(e => {
+      const path = join(dir, e.name)
+      if (!e.isSymbolicLink()) return { name: e.name, path, isDir: e.isDirectory(), depth }
+      // A dirent describes the link itself, so a symlinked directory answers
+      // isDirectory() false — and the tree then tries to read it as a file.
+      let isDir = false
+      try {
+        isDir = fs.statSync(path).isDirectory()
+      } catch {
+        // Broken link: nothing to resolve, so leave it looking like a file.
+      }
+      return { name: e.name, path, isDir, depth, symlink: true }
+    })
     .toSorted((a, b) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
       return a.name.localeCompare(b.name)
     })
 }
 
+/** Where a path really lives, or the path itself when it cannot be resolved. */
+function realPath(path: string): string {
+  try {
+    return fs.realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
 export function flattenVisible(root: string, expanded: Set<string>): TreeNode[] {
   const out: TreeNode[] = []
+  // Real paths of the branch being walked. A symlink pointing at one of its own
+  // ancestors is a cycle, and expanding into it would never come back.
+  const branch = new Set<string>()
   const walk = (dir: string, depth: number) => {
+    const real = realPath(dir)
+    if (branch.has(real)) return
+    branch.add(real)
     for (const node of listDir(dir, depth)) {
       out.push(node)
       if (node.isDir && expanded.has(node.path)) walk(node.path, depth + 1)
     }
+    branch.delete(real)
   }
   walk(root, 0)
   return out

@@ -1,6 +1,6 @@
 import { TextAttributes } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
-import { createMemo, For, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 
 import { MODE_LABELS } from '../editor/vim'
 import type { VimMode } from '../editor/vim'
@@ -24,7 +24,12 @@ export interface StatusBarProps {
   changed: number
   /** Which pane the keyboard is in, so the hints match what the keys do. */
   focus: 'tree' | 'editor'
+  /** A long file operation in flight; replaces the message while it runs. */
+  busy: { label: string; done: number; total: number } | null
 }
+
+/** One frame per tick, so a stalled spinner is visibly stalled. */
+const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 // `dirty` is the palette's amber, already meaning "needs attention, nothing broke".
 const TONE_COLORS: Record<Tone, () => string> = {
@@ -62,6 +67,30 @@ const SEPARATOR = '  '
 export function StatusBar(props: StatusBarProps) {
   const dimensions = useTerminalDimensions()
 
+  const [frame, setFrame] = createSignal(0)
+  /**
+   * Whether to spin at all — a boolean, so the effect below sees one change per
+   * operation. Tracking `props.busy` itself re-ran it on every progress tick,
+   * which cleared and restarted the interval faster than it could ever fire:
+   * the spinner sat on its first frame for the whole run.
+   */
+  const spinning = createMemo(() => props.busy !== null)
+
+  // Only ticking while there is something to spin: an idle editor should not
+  // wake up ten times a second to redraw a character.
+  createEffect(() => {
+    if (!spinning()) return
+    const timer = setInterval(() => setFrame(at => (at + 1) % SPINNER.length), 100)
+    onCleanup(() => clearInterval(timer))
+  })
+
+  const busyText = () => {
+    const busy = props.busy
+    if (!busy) return ''
+    const count = busy.total > 0 ? ` ${busy.done}/${busy.total}` : ` ${busy.done}`
+    return `${SPINNER[frame()]} ${busy.label}${count}`
+  }
+
   const gitText = () => {
     if (!props.branch) return ''
     const parts = [`⎇ ${props.branch}`]
@@ -95,7 +124,9 @@ export function StatusBar(props: StatusBarProps) {
    * newline in a message from anywhere would break it.
    */
   const messageText = createMemo(() => {
-    const flat = props.message.replaceAll(/\s+/g, ' ').trim()
+    // A running operation owns this slot: its progress is the only thing worth
+    // reading while it runs, and it ends with a message of its own.
+    const flat = (busyText() || props.message).replaceAll(/\s+/g, ' ').trim()
     const room = dimensions().width - fixedWidth() - 2
     if (!flat || room < 2) return ''
     return flat.length > room ? `${flat.slice(0, room - 1)}…` : flat
@@ -150,7 +181,11 @@ export function StatusBar(props: StatusBarProps) {
 
       <Show when={messageText()}>
         <box paddingLeft={2} flexShrink={0}>
-          <text fg={TONE_COLORS[props.tone]()} bg={ui.barBg} content={messageText()} />
+          <text
+            fg={props.busy ? ui.accent : TONE_COLORS[props.tone]()}
+            bg={ui.barBg}
+            content={messageText()}
+          />
         </box>
       </Show>
 

@@ -90,7 +90,9 @@ export function statusMap(cwd: string): Map<string, FileStatus> {
 
   // `-z` because the default output C-quotes and octal-escapes any path that is
   // not plain ASCII; unquoting that by hand loses every accented or spaced name.
-  const run = git(cwd, ['status', '--porcelain', '-z'])
+  // `-uall`, or a brand-new directory collapses to a single `?? newdir/` entry
+  // and every file inside it shows no mark at all.
+  const run = git(cwd, ['status', '--porcelain', '-z', '-uall'])
   if (run.status !== 0) return statuses
 
   const entries = run.stdout.split('\0')

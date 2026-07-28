@@ -41,7 +41,7 @@ describe('the status bar', () => {
     const branch = row.indexOf('⎇')
     const changed = row.indexOf('~')
     const cursor = row.indexOf('Ln ')
-    const filetype = row.indexOf('typescript')
+    const filetype = row.indexOf('ts')
 
     expect(branch).toBeGreaterThanOrEqual(0)
     expect(cursor).toBeGreaterThanOrEqual(0)
@@ -82,7 +82,7 @@ describe('the status bar', () => {
     const row = bar(t)
 
     expect(row).not.toContain('⎇')
-    expect(row).toContain('typescript')
+    expect(row).toContain('ts')
     expect(row.trimStart().startsWith('Ctrl+P')).toBe(true)
   })
 })
@@ -123,7 +123,9 @@ describe('the hints are what gives way when space runs out', () => {
   const countHints = (row: string) => (row.match(/Ctrl\+|Enter |↑↓/g) ?? []).length
 
   test('a message takes precedence over them', async () => {
-    const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }))
+    // Narrow on purpose: at a full-width terminal every hint fits beside the
+    // message and nothing has to give way.
+    const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }), {}, { width: 64 })
     await openFirst(t, 'a.ts')
     const idle = countHints(bar(t))
 
@@ -188,7 +190,7 @@ describe('a message far too long for the bar', () => {
     expect(row.length).toBeLessThanOrEqual(80)
     // Everything to the right of the message must survive it.
     expect(row).toContain('Ln 1')
-    expect(row).toContain('typescript')
+    expect(row).toContain('ts')
   })
 
   test('is dropped entirely when there is no room for it at all', async () => {

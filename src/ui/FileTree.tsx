@@ -27,6 +27,27 @@ export interface FileTreeProps {
 
 const DOUBLE_CLICK_MS = 400
 
+/**
+ * Shortest the scrollbar thumb may get, in rows.
+ *
+ * OpenTUI floors it at one *virtual* cell — half a row — so a tree of a few
+ * hundred entries leaves a half-block that is neither visible at a glance nor
+ * worth aiming at. Both the size and the thumb's travel come from this one
+ * function, so raising the floor keeps dragging consistent with what is drawn.
+ */
+const MIN_THUMB_ROWS = 3
+
+/** Two virtual cells per row, which is the unit the slider works in. */
+function enlargeThumb(box: ScrollBoxRenderable) {
+  const slider = box.verticalScrollBar?.slider as unknown as
+    | { getVirtualThumbSize: () => number; height: number }
+    | undefined
+  if (!slider) return
+  const size = slider.getVirtualThumbSize.bind(slider)
+  slider.getVirtualThumbSize = () =>
+    Math.min(slider.height * 2, Math.max(size(), MIN_THUMB_ROWS * 2))
+}
+
 const MARKS: Record<FileStatus, string> = {
   untracked: 'U',
   added: 'A',
@@ -180,6 +201,7 @@ export function FileTree(props: FileTreeProps) {
         ref={el => {
           box = el
           followScroll(el)
+          enlargeThumb(el)
         }}
         flexGrow={1}
         backgroundColor={ui.panelBg}
@@ -233,13 +255,18 @@ export function FileTree(props: FileTreeProps) {
                 />
                 {/* The name takes the slack, so the mark is pushed to the panel's
                     right edge and every mark lines up in one column. */}
-                <box flexGrow={1} backgroundColor={bg()}>
+                <box flexGrow={1} flexDirection="row" backgroundColor={bg()}>
                   <text
                     fg={nameColor()}
                     bg={bg()}
                     content={node.name}
                     attributes={node.isDir ? TextAttributes.BOLD : undefined}
                   />
+                  {/* Beside the name, not in the mark column: a symlink is a
+                      property of the entry, and the marks there are git's. */}
+                  <Show when={node.symlink}>
+                    <text fg={ui.dim} bg={bg()} flexShrink={0} content=" ↗" />
+                  </Show>
                 </box>
                 <Show when={status()}>
                   {(status: () => FileStatus) => (

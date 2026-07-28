@@ -218,3 +218,40 @@ describe('clicking a row', () => {
     expect(t.captureCharFrame()).not.toContain('Moved')
   })
 })
+
+test('a batch move takes the open tabs with it', async () => {
+  // Single moves always remapped tabs; the batch path went straight to the
+  // filesystem and left them pointing at files that no longer existed.
+  const dir = fixture({ 'one.ts': 'const one = 1\n', 'two.ts': 'const two = 2\n', 'lib/.keep': '' })
+  const t = await launch(dir)
+
+  for (const name of ['one.ts', 'two.ts']) {
+    await press(t, i => i.pressKey('o', { ctrl: true }))
+    await press(t, i => void i.typeText(name))
+    await press(t, i => i.pressEnter())
+  }
+
+  // Back to the tree: opening a file selects its row, so the cursor is on
+  // two.ts — the last one opened — and the rows are lib, one.ts, two.ts.
+  await pressEscape(t)
+  await press(t, i => i.pressArrow('up')) // one.ts
+  await press(t, i => i.pressArrow('down', { shift: true })) // mark one.ts and two.ts
+  await press(t, i => void i.typeText('x')) // cut both
+  await press(t, i => i.pressArrow('up'))
+  await press(t, i => i.pressArrow('up')) // lib
+  await press(t, i => void i.typeText('p'))
+  await settle(t, 300)
+
+  expect(readFileSync(join(dir, 'lib/one.ts'), 'utf8')).toBe('const one = 1\n')
+
+  // Saving the still-open tab must write where the file went. Without the
+  // remap it writes the old path back, resurrecting a file that was moved.
+  await press(t, i => i.pressTab()) // focus follows to the editor
+  await press(t, i => void i.typeText('X'))
+  await press(t, i => i.pressKey('s', { ctrl: true }))
+  await settle(t, 100)
+
+  expect(existsSync(join(dir, 'two.ts'))).toBe(false)
+  expect(existsSync(join(dir, 'one.ts'))).toBe(false)
+  expect(readFileSync(join(dir, 'lib/two.ts'), 'utf8')).toContain('X')
+})

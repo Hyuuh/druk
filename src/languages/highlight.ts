@@ -43,8 +43,28 @@ export function invalidateSyntaxStyle(): void {
   syntaxStyle = null
 }
 
+/**
+ * `.env`, `.env.local`, `.env.production.sample`, `staging.env` — OpenTUI maps
+ * none of them, and the extension is not where the name is.
+ */
+const DOTENV = /^\.env(?:\.[\w.-]+)?$|\.env$/
+
+/**
+ * Files whose name says what they are while their extension does not. `bun.lock`
+ * is JSON with comments and trailing commas; the json grammar reads it happily
+ * enough to be worth far more than no colour at all.
+ */
+const BY_NAME: Record<string, string> = {
+  'bun.lock': 'json',
+}
+
 /** Map a file path to a tree-sitter filetype ("foo.ts" -> "typescript"), if known. */
 export function filetypeForPath(path: string): string | undefined {
+  // Both separators: druk ships for Windows, where nothing after the last `/`
+  // is the file name.
+  const name = path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
+  if (BY_NAME[name]) return BY_NAME[name]
+  if (DOTENV.test(name)) return 'dotenv'
   return pathToFiletype(path) ?? undefined
 }
 

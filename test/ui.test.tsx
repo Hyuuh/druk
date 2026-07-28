@@ -47,7 +47,7 @@ describe('editor', () => {
     expect(frame).toContain('const a = 1')
     expect(frame).toContain('main.ts')
     expect(frame).toContain(' 1 ') // gutter
-    expect(frame).toContain('typescript') // status bar
+    expect(frame).toContain('ts') // status bar, where the label stands in for the id
   })
 
   test('typing then Ctrl+S writes to disk', async () => {

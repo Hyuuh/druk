@@ -98,15 +98,16 @@ describe('dragging the editor scrollbar', () => {
     await settle(t)
     const grabbed = topLine(t)
 
-    await t.mockMouse.drag(x - 6, 4, x - 6, 15)
+    // Well left of the track: past the minimap, which is a control of its own.
+    await t.mockMouse.drag(x - 20, 4, x - 20, 15)
     await settle(t)
     const deep = topLine(t)
     expect(deep).toBeGreaterThan(grabbed + 100)
 
     // Letting go ends it: the same movement afterwards changes nothing.
-    await t.mockMouse.release(x - 6, 15)
+    await t.mockMouse.release(x - 20, 15)
     await settle(t)
-    await t.mockMouse.drag(x - 6, 15, x - 6, 4)
+    await t.mockMouse.drag(x - 20, 15, x - 20, 4)
     await settle(t)
     expect(topLine(t)).toBe(deep)
   })

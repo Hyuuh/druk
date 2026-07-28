@@ -1,0 +1,70 @@
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { fixture, launch, press } from './helpers'
+
+const CONTENT = 'first line\nsecond line\nthird line\n'
+
+async function openedFile() {
+  const dir = fixture({ 'a.ts': CONTENT })
+  const t = await launch(dir)
+  await press(t, input => input.pressArrow('down'))
+  await press(t, input => input.pressEnter())
+  return { t, dir }
+}
+
+const save = (t: Awaited<ReturnType<typeof openedFile>>['t']) =>
+  press(t, input => input.pressKey('s', { ctrl: true }))
+
+describe('Ctrl+A', () => {
+  test('selects the buffer, so typing replaces all of it', async () => {
+    const { t, dir } = await openedFile()
+    await press(t, input => input.pressKey('a', { ctrl: true }))
+    await press(t, input => void input.typeText('replaced'))
+    await save(t)
+
+    // The selection covers the trailing newline too, so nothing survives it.
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('replaced')
+  })
+
+  test('backspace after it empties the file', async () => {
+    const { t, dir } = await openedFile()
+    await press(t, input => input.pressKey('a', { ctrl: true }))
+    await press(t, input => input.pressBackspace())
+    await save(t)
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('')
+  })
+
+  test('does not move the caret to line start, the readline meaning', async () => {
+    const { t, dir } = await openedFile()
+    // Ctrl+E is line-end; if Ctrl+A had meant line-start the caret would sit at
+    // column 1 and this would prepend rather than replace.
+    await press(t, input => input.pressKey('a', { ctrl: true }))
+    await press(t, input => void input.typeText('X'))
+    await save(t)
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('X')
+  })
+
+  test('a mouse selection is replaced by typing too', async () => {
+    const { t, dir } = await openedFile()
+    // Drag across "first" on the first line.
+    await t.mockMouse.drag(34, 1, 39, 1)
+    await press(t, input => void input.typeText('X'))
+    await save(t)
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('X line\nsecond line\nthird line\n')
+  })
+
+  test('undo brings the whole file back', async () => {
+    const { t, dir } = await openedFile()
+    await press(t, input => input.pressKey('a', { ctrl: true }))
+    await press(t, input => void input.typeText('gone'))
+    await press(t, input => input.pressKey('z', { ctrl: true }))
+    await save(t)
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe(CONTENT)
+  })
+})

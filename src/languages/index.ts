@@ -39,9 +39,9 @@ export interface Language {
 }
 
 export const LANGUAGES: Language[] = [
-  { id: 'javascript', bundled: true },
-  { id: 'typescript', bundled: true },
-  { id: 'markdown', bundled: true },
+  { id: 'javascript', label: 'js', bundled: true },
+  { id: 'typescript', label: 'ts', bundled: true },
+  { id: 'markdown', label: 'md', bundled: true },
   { id: 'zig', bundled: true },
   { id: 'json', ...GRAMMARS.json },
   { id: 'html', ...GRAMMARS.html },
@@ -50,6 +50,7 @@ export const LANGUAGES: Language[] = [
   { id: 'vue', ...GRAMMARS.vue },
   { id: 'css', ...GRAMMARS.css },
   { id: 'scss', ...GRAMMARS.css },
+  { id: 'sass', ...GRAMMARS.css },
   { id: 'less', ...GRAMMARS.css },
   { id: 'python', ...GRAMMARS.python },
   { id: 'rust', ...GRAMMARS.rust },
@@ -81,6 +82,24 @@ export const LANGUAGES: Language[] = [
       { group: 'property', re: /^[ \t]*-?[ \t]*['"]?[\w.$/@-]+['"]?(?=[ \t]*:)/gm },
       { group: 'punctuation.special', re: /^---$|^\.\.\.$/gm },
       { group: 'comment', re: /(?:^|[ \t])#.*/gm },
+    ],
+  },
+  {
+    id: 'dotenv',
+    label: 'env',
+    patterns: [
+      { group: 'punctuation', re: /=/g },
+      { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
+      { group: 'boolean', re: /\b(?:true|false|null)\b/gi },
+      { group: 'string', re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g },
+      // Interpolation, which is the one place a value refers to another key.
+      { group: 'variable', re: /\$\{[\w.]+\}|\$[A-Za-z_]\w*/g },
+      { group: 'property', re: /^[ \t]*(?:export[ \t]+)?[\w.]+(?=[ \t]*=)/gm },
+      // After the key rule, which spans `export NAME` and would otherwise win it.
+      { group: 'keyword', re: /^[ \t]*export\b/gm },
+      // Last, so a `#` inside a value does not turn the rest of the line grey —
+      // and a commented-out KEY=value keeps the comment colour.
+      { group: 'comment', re: /^[ \t]*#.*/gm },
     ],
   },
   {

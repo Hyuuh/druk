@@ -12,6 +12,8 @@ const SAMPLES: Record<string, string> = {
   typescriptreact: '// c\nconst A = () => <div className="a">{1}</div>\n',
   vue: '<template>\n  <!-- c -->\n  <div class="a">x</div>\n</template>\n',
   css: '.a { color: #fff; }\n/* c */\n',
+  scss: '/* c */\n$brand: #f00;\n.a { color: $brand; &:hover { top: 1px } }\n',
+  sass: '/* c */\n.a\n  top: 1px\n',
   php: '<?php\n// c\nfunction f($x) { return $x; }\n',
   ruby: '# c\nclass A\n  def go(x)\n    x\n  end\nend\n',
   java: '// c\nclass A { void m() { int x = 1; } }\n',
@@ -30,6 +32,7 @@ const SAMPLES: Record<string, string> = {
   svelte: '<!-- c -->\n<script>let x = 1</script>\n<div class="a">{x}</div>\n',
   sql: '-- c\nSELECT id FROM users WHERE age > 18;\n',
   ini: '; c\n[section]\nkey = value\n',
+  dotenv: '# c\nexport PORT=3000\nURL="https://x.dev"\n',
 }
 
 describe('languages', () => {
@@ -52,9 +55,12 @@ describe('languages', () => {
   test('labels stand in for the id on screen, and only where set', () => {
     expect(languageLabel('typescriptreact')).toBe('tsx')
     expect(languageLabel('javascriptreact')).toBe('jsx')
+    expect(languageLabel('typescript')).toBe('ts')
+    expect(languageLabel('javascript')).toBe('js')
+    expect(languageLabel('markdown')).toBe('md')
     // Everything else is already short enough to show as-is.
-    expect(languageLabel('typescript')).toBe('typescript')
     expect(languageLabel('python')).toBe('python')
+    expect(languageLabel('css')).toBe('css')
     // Not a registered filetype at all — the status bar still has to say something.
     expect(languageLabel('plain')).toBe('plain')
   })

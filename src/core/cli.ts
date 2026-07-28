@@ -6,8 +6,10 @@ import { currentVersion } from './update'
 export const HELP = `druk — terminal code editor
 
 Usage: druk [path]
+       druk update
 
   path            file or directory to open (default: the current directory)
+  update          upgrade druk itself, however it was installed
 
 Options:
   -h, --help      show this help

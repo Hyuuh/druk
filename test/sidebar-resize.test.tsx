@@ -82,23 +82,34 @@ describe('resizing the sidebar', () => {
     expect(at).toBeLessThanOrEqual(60)
   })
 
-  test('the handle draws a rule, so the grab target can be seen', async () => {
+  test('the handle is a short grip at the middle, not a rule down the screen', async () => {
     const t = await launch(fixture(PROJECT))
     const at = dividerAt(t)
     expect(at).toBe(30)
 
-    // Every row between the tab bar and the status bar carries the rule.
     const column = t
       .captureCharFrame()
       .split('\n')
       .filter(row => row.length > 0)
       .slice(1, -1)
       .map(row => row[at] ?? ' ')
-    expect(column.length).toBeGreaterThan(3)
-    expect(new Set(column)).toEqual(new Set('│'))
 
-    // …and it still drags.
-    await t.mockMouse.drag(at, 5, 40, 5)
+    const marked = column.flatMap((glyph, row) => (glyph === '│' ? [row] : []))
+    expect(marked.length).toBeGreaterThan(2)
+    // A grip, not a rule: most of the column is blank.
+    expect(marked.length).toBeLessThan(column.length / 2)
+    // Contiguous, and centred to within a row of the middle.
+    expect(marked.at(-1)! - marked[0]!).toBe(marked.length - 1)
+    const middle = (marked[0]! + marked.at(-1)!) / 2
+    expect(Math.abs(middle - (column.length - 1) / 2)).toBeLessThanOrEqual(1)
+  })
+
+  test('the whole column drags, not only the part that is drawn', async () => {
+    const t = await launch(fixture(PROJECT))
+    const at = dividerAt(t)
+
+    // Row 1 is far above the grip — the target is the column, the grip is a hint.
+    await t.mockMouse.drag(at, 1, 40, 1)
     await settle(t)
     expect(dividerAt(t)).toBe(40)
   })

@@ -108,3 +108,25 @@ test('a rename is keyed by the path that exists on disk', () => {
   expect(statuses.get(join(dir, 'renamed.ts'))).toBe('modified')
   expect(statuses.has(join(dir, 'a.ts'))).toBe(false)
 })
+
+test('every file inside a brand-new directory is marked, not just the directory', async () => {
+  // `git status --porcelain` collapses an untracked directory to one `?? dir/`
+  // entry, which left every file inside it with no mark at all.
+  const dir = repo('one\n')
+  mkdirSync(join(dir, 'newdir', 'sub'), { recursive: true })
+  writeFileSync(join(dir, 'newdir', 'a.ts'), 'const a = 1\n')
+  writeFileSync(join(dir, 'newdir', 'sub', 'b.ts'), 'const b = 2\n')
+
+  const statuses = statusMap(dir)
+  expect(statuses.get(join(dir, 'newdir', 'a.ts'))).toBe('untracked')
+  expect(statuses.get(join(dir, 'newdir', 'sub', 'b.ts'))).toBe('untracked')
+
+  // And the tree shows the mark on the files, with the folders inheriting it.
+  const t = await launch(dir)
+  await press(t, i => i.pressArrow('down'))
+  await press(t, i => i.pressEnter()) // expand newdir
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('newdir')
+  expect(frame).toContain('a.ts')
+  expect(frame.split('\n').find(row => row.includes('a.ts'))).toContain('U')
+})

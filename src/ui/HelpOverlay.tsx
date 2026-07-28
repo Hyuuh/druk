@@ -11,6 +11,7 @@ export const ROWS: [string, string][] = [
   ['Ctrl+S', 'Save file'],
   ['Ctrl+G', 'Go to line'],
   ['Ctrl+Z / Ctrl+Y', 'Undo / redo'],
+  ['Ctrl+A', 'Select all'],
   ['Ctrl+C', 'Copy selection — quits if none'],
   ['Ctrl+X / Ctrl+V', 'Cut / paste'],
   ['Ctrl+F', 'Find in file (Tab to replace)'],

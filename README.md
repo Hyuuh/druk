@@ -26,6 +26,15 @@ bun add -g druk
 macOS (arm64, x64), Linux (arm64, x64) and Windows (x64). Binaries are also on the
 [releases page](https://github.com/letstri/druk/releases).
 
+To upgrade later, whichever way you installed:
+
+```bash
+druk update
+```
+
+It works out how this copy was installed — Homebrew, the install script, or a global
+`npm`/`pnpm`/`yarn`/`bun` package — and runs that upgrade, printing the command first.
+
 <details>
 <summary>Install options</summary>
 
@@ -110,13 +119,18 @@ a taken name gets a `copy` suffix (`app copy.ts`), which is also how you duplica
 
 Open tabs, unsaved edits and expanded folders all follow whatever you move or rename.
 
+Deleting, moving or copying a lot at once runs in the background: the status bar counts
+what is done and the editor stays usable, instead of freezing until a `node_modules` is
+gone.
+
 ## Git
 
 Read-only, on purpose: druk shows what git says and never changes it. Changed lines are
-marked in the gutter, files in the tree carry `M` `A` `U` `D` marks, and the status bar
-shows the branch and how far it is from upstream — `⎇ main ↑2 ↓1 ~3` is two commits to
-push, one to pull, three changed files. Work you do in another terminal shows up without a
-restart.
+marked in the gutter and again beside the scrollbar, where the whole file's changes are
+visible at once — a mark there is somewhere to scroll to. Files in the tree carry `M` `A`
+`U` `D` marks, and the status bar shows the branch and how far it is from upstream —
+`⎇ main ↑2 ↓1 ~3` is two commits to push, one to pull, three changed files. Work you do in
+another terminal shows up without a restart.
 
 ## Settings
 

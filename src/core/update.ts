@@ -3,6 +3,8 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { detectInstall, upgradeCommand } from './upgrade'
+
 const REGISTRY = 'https://registry.npmjs.org/druk/latest'
 const TIMEOUT_MS = 2500
 
@@ -35,18 +37,15 @@ export function currentVersion(): string {
 }
 
 /**
- * How to upgrade the copy that is running, guessed from where its executable sits.
- * Telling a Homebrew user to run `npm install -g` sends them off to install a second
- * druk that their `PATH` will not even find.
+ * How to upgrade the copy that is running, for the banner to suggest. Same
+ * detection `druk update` runs on, so the two can never disagree.
  */
-export function updateCommand(execPath = process.execPath, home = homedir()): string {
-  if (execPath.includes('/Cellar/') || execPath.includes('/homebrew/')) {
-    return 'brew upgrade letstri/tap/druk'
-  }
-  if (execPath.startsWith(join(home, '.druk'))) {
-    return 'curl -fsSL https://druk.letstri.dev/install | bash'
-  }
-  return 'npm install -g druk@latest'
+export function updateCommand(
+  execPath = process.execPath,
+  home = homedir(),
+  scriptPath = process.argv[1] ?? '',
+): string {
+  return upgradeCommand(detectInstall(execPath, scriptPath, home))
 }
 
 /** True when `latest` is newer than `current`. */

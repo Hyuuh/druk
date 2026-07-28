@@ -5,12 +5,18 @@ import { render } from '@opentui/solid'
 import { App } from './app/App'
 import { flagOutput, resolveTarget } from './core/cli'
 import { loadConfig } from './core/config'
+import { runUpgrade } from './core/upgrade'
 import { setTheme } from './themes'
 
 const flag = flagOutput(process.argv[2])
 if (flag !== null) {
   process.stdout.write(flag)
   process.exit(0)
+}
+
+// Before the path handling: `update` is a command, not a directory to open.
+if (process.argv[2] === 'update') {
+  process.exit(await runUpgrade())
 }
 
 const target = resolveTarget(process.argv[2], process.cwd())

@@ -26,9 +26,11 @@ scripts/
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
     git.ts           read-only queries: diff hunks, status, branch, ahead/behind
+    bulk.ts          delete/copy/move in the background, reporting progress
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
     session.ts       per-project open tabs + expanded folders, keyed by path
     update.ts        startup npm version check (best-effort, opt-out)
+    upgrade.ts       `druk update`: which install is running, and how to upgrade it
     assets.ts        pins OpenTUI's tree-sitter asset lookup (side-effect import)
   languages/
     index.ts         language registry  ← add a language here
@@ -45,6 +47,8 @@ scripts/
   editor/
     vim.ts           modal editing state machine (normal / insert / visual)
     history.ts       undo/redo, coalesced per edit burst
+    changes.ts       git changes per track row, for the column by the scrollbar
+    window.ts        visual rows -> logical lines, for the highlight window
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
     EditorPane, FileTree, Tabs, StatusBar, CommandPalette, FilePicker,
