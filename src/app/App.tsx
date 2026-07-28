@@ -704,12 +704,12 @@ export function App(props: {
   }
 
   /** Write the buffer to disk unconditionally and re-sync its mtime. */
-  const writeBuffer = (path: string, content: string) => {
+  const writeBuffer = (path: string, content: string): boolean => {
     const final = config.trimOnSave ? trimTrailing(content) : content
     const err = writeFile(path, final)
     if (err) {
       say(`Save failed: ${err}`, 'error')
-      return
+      return false
     }
     setBuffers(path, { content: final, dirty: false, mtime: mtimeOf(path) })
     // The trim changed the text on disk; the editor has to show the same thing —
@@ -717,6 +717,7 @@ export function App(props: {
     if (final !== content && path === activePath()) pushEdit(final)
     setGitRevision(n => n + 1)
     say(`Saved ${basename(path)}`)
+    return true
   }
 
   const saveActive = () => {
@@ -741,6 +742,31 @@ export function App(props: {
       }
     }
     writeBuffer(path, buffer.content)
+  }
+
+  /**
+   * Blur save is deliberately quieter than Ctrl+S: a buffer whose file changed on
+   * disk is skipped with a warning instead of opening the conflict modal — the
+   * user has just switched away and is not there to answer it.
+   */
+  const saveDirtyOnBlur = () => {
+    const skipped: string[] = []
+    const failed: string[] = []
+    let saved = 0
+    for (const path of Object.keys(buffers)) {
+      const buffer = buffers[path]!
+      if (!buffer.dirty) continue
+      if (mtimeOf(path) !== buffer.mtime) {
+        skipped.push(basename(path))
+        continue
+      }
+      if (writeBuffer(path, buffer.content)) saved++
+      else failed.push(basename(path))
+    }
+    // One file keeps writeBuffer's own message; several get a count instead.
+    if (saved > 1) say(`Saved ${saved} files`)
+    if (skipped.length > 0) say(`${CLASH_CHANGED}${skipped.join(', ')}`, 'warn')
+    if (failed.length > 0) say(`Save failed: ${failed.join(', ')}`, 'error')
   }
 
   const resolveConflict = (choice: string) => {
@@ -1051,6 +1077,10 @@ export function App(props: {
           patchConfig({ trimOnSave: !config.trimOnSave })
           say(`Trim on save ${config.trimOnSave ? 'on' : 'off'}`)
         },
+        toggleAutoSave: () => {
+          patchConfig({ autoSaveOnBlur: !config.autoSaveOnBlur })
+          say(`Auto-save on blur ${config.autoSaveOnBlur ? 'on' : 'off'}`)
+        },
         showHelp: () => setHelp(true),
         quit,
       },
@@ -1059,6 +1089,7 @@ export function App(props: {
         activeTheme: config.theme,
         tabSize: config.tabSize,
         trimOnSave: config.trimOnSave,
+        autoSaveOnBlur: config.autoSaveOnBlur,
       },
     ),
   )
@@ -1085,6 +1116,24 @@ export function App(props: {
       const info = await checkForUpdate()
       if (!cancelled && info && info.latest !== props.initialConfig.skipUpdate) setUpdate(info)
     })()
+  })
+
+  // Focus reporting (DECSET 1004): the terminal sends CSI I / CSI O as the window
+  // gains / loses focus. OpenTUI's key parser recognises both and swallows them,
+  // so the raw stdin stream is the only place left to see the blur. The mode is
+  // enabled only on a real terminal — in tests stdin is a mock and there is no
+  // terminal to answer — but the listener is always attached, so a test can drive
+  // it by emitting the sequence.
+  onMount(() => {
+    if (process.stdout.isTTY) process.stdout.write('\x1B[?1004h')
+    const onStdin = (chunk: Buffer | string) => {
+      if (config.autoSaveOnBlur && chunk.toString().includes('\x1B[O')) saveDirtyOnBlur()
+    }
+    renderer.stdin.on('data', onStdin)
+    onCleanup(() => {
+      renderer.stdin.off('data', onStdin)
+      if (process.stdout.isTTY) process.stdout.write('\x1B[?1004l')
+    })
   })
 
   // The watcher has no follow-up message of its own, so unlike the git callers it

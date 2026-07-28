@@ -15,6 +15,7 @@ function rowOf(label: string): number {
     activeTheme: 'dark',
     tabSize: 2,
     trimOnSave: false,
+    autoSaveOnBlur: false,
   })
   return tree.findIndex(command => command.label === label)
 }

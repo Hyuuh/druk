@@ -52,6 +52,7 @@ export interface CommandActions {
   setTheme: (name: ThemeName) => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   toggleTrim: () => void
+  toggleAutoSave: () => void
   showHelp: () => void
   quit: () => void
 }
@@ -61,6 +62,7 @@ export interface CommandContext {
   activeTheme: ThemeName
   tabSize: number
   trimOnSave: boolean
+  autoSaveOnBlur: boolean
 }
 
 const TAB_SIZES = [2, 4, 8]
@@ -205,6 +207,11 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           id: 'editor.trim',
           label: `${check(ctx.trimOnSave)}Trim trailing whitespace on save`,
           run: actions.toggleTrim,
+        },
+        {
+          id: 'editor.autoSave',
+          label: `${check(ctx.autoSaveOnBlur)}Auto-save when the terminal loses focus`,
+          run: actions.toggleAutoSave,
         },
       ],
     },

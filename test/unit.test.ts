@@ -75,6 +75,7 @@ describe('registries', () => {
       activeTheme: 'dark',
       tabSize: 2,
       trimOnSave: false,
+      autoSaveOnBlur: false,
     })
     const leaves = flattenCommands(tree)
 

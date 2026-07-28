@@ -56,6 +56,8 @@ export interface Config {
   skipUpdate: string
   /** On save: strip trailing spaces and end the file with one newline. */
   trimOnSave: boolean
+  /** Save every dirty buffer when the terminal window loses focus. */
+  autoSaveOnBlur: boolean
 }
 
 export const DEFAULTS: Config = {
@@ -66,6 +68,7 @@ export const DEFAULTS: Config = {
   checkUpdates: true,
   skipUpdate: '',
   trimOnSave: false,
+  autoSaveOnBlur: false,
 }
 
 function parse(raw: unknown): Config {
@@ -80,6 +83,8 @@ function parse(raw: unknown): Config {
     checkUpdates: typeof obj.checkUpdates === 'boolean' ? obj.checkUpdates : DEFAULTS.checkUpdates,
     skipUpdate: typeof obj.skipUpdate === 'string' ? obj.skipUpdate : DEFAULTS.skipUpdate,
     trimOnSave: typeof obj.trimOnSave === 'boolean' ? obj.trimOnSave : DEFAULTS.trimOnSave,
+    autoSaveOnBlur:
+      typeof obj.autoSaveOnBlur === 'boolean' ? obj.autoSaveOnBlur : DEFAULTS.autoSaveOnBlur,
     sidebarWidth:
       typeof obj.sidebarWidth === 'number' &&
       obj.sidebarWidth >= SIDEBAR_MIN &&
