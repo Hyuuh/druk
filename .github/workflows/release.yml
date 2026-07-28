@@ -10,9 +10,25 @@ permissions:
   contents: write
 
 jobs:
+  # A tag disagreeing with package.json would upload the binaries to one release while
+  # the shim it publishes fetched from another — the same broken install as no release
+  # at all. Fail in ten seconds rather than after five runners have built.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+
   # One runner per platform: cross-compiling needs the target's @opentui/core-<platform>
   # package, and `bun install` only fetches the host's.
   build:
+    needs: check
     strategy:
       fail-fast: true
       matrix:
@@ -44,6 +60,12 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    # Every shipping step reads this one flag, so a dispatch run builds and packages as
+    # a dry run and ships nothing. The npm publish once carried no guard of its own
+    # while the release upload did: a dispatch run then published a package whose
+    # binaries were never uploaded anywhere, and every `npm i druk` fetched a 404.
+    env:
+      SHIP: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -67,7 +89,7 @@ jobs:
       # Before npm, not after: the published package holds no binary and fetches one
       # from this release, so an install landing between the two would find nothing.
       - name: Publish the release with the binaries
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.SHIP == 'true'
         run: |
           gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
             || gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes
@@ -79,6 +101,7 @@ jobs:
       # writes it into .npmrc and npm then fails with ENEEDAUTH before it ever reaches
       # the OIDC exchange.
       - name: Publish to npm
+        if: env.SHIP == 'true'
         run: bun run release --publish
         env:
           NPM_CONFIG_PROVENANCE: true

@@ -82,6 +82,12 @@ Versions come from `package.json` — bump it, tag `v<version>`, and
 `.github/workflows/release.yml` builds every platform, uploads the archives to the
 release and publishes to npm, with no manual step.
 
+**Only a tag ships.** Running the workflow by hand builds and packages as a dry run:
+both publishing steps read one `SHIP` flag, and a mismatch between the tag and
+`package.json` fails the run before anything is built. Neither guard is decoration —
+druk 1.0.0 reached npm from a manual run whose release upload was skipped, so the
+published shim spent its life fetching a release that did not exist.
+
 Homebrew is not wired up yet. `scripts/formula.ts` generates a working formula from the
 archives in `dist/release/`, but nothing publishes it: that needs a `letstri/homebrew-tap`
 repository and a `TAP_TOKEN` secret, then a step in the release workflow to commit the
