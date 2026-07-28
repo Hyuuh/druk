@@ -87,35 +87,23 @@ describe('the status bar', () => {
   })
 })
 
-describe('the hints follow the focus', () => {
-  test('the tree advertises tree keys', async () => {
+describe('the footer hints', () => {
+  test('the tree advertises the palette and the key peek, nothing else', async () => {
     const row = bar(await launch(fixture({ 'a.ts': 'x\n' })))
-    expect(row).toContain('Ctrl+P')
-    expect(row).toContain('Enter')
-    expect(row).toContain('new file')
+    expect(row).toContain('Ctrl+P commands')
+    expect(row).toContain('Ctrl+K keys')
+    expect(row).not.toContain('new file')
   })
 
-  test('the editor advertises editor keys instead', async () => {
+  test('the editor shows the same two', async () => {
     const t = await launch(fixture({ 'a.ts': 'x\n' }))
     await openFirst(t, 'a.ts')
     const row = bar(t)
 
-    expect(row).toContain('save')
-    expect(row).toContain('find')
-    // Tree keys are gone: `Ctrl+N` makes a file, not something to offer mid-buffer.
-    expect(row).not.toContain('new file')
-    expect(row).not.toContain('open')
-  })
-
-  test('and switch back on Esc', async () => {
-    const t = await launch(fixture({ 'a.ts': 'x\n' }))
-    await openFirst(t, 'a.ts')
-    expect(bar(t)).toContain('save')
-
-    await pressEscape(t)
-    await settle(t)
-    expect(bar(t)).toContain('new file')
-    expect(bar(t)).not.toContain('save')
+    expect(row).toContain('Ctrl+P commands')
+    expect(row).toContain('Ctrl+K keys')
+    expect(row).not.toContain('save')
+    expect(row).not.toContain('find')
   })
 })
 
@@ -125,7 +113,7 @@ describe('the hints are what gives way when space runs out', () => {
   test('a message takes precedence over them', async () => {
     // Narrow on purpose: at a full-width terminal every hint fits beside the
     // message and nothing has to give way.
-    const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }), {}, { width: 64 })
+    const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }), {}, { width: 56 })
     await openFirst(t, 'a.ts')
     const idle = countHints(bar(t))
 
@@ -141,10 +129,10 @@ describe('the hints are what gives way when space runs out', () => {
 
   test('a narrower terminal shows fewer of them', async () => {
     const wide = bar(await launch(fixture({ 'a.ts': 'x\n' })))
-    const narrow = bar(await launch(fixture({ 'a.ts': 'x\n' }), {}, { width: 46 }))
+    const narrow = bar(await launch(fixture({ 'a.ts': 'x\n' }), {}, { width: 30 }))
 
     expect(countHints(narrow)).toBeLessThan(countHints(wide))
-    expect(narrow.length).toBeLessThanOrEqual(46)
+    expect(narrow.length).toBeLessThanOrEqual(30)
   })
 
   test('a very narrow one drops them all and keeps the file facts', async () => {

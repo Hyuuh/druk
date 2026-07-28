@@ -45,13 +45,7 @@ export const KEYS: KeyInfo[] = [
   { key: 'Ctrl+Q', label: 'Quit', section: 'General', where: 'all' },
   { key: 'Mouse', label: 'Click tabs, tree rows, editor', section: 'General', where: 'help' },
 
-  {
-    key: 'Ctrl+S',
-    label: 'Save file',
-    section: 'Editing',
-    where: 'editor',
-    hint: { pane: 'editor', label: 'save', rank: 2 },
-  },
+  { key: 'Ctrl+S', label: 'Save file', section: 'Editing', where: 'editor' },
   { key: 'Ctrl+Z / Ctrl+Y', label: 'Undo / redo', section: 'Editing', where: 'editor' },
   { key: 'Ctrl+A', label: 'Select all', section: 'Editing', where: 'editor' },
   { key: 'Ctrl+C', label: 'Copy selection — quits if none', section: 'Editing', where: 'all' },
@@ -71,7 +65,6 @@ export const KEYS: KeyInfo[] = [
     label: 'Find in file (Tab to replace)',
     section: 'Search & replace',
     where: 'editor',
-    hint: { pane: 'editor', label: 'find', rank: 3 },
   },
   { key: 'Ctrl+R', label: 'Find in project', section: 'Search & replace', where: 'all' },
   {
@@ -87,57 +80,32 @@ export const KEYS: KeyInfo[] = [
     where: 'help',
   },
 
-  {
-    key: 'Ctrl+N',
-    label: 'New file',
-    section: 'Files & tabs',
-    where: 'all',
-    hint: { pane: 'tree', label: 'new file', rank: 3 },
-  },
+  { key: 'Ctrl+N', label: 'New file', section: 'Files & tabs', where: 'all' },
   { key: `Ctrl+${ALT}+N`, label: 'New folder', section: 'Files & tabs', where: 'all' },
   { key: 'Ctrl+W', label: 'Close tab', section: 'Files & tabs', where: 'all' },
   { key: `Ctrl+${ALT}+T`, label: 'Reopen closed tab', section: 'Files & tabs', where: 'all' },
   { key: 'Ctrl+T', label: 'Switch to open tab', section: 'Files & tabs', where: 'all' },
   { key: `Ctrl+${ALT}+← / →`, label: 'Previous / next tab', section: 'Files & tabs', where: 'all' },
 
-  {
-    key: 'Enter',
-    label: 'Open file / toggle folder',
-    section: 'File tree',
-    where: 'tree',
-    hint: { pane: 'tree', label: 'open', rank: 2 },
-  },
-  {
-    key: '↑↓',
-    label: 'Move in tree / popup',
-    section: 'File tree',
-    where: 'tree',
-    hint: { pane: 'tree', label: 'move', rank: 4 },
-  },
+  { key: 'Enter', label: 'Open file / toggle folder', section: 'File tree', where: 'tree' },
+  { key: '↑↓', label: 'Move in tree / popup', section: 'File tree', where: 'tree' },
   { key: 'Shift+↑ / ↓', label: 'Select a range (in tree)', section: 'File tree', where: 'tree' },
   { key: '→ / ←', label: 'Expand / collapse folder', section: 'File tree', where: 'tree' },
-  { key: 'a / A', label: 'New file / folder (in tree)', section: 'File tree', where: 'tree' },
   {
-    key: 'r / d',
-    label: 'Rename / delete (in tree)',
+    key: 'h j k l',
+    label: 'Move / collapse / expand (vim mode)',
     section: 'File tree',
     where: 'tree',
-    hint: { pane: 'tree', label: 'rename/delete', rank: 5 },
   },
+  { key: 'a / A', label: 'New file / folder (in tree)', section: 'File tree', where: 'tree' },
+  { key: 'r / d', label: 'Rename / delete (in tree)', section: 'File tree', where: 'tree' },
   {
     key: 'x / c / p',
     label: 'Cut / copy / paste here (in tree)',
     section: 'File tree',
     where: 'tree',
-    hint: { pane: 'tree', label: 'move/copy', rank: 6 },
   },
-  {
-    key: '[ / ]',
-    label: 'Narrow / widen sidebar (in tree)',
-    section: 'File tree',
-    where: 'tree',
-    hint: { pane: 'tree', label: 'width', rank: 7 },
-  },
+  { key: '[ / ]', label: 'Narrow / widen sidebar (in tree)', section: 'File tree', where: 'tree' },
 
   {
     key: 'Ctrl+B',
@@ -150,15 +118,8 @@ export const KEYS: KeyInfo[] = [
     label: 'Tree → editor · indent in editor',
     section: 'View',
     where: 'all',
-    hint: { pane: 'tree', label: 'editor', rank: 8 },
   },
-  {
-    key: 'Esc',
-    label: 'Editor → tree',
-    section: 'View',
-    where: 'editor',
-    hint: { pane: 'editor', label: 'tree', rank: 4 },
-  },
+  { key: 'Esc', label: 'Editor → tree', section: 'View', where: 'editor' },
 ]
 
 /** The help table: every row, key and long label. */
