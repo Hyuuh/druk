@@ -278,22 +278,25 @@ export function createWorkspace(deps: {
   }
 
   /**
-   * Blur save is deliberately quieter than Ctrl+S: a buffer whose file changed on
+   * Auto-save is deliberately quieter than Ctrl+S: a buffer whose file changed on
    * disk is skipped with a warning instead of opening the conflict modal — the
    * user has just switched away and is not there to answer it.
    */
+  const autoSave = (path: string): 'saved' | 'skipped' | 'failed' => {
+    const buffer = buffers[path]!
+    if (mtimeOf(path) !== buffer.mtime) return 'skipped'
+    return writeBuffer(path, buffer.content) ? 'saved' : 'failed'
+  }
+
   const saveDirtyOnBlur = () => {
     const skipped: string[] = []
     const failed: string[] = []
     let saved = 0
     for (const path of Object.keys(buffers)) {
-      const buffer = buffers[path]!
-      if (!buffer.dirty) continue
-      if (mtimeOf(path) !== buffer.mtime) {
-        skipped.push(basename(path))
-        continue
-      }
-      if (writeBuffer(path, buffer.content)) saved++
+      if (!buffers[path]!.dirty) continue
+      const result = autoSave(path)
+      if (result === 'saved') saved++
+      else if (result === 'skipped') skipped.push(basename(path))
       else failed.push(basename(path))
     }
     // One file keeps writeBuffer's own message; several get a count instead.
@@ -384,6 +387,21 @@ export function createWorkspace(deps: {
     const preview = previewPath()
     if (preview) setPreviewPath(remap(preview))
   }
+
+  createEffect(
+    on(
+      activePath,
+      (_next, prev) => {
+        if (!prev || !config.autoSaveOnBlur) return
+        // A closing tab lands here too — by now it is gone from tabs() and its
+        // edits were saved or knowingly discarded; it must not be resurrected.
+        if (!tabs().includes(prev)) return
+        if (!buffers[prev]?.dirty) return
+        if (autoSave(prev) === 'skipped') say(`${CLASH_CHANGED}${basename(prev)}`, 'warn')
+      },
+      { defer: true },
+    ),
+  )
 
   createEffect(
     on(

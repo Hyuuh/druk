@@ -51,7 +51,7 @@ export function createSettings(deps: {
 
   const toggleAutoSave = () => {
     patchConfig({ autoSaveOnBlur: !config.autoSaveOnBlur })
-    status.say(`Auto-save on blur ${config.autoSaveOnBlur ? 'on' : 'off'}`)
+    status.say(`Auto-save ${config.autoSaveOnBlur ? 'on' : 'off'}`)
   }
 
   /**
