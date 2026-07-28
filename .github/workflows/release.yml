@@ -4,11 +4,6 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Build and package without publishing anything'
-        type: boolean
-        default: false
 
 permissions:
   id-token: write
@@ -70,13 +65,11 @@ jobs:
   publish:
     needs: [check, build]
     runs-on: ubuntu-latest
-    # Every shipping step reads this one flag, so either both publish or neither does.
-    # The npm publish once carried no guard of its own while the release upload did: a
-    # run then published a package whose binaries were never uploaded anywhere, and
-    # every `npm i druk` fetched a 404. A tag push always ships; a manual run ships
-    # unless it asked for a dry run.
+    # Every run of this job ships, by a tag push or by hand. Nothing here may be made
+    # conditional on its own: the npm publish once carried no guard while the release
+    # upload did, so a run published a package whose binaries were never uploaded
+    # anywhere and every `npm i druk` fetched a 404. Both steps go together.
     env:
-      SHIP: ${{ inputs.dry_run != true }}
       VERSION: ${{ needs.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +98,6 @@ jobs:
       # at this commit alongside the release. On a tag push the tag already exists and
       # gh uses it as-is.
       - name: Publish the release with the binaries
-        if: env.SHIP == 'true'
         run: |
           gh release view "$VERSION" >/dev/null 2>&1 \
             || gh release create "$VERSION" --title "$VERSION" --target "$GITHUB_SHA" --generate-notes
@@ -118,7 +110,6 @@ jobs:
       # the OIDC exchange. A version already on the registry is skipped by release.ts,
       # so re-running a shipped version is not an error.
       - name: Publish to npm
-        if: env.SHIP == 'true'
         run: bun run release --publish
         env:
           NPM_CONFIG_PROVENANCE: true

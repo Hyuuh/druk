@@ -88,11 +88,11 @@ from `releases/download/v<version>`, so the release must carry exactly that tag 
 workflow reads the version once in `check` and every later step uses it. A tag push whose
 name disagrees with `package.json` fails there, before five runners have built.
 
-**Both publishing steps ship together or neither does.** They read one `SHIP` flag, false
-only for a manual run that asked for a dry run. That flag is not decoration: druk 1.0.0
-reached npm from a run whose release upload was skipped, and the published shim spent its
-life fetching a release that did not exist. Re-running a shipped version is safe —
-`release.ts` skips a version already on the registry and the upload clobbers its assets.
+**Every run ships, and both publishing steps go together.** There is no dry run: neither
+step may be made conditional on its own, because druk 1.0.0 reached npm from a run whose
+release upload was skipped, and the published shim spent its life fetching a release that
+did not exist. Re-running a shipped version is safe — `release.ts` skips a version already
+on the registry and the upload clobbers its assets.
 
 Homebrew is not wired up yet. `scripts/formula.ts` generates a working formula from the
 archives in `dist/release/`, but nothing publishes it: that needs a `letstri/homebrew-tap`
