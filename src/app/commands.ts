@@ -54,7 +54,6 @@ export interface CommandActions {
   toggleTrim: () => void
   toggleAutoSave: () => void
   gitCommit: () => void
-  gitCommitStaged: () => void
   gitUndoCommit: () => void
   gitPush: () => void
   gitFetch: () => void
@@ -122,7 +121,6 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       label: 'Git',
       children: [
         { id: 'git.commit', label: 'Commit…', run: actions.gitCommit },
-        { id: 'git.commitStaged', label: 'Commit staged…', run: actions.gitCommitStaged },
         { id: 'git.undo', label: 'Undo last commit', run: actions.gitUndoCommit },
         { id: 'git.push', label: 'Push', run: actions.gitPush },
         { id: 'git.fetch', label: 'Fetch', run: actions.gitFetch },
@@ -232,7 +230,7 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         },
         {
           id: 'editor.autoSave',
-          label: `${check(ctx.autoSaveOnBlur)}Auto-save when the terminal loses focus`,
+          label: `${check(ctx.autoSaveOnBlur)}Auto-save on tab switch and terminal blur`,
           run: actions.toggleAutoSave,
         },
       ],

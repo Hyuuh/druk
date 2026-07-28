@@ -3,7 +3,7 @@ import { basename, dirname, join } from 'node:path'
 import { createMemo, createSignal } from 'solid-js'
 
 import { createDir, createFile, isDirectory } from '../core/fs'
-import { commitPaths, commitStaged, undoLastCommit } from '../core/git'
+import { commitPaths, undoLastCommit } from '../core/git'
 import type { EditorBridge } from './editor'
 import type { FileOps } from './fileOps'
 import type { GitOp } from './git'
@@ -97,10 +97,7 @@ export function createPromptHandlers(deps: {
       if (err) return say(err, 'error')
       say(`Renamed to ${name}`)
     } else if (p.kind === 'commit') {
-      const paths = p.paths
-      gitOp('Committing', () =>
-        paths ? commitPaths(rootDir, name, paths) : commitStaged(rootDir, name),
-      )
+      gitOp('Committing', () => commitPaths(rootDir, name, p.paths))
     }
   }
 

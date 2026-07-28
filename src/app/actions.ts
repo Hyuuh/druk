@@ -5,11 +5,11 @@ import { createMemo } from 'solid-js'
 import type { TreeNode } from '../core/fs'
 import {
   fetchRemote,
-  hasStaged,
   inRepository,
   lastCommitSubject,
   pull,
   push,
+  stagedPaths,
   stashPop,
   stashPush,
   statusMap,
@@ -75,22 +75,20 @@ export function createCommands(ctx: AppContext) {
     toggleAutoSave: settings.toggleAutoSave,
     gitCommit: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
+      // A hand-built index is a selection already made, so the picker mirrors
+      // it: staged files start checked, the rest unchecked. With nothing
+      // staged there is no selection to respect and everything starts checked.
+      const staged = stagedPaths(rootDir)
       const changes = [...statusMap(rootDir)]
         .map(([path, fileStatus]) => ({
           path,
           rel: relative(rootDir, path),
           status: fileStatus,
+          checked: staged.size === 0 || staged.has(path),
         }))
         .toSorted((a, b) => a.rel.localeCompare(b.rel))
       if (changes.length === 0) return say('Nothing to commit — working tree clean')
       git.setCommitPick(changes)
-    },
-    gitCommitStaged: () => {
-      if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
-      // Refused before the prompt: `git commit` on an empty index fails with
-      // "On branch main" as its first line, which is what the status bar would show.
-      if (!hasStaged(rootDir)) return say('Nothing staged to commit', 'warn')
-      ctx.prompts.setPrompt({ kind: 'commit', paths: null })
     },
     gitUndoCommit: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')

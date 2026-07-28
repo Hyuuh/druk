@@ -30,7 +30,7 @@ export type Prompt =
   | { kind: 'delete'; targets: string[] }
   | { kind: 'closeDirty'; paths: string[]; names: string[] }
   | { kind: 'quitDirty'; names: string[] }
-  | { kind: 'commit'; paths: string[] | null }
+  | { kind: 'commit'; paths: string[] }
   | { kind: 'undoCommit'; subject: string }
   | null
 

@@ -89,31 +89,26 @@ test('the picker refuses an empty selection and A toggles everything', async () 
   expect(t.captureCharFrame()).toContain('1 of 1 files')
 })
 
-test('commit staged leaves the unstaged files alone', async () => {
+test('a hand-built index prefills the picker, and Enter commits just that', async () => {
   const dir = repo('one\n')
   writeFileSync(join(dir, 'a.ts'), 'two\n')
   execFileSync('git', ['add', 'a.ts'], { cwd: dir })
   writeFileSync(join(dir, 'b.ts'), 'new\n')
 
   const t = await launch(dir)
-  await runCommand(t, 'Commit staged')
+  await runCommand(t, 'Commit')
+  const picker = t.captureCharFrame()
+  expect(picker).toContain('1 of 2 files')
+  expect(picker).toContain('[x] M a.ts')
+  expect(picker).toContain('[ ] U b.ts')
+
+  await press(t, i => i.pressEnter())
   await press(t, i => void i.typeText('staged only'))
   await press(t, i => i.pressEnter())
 
   await until(t, () => subject(dir) === 'staged only')
   expect(porcelain(dir)).toContain('?? b.ts')
   expect(porcelain(dir)).not.toContain('a.ts')
-})
-
-test('commit staged with an empty index refuses without opening the prompt', async () => {
-  const dir = repo('one\n')
-  // Unstaged edit only: the working tree is dirty but nothing is staged.
-  writeFileSync(join(dir, 'a.ts'), 'two\n')
-
-  const t = await launch(dir)
-  await runCommand(t, 'Commit staged')
-  await until(t, () => t.captureCharFrame().includes('Nothing staged to commit'))
-  expect(t.captureCharFrame()).not.toContain('Commit message')
 })
 
 test('undo last commit asks first, then leaves the changes staged', async () => {

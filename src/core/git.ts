@@ -73,22 +73,31 @@ const STATUS_BY_CODE: Record<string, FileStatus> = {
 }
 
 /**
+ * Directory git-relative paths are joined onto. git reports the resolved root
+ * (/private/var/…), while the tree holds the path the user opened (/var/…) —
+ * so the caller's form wins when the two are the same place. Null outside a
+ * repository.
+ */
+function keyBase(cwd: string): string | null {
+  const top = git(cwd, ['rev-parse', '--show-toplevel'], 3000)
+  if (top.status !== 0) return null
+  const root = top.stdout.trim()
+  try {
+    if (realpathSync(cwd) === realpathSync(root)) return cwd
+  } catch {
+    // unreadable path: fall back to git's own root
+  }
+  return root
+}
+
+/**
  * Working-tree status per absolute path. Staged and unstaged changes collapse to
  * one mark — the tree only needs "this differs from HEAD".
  */
 export function statusMap(cwd: string): Map<string, FileStatus> {
   const statuses = new Map<string, FileStatus>()
-  const top = git(cwd, ['rev-parse', '--show-toplevel'], 3000)
-  if (top.status !== 0) return statuses
-  // git reports the resolved path (/private/var/…), while the tree holds the
-  // path the user opened (/var/…). Key by the caller's form when they match.
-  const root = top.stdout.trim()
-  let base = root
-  try {
-    if (realpathSync(cwd) === realpathSync(root)) base = cwd
-  } catch {
-    // unreadable path: fall back to git's own root
-  }
+  const base = keyBase(cwd)
+  if (base === null) return statuses
 
   // `-z` because the default output C-quotes and octal-escapes any path that is
   // not plain ASCII; unquoting that by hand loses every accented or spaced name.
@@ -142,12 +151,22 @@ export function inRepository(cwd: string): boolean {
   return git(cwd, ['rev-parse', '--is-inside-work-tree'], 3000).stdout?.trim() === 'true'
 }
 
-/** True when the index differs from HEAD — whether "Commit staged" has anything to do. */
-export function hasStaged(cwd: string): boolean {
-  // Exit 1 is the answer "yes, there are differences", not a failure; on an
-  // unborn branch git compares the index against the empty tree, so a fresh
-  // repository with staged files still reports correctly.
-  return git(cwd, ['diff', '--cached', '--quiet'], 3000).status === 1
+/**
+ * Absolute paths staged in the index, keyed like `statusMap` so the two can be
+ * compared. On an unborn branch git diffs the index against the empty tree, so
+ * a fresh repository with staged files still reports correctly.
+ */
+export function stagedPaths(cwd: string): Set<string> {
+  const staged = new Set<string>()
+  const base = keyBase(cwd)
+  if (base === null) return staged
+  // `-z` for the same reason as `statusMap`: quoted paths would never match its keys.
+  const run = git(cwd, ['diff', '--cached', '--name-only', '-z'])
+  if (run.status !== 0) return staged
+  for (const rel of run.stdout.split('\0')) {
+    if (rel.length > 0) staged.add(join(base, rel))
+  }
+  return staged
 }
 
 /** Subject of HEAD, or null with no commits yet — what "undo last commit" names. */
@@ -207,10 +226,6 @@ function mutate(cwd: string, args: string[]): Promise<GitResult> {
       finish({ ok, detail: firstLine(ok ? stdout || stderr : stderr || stdout) })
     })
   })
-}
-
-export function commitStaged(cwd: string, message: string): Promise<GitResult> {
-  return mutate(cwd, ['commit', '-m', message])
 }
 
 /** Stage and commit exactly `paths`; anything staged for other paths stays staged. */

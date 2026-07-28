@@ -13,6 +13,8 @@ export interface CommitFile {
   /** Shown to the user; `path` is what git gets. */
   rel: string
   status: FileStatus
+  /** Whether the file starts checked — the caller's read of the index. */
+  checked: boolean
 }
 
 export interface CommitModalProps {
@@ -27,9 +29,11 @@ export function CommitModal(props: CommitModalProps) {
   const dimensions = useTerminalDimensions()
   const [cursor, setCursor] = createSignal(0)
   const [top, setTop] = createSignal(0)
-  // Excluded rather than included, so every file starts checked without a
-  // signal write on open — "commit everything" stays the one-keystroke path.
-  const [excluded, setExcluded] = createSignal<Set<string>>(new Set())
+  // Read once on open: the modal is remounted per showing, and the files array
+  // does not change underneath it.
+  const [excluded, setExcluded] = createSignal<Set<string>>(
+    new Set(props.files.filter(file => !file.checked).map(file => file.path)),
+  )
 
   const width = () => modalWidth(dimensions().width, 0.6, 70, 100)
   const rows = () => listRows(dimensions().height, 9, 16)
