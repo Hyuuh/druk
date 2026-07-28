@@ -40,10 +40,11 @@ scripts/
   themes/
     index.ts         theme registry  ← add a theme here
     types.ts         Theme / ThemeUi shape
-    github-dark.ts   one file per theme: also github-light, the four catppuccin
-                     flavors, dracula, everforest-dark/light, gruvbox-dark/light,
-                     nord, one-dark, the three rosé pine variants,
-                     solarized-dark/light, tokyo-night
+    github-dark.ts   one file per theme: also github-light, ayu-dark/mirage/light,
+                     the four catppuccin flavors, dracula, everforest-dark/light,
+                     gruvbox-dark/light, kanagawa-wave/dragon/lotus, nord,
+                     one-dark, the three rosé pine variants, solarized-dark/light,
+                     tokyo-night, vesper
   editor/
     vim.ts           modal editing state machine (normal / insert / visual)
     history.ts       undo/redo, coalesced per edit burst

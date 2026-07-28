@@ -7,6 +7,9 @@
 import type { StyleDefinitionInput } from '@opentui/core'
 import { createStore } from 'solid-js/store'
 
+import { ayuDark } from './ayu-dark'
+import { ayuLight } from './ayu-light'
+import { ayuMirage } from './ayu-mirage'
 import { catppuccinFrappe } from './catppuccin-frappe'
 import { catppuccinLatte } from './catppuccin-latte'
 import { catppuccinMacchiato } from './catppuccin-macchiato'
@@ -18,6 +21,9 @@ import { githubDark } from './github-dark'
 import { githubLight } from './github-light'
 import { gruvboxDark } from './gruvbox-dark'
 import { gruvboxLight } from './gruvbox-light'
+import { kanagawaDragon } from './kanagawa-dragon'
+import { kanagawaLotus } from './kanagawa-lotus'
+import { kanagawaWave } from './kanagawa-wave'
 import { nord } from './nord'
 import { oneDark } from './one-dark'
 import { rosePine } from './rose-pine'
@@ -27,6 +33,7 @@ import { solarizedDark } from './solarized-dark'
 import { solarizedLight } from './solarized-light'
 import { tokyoNight } from './tokyo-night'
 import type { Theme, ThemeUi } from './types'
+import { vesper } from './vesper'
 
 export type { Theme, ThemeUi }
 
@@ -35,6 +42,9 @@ export type { Theme, ThemeUi }
 export const THEMES = {
   'dark': githubDark,
   'light': githubLight,
+  'ayu-dark': ayuDark,
+  'ayu-mirage': ayuMirage,
+  'ayu-light': ayuLight,
   'catppuccin-mocha': catppuccinMocha,
   'catppuccin-macchiato': catppuccinMacchiato,
   'catppuccin-frappe': catppuccinFrappe,
@@ -44,6 +54,9 @@ export const THEMES = {
   'everforest-light': everforestLight,
   'gruvbox': gruvboxDark,
   'gruvbox-light': gruvboxLight,
+  'kanagawa-wave': kanagawaWave,
+  'kanagawa-dragon': kanagawaDragon,
+  'kanagawa-lotus': kanagawaLotus,
   nord,
   'one-dark': oneDark,
   'rose-pine': rosePine,
@@ -52,6 +65,7 @@ export const THEMES = {
   'solarized-dark': solarizedDark,
   'solarized-light': solarizedLight,
   'tokyo-night': tokyoNight,
+  vesper,
 }
 
 export type ThemeName = keyof typeof THEMES
