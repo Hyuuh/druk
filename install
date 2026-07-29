@@ -176,7 +176,21 @@ fi
 exe_name="$APP"
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) exe_name="$APP.exe" ;; esac
 
-staged=$(mktemp "$INSTALL_DIR/.$exe_name.XXXXXX")
+# The binary is replaced with mv, not cp: rename(2) swaps the directory entry
+# without touching the old inode, so it works while that inode is the running
+# druk doing the update (cp would get ETXTBSY). Unlike cp, mv replaces a
+# symlink instead of writing through it — druk owns this path, so a symlink
+# here is someone else's setup we refuse to break.
+if [ -L "$INSTALL_DIR/$exe_name" ]; then
+    echo -e "${RED}Error: $INSTALL_DIR/$exe_name is a symlink; refusing to replace it${NC}" >&2
+    echo -e "${MUTED}Remove the symlink and re-run the installer${NC}" >&2
+    exit 1
+fi
+
+if ! staged=$(mktemp "$INSTALL_DIR/.$exe_name.XXXXXX"); then
+    echo -e "${RED}Error: cannot write to $INSTALL_DIR${NC}" >&2
+    exit 1
+fi
 trap 'rm -rf "${tmp_dir:-}" "$staged"' EXIT
 cp "$binary_path" "$staged"
 chmod 755 "$staged"
