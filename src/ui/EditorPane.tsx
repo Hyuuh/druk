@@ -966,7 +966,13 @@ export function EditorPane(props: EditorPaneProps) {
               // dragging the caret along, so unwrapped long lines have no way to be
               // read that does not move the cursor.
               wrapMode="word"
-              tabIndicator={props.tabSize}
+              // OpenTUI takes a glyph, not a width: the number it accepts is a code
+              // point, so passing a tab size painted control characters into the first
+              // cell of every tab. A terminal drops those, leaving whatever the cell
+              // held before — stale text that changes as the file scrolls.
+              // A filled block in the guide color is the only way to match the space
+              // guides, which are a background tint: the indicator sets a foreground.
+              tabIndicator="█"
               tabIndicatorColor={ui.indentGuide}
               flexGrow={1}
               paddingLeft={1}

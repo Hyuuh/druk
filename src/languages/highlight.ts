@@ -142,8 +142,17 @@ function indentGuides(content: string, tabSize: number): RawHighlight[] {
   let offset = 0
   for (const line of content.split('\n')) {
     const indent = line.length - line.trimStart().length
-    for (let column = 0; column < indent; column += tabSize) {
-      guides.push([offset + column, offset + column + 1, INDENT_GUIDE])
+    let spaces = 0
+    for (let column = 0; column < indent; column++) {
+      // A tab is an indent level by itself and OpenTUI tints its first cell as it
+      // renders (see `tabIndicator`). Marking it here too would widen the guide to
+      // the whole tab and make tab files look unlike space files.
+      if (line[column] === '\t') {
+        spaces = 0
+        continue
+      }
+      if (spaces % tabSize === 0) guides.push([offset + column, offset + column + 1, INDENT_GUIDE])
+      spaces++
     }
     offset += line.length + 1
   }

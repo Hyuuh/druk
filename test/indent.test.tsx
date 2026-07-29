@@ -30,6 +30,15 @@ test('guides mark every indent stop at the configured width', async () => {
   expect(four.length).toBeLessThan(two.length)
 })
 
+test('a tab indent is tinted by the renderer alone', async () => {
+  // The tab already carries a guide in its first cell, so a highlight over it
+  // would tint the whole tab and make tab files look unlike space files.
+  const tabbed = 'function f() {\n\tif (x) {\n\t\treturn 1\n\t}\n}\n'
+  const segs = await allSegments(tabbed, 'typescript', 2)
+  const guide = getSyntaxStyle().getStyleId('indent.guide')
+  expect(segs.filter(s => s.styleId === guide)).toEqual([])
+})
+
 test('tab size is configurable and shown in the palette', async () => {
   const t = await launch(fixture({ 'a.ts': NESTED }), { ...DEFAULTS, tabSize: 4 })
   await press(t, i => i.pressKey('p', { ctrl: true }))
@@ -37,6 +46,24 @@ test('tab size is configurable and shown in the palette', async () => {
   const frame = t.captureCharFrame()
   expect(frame).toContain('2 spaces')
   expect(frame).toContain('* 4 spaces') // marked as active
+})
+
+test('tab indents keep drawing guides after the view scrolls', async () => {
+  // Tabs are painted by OpenTUI, not the highlighter: it writes the indicator
+  // glyph into the first cell of the tab and spaces after it. A code point it
+  // cannot print leaves those cells untouched, so the previous frame shows
+  // through and the file looks different at every scroll position.
+  const filler = Array.from({ length: 40 }, (_, i) => `\tconst x${i} = ${i}`).join('\n')
+  const content = `${filler}\n\t\t<marker/>\n${filler}\n`
+  const dir = fixture({ 'a.tsx': content })
+  const t = await launch(dir, {}, {}, { openFile: `${dir}/a.tsx` })
+
+  for (let i = 0; i < 45; i++) await press(t, input => input.pressArrow('down'))
+
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('█ █ <marker/>')
+  const control = [...frame].filter(ch => ch !== '\n' && ch.codePointAt(0)! < 0x20)
+  expect(control).toEqual([])
 })
 
 test('indent guides are visible in every theme', () => {

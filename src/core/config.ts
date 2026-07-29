@@ -43,7 +43,11 @@ export interface Config {
   theme: ThemeName
   /** Modal editing (normal / insert / visual). */
   vim: boolean
-  /** Columns per indent level: indent guides and literal tabs both use it. */
+  /**
+   * Columns per indent level for space indentation — the Tab key and the guides.
+   * A literal tab is two columns whatever this says: OpenTUI's renderer fixes that
+   * width and exposes no setting for it.
+   */
   tabSize: number
   /**
    * Columns the file tree occupies, or `'auto'` for a share of the terminal —
