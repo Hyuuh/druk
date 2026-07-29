@@ -176,8 +176,11 @@ fi
 exe_name="$APP"
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) exe_name="$APP.exe" ;; esac
 
-cp "$binary_path" "$INSTALL_DIR/$exe_name"
-chmod 755 "$INSTALL_DIR/$exe_name"
+staged=$(mktemp "$INSTALL_DIR/.$exe_name.XXXXXX")
+trap 'rm -rf "${tmp_dir:-}" "$staged"' EXIT
+cp "$binary_path" "$staged"
+chmod 755 "$staged"
+mv -f "$staged" "$INSTALL_DIR/$exe_name"
 
 add_to_path() {
     local config_file=$1 command=$2
