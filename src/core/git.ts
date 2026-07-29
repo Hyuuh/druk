@@ -16,8 +16,14 @@ export type FileStatus = 'untracked' | 'added' | 'modified' | 'deleted'
  */
 const MAX_OUTPUT = 128 * 1024 * 1024
 
-function git(cwd: string, args: string[], timeout = 5000) {
-  return spawnSync('git', args, { cwd, encoding: 'utf8', timeout, maxBuffer: MAX_OUTPUT })
+function git(cwd: string, args: string[], timeout = 5000, input?: string) {
+  return spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    timeout,
+    maxBuffer: MAX_OUTPUT,
+    input,
+  })
 }
 
 /**
@@ -118,6 +124,29 @@ export function statusMap(cwd: string): Map<string, FileStatus> {
     if (status) statuses.set(join(base, entry.slice(3)), status)
   }
   return statuses
+}
+
+/**
+ * Which of `paths` gitignore would skip. Only the paths asked about are checked
+ * — not every ignored file in the tree — so expanding `node_modules` stays cheap
+ * enough for the sidebar refresh. Empty outside a repository.
+ *
+ * Paths come back in the same spelling they went in: we feed absolute tree paths
+ * on stdin and get those absolutes out, so there is no `keyBase` remapping the
+ * way `statusMap` needs for porcelain's repo-relative names.
+ */
+export function ignoredAmong(cwd: string, paths: string[]): Set<string> {
+  const ignored = new Set<string>()
+  if (paths.length === 0 || keyBase(cwd) === null) return ignored
+
+  // `-z` + `--stdin`: one NUL-terminated path each way. Exit 1 means none of the
+  // paths are ignored — still success, just an empty set.
+  const run = git(cwd, ['check-ignore', '--stdin', '-z'], 5000, `${paths.join('\0')}\0`)
+  if (run.status !== 0 && run.status !== 1) return ignored
+  for (const path of (run.stdout ?? '').split('\0')) {
+    if (path.length > 0) ignored.add(path)
+  }
+  return ignored
 }
 
 /**

@@ -1,6 +1,13 @@
 import { createEffect, createSignal, on } from 'solid-js'
 
-import { currentBranch, diffLines, inRepository, statusMap, upstreamOf } from '../core/git'
+import {
+  currentBranch,
+  diffLines,
+  ignoredAmong,
+  inRepository,
+  statusMap,
+  upstreamOf,
+} from '../core/git'
 import type { FileStatus, GitResult, LineChange, Upstream } from '../core/git'
 import type { CommitFile } from '../ui/CommitModal'
 import type { EditorBridge } from './editor'
@@ -14,6 +21,8 @@ export function createGit(rootDir: string) {
   /** Bumped when something may have changed what git would report. */
   const [revision, setRevision] = createSignal(0)
   const [gitStatus, setGitStatus] = createSignal<Map<string, FileStatus>>(new Map())
+  /** Visible tree paths that `.gitignore` excludes — dimmed in the sidebar. */
+  const [gitIgnored, setGitIgnored] = createSignal<Set<string>>(new Set())
   const [branch, setBranch] = createSignal(currentBranch(rootDir))
   const [upstream, setUpstream] = createSignal<Upstream | null>(null)
   /** A git mutation in flight — one at a time, they share a repository. */
@@ -30,6 +39,8 @@ export function createGit(rootDir: string) {
     bump,
     gitStatus,
     setGitStatus,
+    gitIgnored,
+    setGitIgnored,
     branch,
     setBranch,
     upstream,
@@ -112,12 +123,19 @@ export function wireGitEffects(deps: {
 
   // Tree marks follow the same cadence, plus any filesystem change. The branch
   // rides along: a checkout in another terminal writes .git, so the watcher fires
-  // here, and nothing else would ever notice HEAD had moved.
+  // here, and nothing else would ever notice HEAD had moved. Ignored paths ride
+  // the same tick: expansion reveals new rows that need a check-ignore pass.
   createEffect(
     on(
       () => [tree.expanded(), git.revision(), editor.reloadKey()] as const,
       () => {
         git.setGitStatus(statusMap(rootDir))
+        git.setGitIgnored(
+          ignoredAmong(
+            rootDir,
+            tree.nodes().map(n => n.path),
+          ),
+        )
         git.setBranch(currentBranch(rootDir))
       },
     ),

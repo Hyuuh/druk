@@ -227,6 +227,7 @@ export function App(props: {
             focused={panes.focus() === 'tree'}
             width={settings.treeWidth()}
             gitStatus={git.gitStatus()}
+            gitIgnored={git.gitIgnored()}
             cutPaths={fileOps.cut()}
             markedPaths={tree.marked()}
             onActivate={node => {

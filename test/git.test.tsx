@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { currentBranch, diffLines, statusMap } from '../src/core/git'
+import { currentBranch, diffLines, ignoredAmong, statusMap } from '../src/core/git'
 import { launch, press } from './helpers'
 
 /** A real repository with one committed file. */
@@ -14,6 +14,8 @@ function repo(committed: string) {
   git('init', '-q', '-b', 'main')
   git('config', 'user.email', 'test@example.com')
   git('config', 'user.name', 'Test')
+  // Local gpgsign=true would fail every fixture commit — no test key is available.
+  git('config', 'commit.gpgsign', 'false')
   writeFileSync(join(dir, 'a.ts'), committed)
   git('add', '.')
   git('commit', '-q', '-m', 'init')
@@ -129,4 +131,49 @@ test('every file inside a brand-new directory is marked, not just the directory'
   expect(frame).toContain('newdir')
   expect(frame).toContain('a.ts')
   expect(frame.split('\n').find(row => row.includes('a.ts'))).toContain('U')
+})
+
+test('ignoredAmong reports only the gitignored paths asked about', () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n*.log\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+  writeFileSync(join(dir, 'noise.log'), 'log\n')
+  writeFileSync(join(dir, 'keep.ts'), 'ok\n')
+
+  const paths = [
+    join(dir, 'dist'),
+    join(dir, 'dist', 'out.js'),
+    join(dir, 'noise.log'),
+    join(dir, 'keep.ts'),
+    join(dir, 'a.ts'),
+  ]
+  const ignored = ignoredAmong(dir, paths)
+  expect(ignored.has(join(dir, 'dist'))).toBe(true)
+  expect(ignored.has(join(dir, 'dist', 'out.js'))).toBe(true)
+  expect(ignored.has(join(dir, 'noise.log'))).toBe(true)
+  expect(ignored.has(join(dir, 'keep.ts'))).toBe(false)
+  expect(ignored.has(join(dir, 'a.ts'))).toBe(false)
+})
+
+test('ignoredAmong is empty outside a repository', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'druk-'))
+  writeFileSync(join(dir, 'a.ts'), 'x\n')
+  expect(ignoredAmong(dir, [join(dir, 'a.ts')]).size).toBe(0)
+})
+
+test('a gitignored folder still appears in the tree, without a status mark', async () => {
+  // Dimmed in the UI (color is not in the char frame); the contract here is that
+  // ignore does not hide the row and does not invent a U/M mark for it.
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+  writeFileSync(join(dir, 'a.ts'), 'changed\n')
+
+  const t = await launch(dir)
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('dist')
+  expect(frame.split('\n').find(row => /\bdist\b/.test(row))!).not.toMatch(/[UMAD]/s)
+  expect(frame.split('\n').find(row => row.includes('a.ts'))).toContain('M')
 })
