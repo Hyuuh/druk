@@ -67,6 +67,16 @@ export function filetypeForPath(path: string): string | undefined {
   return pathToFiletype(path) ?? undefined
 }
 
+/**
+ * The initialized worker client with the vendored parsers registered, or null
+ * when highlighting is unavailable. The diff view passes this to OpenTUI's
+ * `<diff>` renderable — constructed without a client it would spin up its own,
+ * uninitialized and without the vendored grammars.
+ */
+export function highlightClient(): Promise<TreeSitterClient | null> {
+  return ensureClient()
+}
+
 async function ensureClient(): Promise<TreeSitterClient | null> {
   if (clientDead) return null
   if (!initPromise) {

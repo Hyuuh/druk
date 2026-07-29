@@ -40,6 +40,7 @@ scripts/
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
     git.ts           read-only queries: diff hunks, status, branch, ahead/behind
+    diff.ts          Myers line diff between two texts, emitted as a unified patch
     bulk.ts          delete/copy/move in the background, reporting progress
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
     session.ts       per-project open tabs + expanded folders, keyed by path
@@ -67,7 +68,7 @@ scripts/
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
     EditorPane, FileTree, Tabs, StatusBar, CommandPalette, FilePicker,
-    SearchPanel, UpdateBanner, Overlay, TextInput, PromptModal,
+    SearchPanel, DiffView, UpdateBanner, Overlay, TextInput, PromptModal,
     ConfirmModal, ChoiceModal, HelpOverlay
 ```
 

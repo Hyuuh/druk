@@ -57,6 +57,8 @@ export interface Config {
   trimOnSave: boolean
   /** Save every dirty buffer when the terminal window loses focus. */
   autoSaveOnBlur: boolean
+  /** How the diff view renders: one column of +/- rows, or two side by side. */
+  diffView: 'inline' | 'split'
 }
 
 export const DEFAULTS: Config = {
@@ -67,6 +69,7 @@ export const DEFAULTS: Config = {
   skipUpdate: '',
   trimOnSave: false,
   autoSaveOnBlur: false,
+  diffView: 'inline',
 }
 
 function parse(raw: unknown): Config {
@@ -82,6 +85,8 @@ function parse(raw: unknown): Config {
     trimOnSave: typeof obj.trimOnSave === 'boolean' ? obj.trimOnSave : DEFAULTS.trimOnSave,
     autoSaveOnBlur:
       typeof obj.autoSaveOnBlur === 'boolean' ? obj.autoSaveOnBlur : DEFAULTS.autoSaveOnBlur,
+    diffView:
+      obj.diffView === 'split' || obj.diffView === 'inline' ? obj.diffView : DEFAULTS.diffView,
     sidebarWidth:
       typeof obj.sidebarWidth === 'number' &&
       obj.sidebarWidth >= SIDEBAR_MIN &&

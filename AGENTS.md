@@ -13,8 +13,8 @@ installer — and run as a CLI.
 Features: file tree with bulk file operations, preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide), command palette, themes, vim mode,
 git marks in tree/gutter/status bar plus palette commands for commit/undo/stash/push/
-fetch/pull, file watching with conflict prompts, per-project session restore, and a
-startup update check.
+fetch/pull, a diff view (inline or side-by-side, one file or every change), file watching
+with conflict prompts, per-project session restore, and a startup update check.
 
 ## Runtime and tooling
 
@@ -224,6 +224,12 @@ Some OpenTUI element names are snake_case (`line_number` is the one druk uses).
 ### Style
 
 - TypeScript strict; no `any` escapes without a reason.
+- **No inline `as unknown as` casts.** Before reaching for one, check the real type —
+  renderables extend `EventEmitter`, so `.on(...)` needs no cast at all. When a private
+  OpenTUI member truly has no public type, confine the one cast to a small named helper
+  with a comment saying why (`afterResize` and `ignoreScrollOutsideBounds` in
+  `src/ui/EditorPane.tsx` are the pattern) — never spell casts out mid-expression in
+  component or logic code.
 - Prefer the smallest change that fits the surrounding code; match its idiom.
 - Formatting and lint are enforced by oxfmt/oxlint — run them rather than hand-aligning.
 - Keep modules focused; if a file is becoming a grab bag, split it along feature lines.

@@ -10,6 +10,8 @@ import { checkForUpdate } from '../core/update'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
 import { ui } from '../themes'
+import { DiffView } from '../ui/DiffView'
+import type { DiffFile } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
 import { FileTree } from '../ui/FileTree'
 import { StatusBar } from '../ui/StatusBar'
@@ -195,7 +197,12 @@ export function App(props: {
           preview: p === workspace.previewPath(),
         }))}
         activePath={workspace.activePath()}
-        onSelect={p => workspace.openFile(p)}
+        onSelect={p => {
+          // A tab picked while the diff covers the editor must show the file, not
+          // change what the diff pane happens to sit on top of.
+          overlays.setDiff(null)
+          workspace.openFile(p)
+        }}
         onClose={workspace.closeTab}
         onOverflow={() => overlays.setPicker('tabs')}
       />
@@ -211,7 +218,10 @@ export function App(props: {
         onMouseDragEnd={() => setResizing(false)}
         onMouseUp={() => setResizing(false)}
       >
-        <Show when={panes.sidebar()}>
+        {/* The tree hides while the diff is open — the pane wants the width, and
+            the sidebar state itself is untouched, so closing the diff brings it
+            back exactly as it was. */}
+        <Show when={panes.sidebar() && !overlays.diff()}>
           <FileTree
             rootName={basename(rootDir) || rootDir}
             nodes={tree.nodes()}
@@ -250,28 +260,49 @@ export function App(props: {
             <box flexGrow={1} backgroundColor={ui.bg} />
           </box>
         </Show>
-        <EditorPane
-          path={workspace.activePath()}
-          content={workspace.activeBuffer()?.content ?? ''}
-          filetype={workspace.activePath() ? filetypeForPath(workspace.activePath()!) : undefined}
-          focused={panes.focus() === 'editor'}
-          theme={config.theme}
-          reloadKey={editor.reloadKey()}
-          goto={editor.goto()}
-          history={editor.history()}
-          edit={editor.edit()}
-          lineOp={editor.lineOp()}
-          vim={config.vim}
-          tabSize={config.tabSize}
-          gitLines={git.gitLines()}
-          notice={workspace.notice()}
-          blocked={overlays.overlay()}
-          onChange={workspace.onEditorChange}
-          onCursor={editor.setCursor}
-          onFocus={() => panes.setFocus('editor')}
-          onVimMode={editor.setVimMode}
-          onQuit={promptHandlers.quit}
-        />
+        {/* The diff pane sits over the editor's slot only, so the tabs, tree and
+            status bar stay put — it reads as a view of the editor, not a modal. */}
+        <box flexGrow={1} flexDirection="column">
+          <EditorPane
+            path={workspace.activePath()}
+            content={workspace.activeBuffer()?.content ?? ''}
+            filetype={workspace.activePath() ? filetypeForPath(workspace.activePath()!) : undefined}
+            // Also unfocused while the diff covers the pane: the terminal's own
+            // cursor tracks the focused textarea and is drawn over everything,
+            // so a focused editor bleeds a phantom block into the diff.
+            focused={panes.focus() === 'editor' && !overlays.diff()}
+            theme={config.theme}
+            reloadKey={editor.reloadKey()}
+            goto={editor.goto()}
+            history={editor.history()}
+            edit={editor.edit()}
+            lineOp={editor.lineOp()}
+            vim={config.vim}
+            tabSize={config.tabSize}
+            gitLines={git.gitLines()}
+            notice={workspace.notice()}
+            blocked={overlays.overlay()}
+            onChange={workspace.onEditorChange}
+            onCursor={editor.setCursor}
+            onFocus={() => panes.setFocus('editor')}
+            onVimMode={editor.setVimMode}
+            onQuit={promptHandlers.quit}
+          />
+          <Show when={overlays.diff()}>
+            {(open: () => { files: DiffFile[]; index: number }) => (
+              <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={50}>
+                <DiffView
+                  files={open().files}
+                  index={open().index}
+                  mode={config.diffView}
+                  onIndex={index => overlays.setDiff({ files: open().files, index })}
+                  onToggleMode={settings.toggleDiffView}
+                  onClose={() => overlays.setDiff(null)}
+                />
+              </box>
+            )}
+          </Show>
+        </box>
       </box>
       <StatusBar
         message={status.status().msg}

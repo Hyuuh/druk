@@ -49,6 +49,11 @@ export function createSettings(deps: {
     status.say(`Trim on save ${config.trimOnSave ? 'on' : 'off'}`)
   }
 
+  const toggleDiffView = () => {
+    const next = config.diffView === 'inline' ? 'split' : 'inline'
+    patchConfig({ diffView: next })
+  }
+
   const toggleAutoSave = () => {
     patchConfig({ autoSaveOnBlur: !config.autoSaveOnBlur })
     status.say(`Auto-save ${config.autoSaveOnBlur ? 'on' : 'off'}`)
@@ -90,6 +95,7 @@ export function createSettings(deps: {
     applyVim,
     toggleTrim,
     toggleAutoSave,
+    toggleDiffView,
     treeWidth,
     resizeSidebar,
     nudgeSidebar,

@@ -2,9 +2,11 @@ import { relative } from 'node:path'
 
 import { createMemo } from 'solid-js'
 
+import { readFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import {
   fetchRemote,
+  headText,
   inRepository,
   lastCommitSubject,
   pull,
@@ -14,6 +16,8 @@ import {
   stashPush,
   statusMap,
 } from '../core/git'
+import type { FileStatus } from '../core/git'
+import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
 import type { AppContext } from './context'
@@ -29,6 +33,30 @@ export function createCommands(ctx: AppContext) {
     const node = tree.selectedNode()
     if (node) run(node)
     else say('Select a file in the tree first', 'warn')
+  }
+
+  /**
+   * Both texts of one file's diff. The new side prefers the open buffer over the
+   * disk, so unsaved edits show — that is the diff the user is looking at. Null
+   * for a file that cannot be read (binary), which the callers skip.
+   */
+  const diffFileFor = (path: string, fileStatus: FileStatus): DiffFile | null => {
+    const rel = relative(rootDir, path)
+    const oldText = fileStatus === 'untracked' ? '' : (headText(rootDir, rel) ?? '')
+    let newText = ''
+    if (fileStatus !== 'deleted') {
+      const open = workspace.buffers[path]
+      if (open) {
+        newText = open.content
+      } else {
+        try {
+          newText = readFile(path)
+        } catch {
+          return null
+        }
+      }
+    }
+    return { path, rel, status: fileStatus, oldText, newText }
   }
 
   const actions = {
@@ -73,6 +101,26 @@ export function createCommands(ctx: AppContext) {
     lineOp: editor.requestLineOp,
     toggleTrim: settings.toggleTrim,
     toggleAutoSave: settings.toggleAutoSave,
+    gitDiffFile: () => {
+      if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
+      const path = workspace.activePath()
+      if (!path) return say('No file open', 'warn')
+      // The status map only covers changed files; a clean file still diffs (as
+      // empty) when the buffer holds unsaved edits, so 'modified' is the fallback.
+      const file = diffFileFor(path, git.gitStatus().get(path) ?? 'modified')
+      if (!file) return say('Cannot diff this file', 'warn')
+      ctx.overlays.setDiff({ files: [file], index: 0 })
+    },
+    gitDiffAll: () => {
+      if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
+      const files = [...statusMap(rootDir)]
+        .map(([path, fileStatus]) => diffFileFor(path, fileStatus))
+        .filter((file): file is DiffFile => file !== null)
+        .toSorted((a, b) => a.rel.localeCompare(b.rel))
+      if (files.length === 0) return say('Nothing to diff — working tree clean')
+      const active = files.findIndex(file => file.path === workspace.activePath())
+      ctx.overlays.setDiff({ files, index: Math.max(0, active) })
+    },
     gitCommit: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
       // A hand-built index is a selection already made, so the picker mirrors

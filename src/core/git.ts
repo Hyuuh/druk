@@ -120,6 +120,17 @@ export function statusMap(cwd: string): Map<string, FileStatus> {
   return statuses
 }
 
+/**
+ * The file's content at HEAD, or null when HEAD has no such file (untracked,
+ * added, unborn branch, outside a repository). `cwd` anchors the lookup — the
+ * `./` spelling makes the path cwd-relative, so a deleted file still resolves
+ * even though it no longer exists on disk.
+ */
+export function headText(cwd: string, relPath: string): string | null {
+  const run = git(cwd, ['show', `HEAD:./${relPath}`], 3000)
+  return run.status === 0 ? run.stdout : null
+}
+
 export interface Upstream {
   /** `origin/main`, or null when the branch was never pushed. */
   name: string | null

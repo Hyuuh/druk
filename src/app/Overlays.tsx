@@ -11,6 +11,7 @@ import { CommandPalette } from '../ui/CommandPalette'
 import { CommitModal } from '../ui/CommitModal'
 import type { CommitFile } from '../ui/CommitModal'
 import { ConfirmModal } from '../ui/ConfirmModal'
+import type { DiffFile } from '../ui/DiffView'
 import { FilePicker } from '../ui/FilePicker'
 import { HelpOverlay } from '../ui/HelpOverlay'
 import { KeyPeek } from '../ui/KeyPeek'
@@ -46,6 +47,8 @@ export function createOverlays(deps: {
   /** Open search: its scope, and whether the replacement field starts showing. */
   const [search, setSearch] = createSignal<{ scope: SearchScope; replacing?: boolean } | null>(null)
   const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
+  /** Open diff view: the changed files it pages through and which one shows. */
+  const [diff, setDiff] = createSignal<{ files: DiffFile[]; index: number } | null>(null)
 
   /** True while a modal or overlay owns the keyboard. One list, two readers. */
   const overlay = createMemo(
@@ -58,6 +61,7 @@ export function createOverlays(deps: {
         search() ||
         update() ||
         picker() ||
+        diff() ||
         git.commitPick()
       ),
   )
@@ -91,6 +95,8 @@ export function createOverlays(deps: {
     setSearch,
     update,
     setUpdate,
+    diff,
+    setDiff,
     overlay,
     selection,
     jumpTo,

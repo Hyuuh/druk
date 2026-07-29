@@ -53,6 +53,8 @@ export interface CommandActions {
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   toggleTrim: () => void
   toggleAutoSave: () => void
+  gitDiffFile: () => void
+  gitDiffAll: () => void
   gitCommit: () => void
   gitUndoCommit: () => void
   gitPush: () => void
@@ -120,6 +122,8 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       id: 'git',
       label: 'Git',
       children: [
+        { id: 'git.diffFile', label: 'Diff current file', run: actions.gitDiffFile },
+        { id: 'git.diffAll', label: 'Diff all changes', run: actions.gitDiffAll },
         { id: 'git.commit', label: 'Commit…', run: actions.gitCommit },
         { id: 'git.undo', label: 'Undo last commit', run: actions.gitUndoCommit },
         { id: 'git.push', label: 'Push', run: actions.gitPush },
