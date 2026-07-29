@@ -117,7 +117,7 @@ export function App(props: {
     overlays,
   }
 
-  wireGitEffects({ rootDir, git, tree, editor, workspace })
+  wireGitEffects({ rootDir, git, tree, editor, workspace, config: settings.config })
   const { commands, actions } = createCommands(ctx)
   installKeyboard(ctx, actions)
 
@@ -246,6 +246,7 @@ export function App(props: {
                 focused={panes.focus() === 'tree'}
                 width={settings.treeWidth()}
                 gitStatus={git.gitStatus()}
+                gitIgnored={git.gitIgnored()}
                 cutPaths={fileOps.cut()}
                 markedPaths={tree.marked()}
                 onActivate={node => {

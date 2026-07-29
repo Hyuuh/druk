@@ -2,7 +2,15 @@ import { relative } from 'node:path'
 
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js'
 
-import { currentBranch, diffLines, inRepository, statusMap, upstreamOf } from '../core/git'
+import type { Config } from '../core/config'
+import {
+  currentBranch,
+  diffLines,
+  ignoredAmong,
+  inRepository,
+  statusMap,
+  upstreamOf,
+} from '../core/git'
 import type { FileStatus, GitResult, LineChange, Upstream } from '../core/git'
 import type { CommitFile } from '../ui/CommitModal'
 import type { EditorBridge } from './editor'
@@ -16,6 +24,8 @@ export function createGit(rootDir: string) {
   /** Bumped when something may have changed what git would report. */
   const [revision, setRevision] = createSignal(0)
   const [gitStatus, setGitStatus] = createSignal<Map<string, FileStatus>>(new Map())
+  /** Visible tree paths that `.gitignore` excludes — dimmed in the sidebar. */
+  const [gitIgnored, setGitIgnored] = createSignal<Set<string>>(new Set())
   // Starts null and is filled by `wireGitEffects` after the first frame: reading
   // the branch here is a synchronous subprocess on the render thread's clock.
   const [branch, setBranch] = createSignal<string | null>(null)
@@ -45,6 +55,8 @@ export function createGit(rootDir: string) {
     bump,
     gitStatus,
     setGitStatus,
+    gitIgnored,
+    setGitIgnored,
     branch,
     setBranch,
     inRepo,
@@ -105,8 +117,9 @@ export function wireGitEffects(deps: {
   tree: Tree
   editor: EditorBridge
   workspace: Workspace
+  config: Config
 }) {
-  const { rootDir, git, tree, editor, workspace } = deps
+  const { rootDir, git, tree, editor, workspace, config } = deps
 
   // Every query below is a synchronous subprocess, and effects run inside the
   // initial render pass — `statusMap` alone can take hundreds of milliseconds in
@@ -145,13 +158,33 @@ export function wireGitEffects(deps: {
 
   // Tree marks follow the same cadence, plus any filesystem change. The branch
   // rides along: a checkout in another terminal writes .git, so the watcher fires
-  // here, and nothing else would ever notice HEAD had moved.
+  // here, and nothing else would ever notice HEAD had moved. Ignored paths ride
+  // the same tick: expansion reveals new rows that need a check-ignore pass.
   createEffect(
     on(
-      () => [ready(), tree.expanded(), git.revision(), editor.reloadKey()] as const,
-      ([ok]) => {
+      () =>
+        [
+          ready(),
+          tree.expanded(),
+          git.revision(),
+          editor.reloadKey(),
+          // Not merely read in the body: flipping the setting is the one thing
+          // that changes the answer without touching the tree or the repository.
+          config.respectGitignore,
+        ] as const,
+      ([ok, , , , hidingIgnored]) => {
         if (!ok) return
         git.setGitStatus(statusMap(rootDir))
+        // With the rows hidden outright there is nothing left to dim, and the
+        // subprocess would answer "none of these" on every filesystem event.
+        git.setGitIgnored(
+          hidingIgnored
+            ? new Set<string>()
+            : ignoredAmong(
+                rootDir,
+                tree.nodes().map(n => n.path),
+              ),
+        )
         git.setBranch(currentBranch(rootDir))
         // `git init` in another terminal writes .git, so the watcher brings us
         // here — the only place the panel would ever learn it has a repository.
