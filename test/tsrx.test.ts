@@ -131,4 +131,14 @@ export function App(props: { rows: Row[]; step: string }) @{
 
     expect(group('keyword')).not.toContain('key')
   })
+
+  test('key in an ordinary statement on one line stays plain', async () => {
+    // `; key` is exactly how the clause sits in a `@for` header, so the pattern
+    // needs the `key <expr>)` shape to tell the two apart.
+    const group = await painted(
+      `export function A() @{\n\trun(); key.press(); key = 2;\n\t@for (const r of rows; key r.id) {\n\t\t<li>{r.id}</li>\n\t}\n}\n`,
+    )
+
+    expect(group('keyword').filter(t => t === 'key')).toEqual(['key'])
+  })
 })

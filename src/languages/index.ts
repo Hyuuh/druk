@@ -54,10 +54,13 @@ export const LANGUAGES: Language[] = [
     ...GRAMMARS.tsx,
     // The `@` heads and `key` are the only tsrx tokens the tsx grammar cannot
     // parse; everything inside `@{ … }` is ordinary tsx and highlights normally.
+    // `key` needs the lookahead: the clause is always `key <expr>)` closing a
+    // `@for` header, while `; key` alone also matches ordinary statements —
+    // `run(); key.press()` would paint a plain identifier.
     patterns: [
       {
         group: 'keyword.directive',
-        re: /@(?:if|else|for|empty|switch|case|default|try|pending|catch)\b|@(?=\{)|(?<=;[ \t]*)key\b/g,
+        re: /@(?:if|else|for|empty|switch|case|default|try|pending|catch)\b|@(?=\{)|(?<=;[ \t]*)key\b(?=[ \t]+[\w$.[\]]+[ \t]*\))/g,
       },
     ],
   },
