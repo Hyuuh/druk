@@ -555,11 +555,12 @@ describe('linewise visual mode', () => {
   })
 
   test('V then v switches to charwise visual', async () => {
-    const { t } = await vimEditor()
-    await type(t, 'V')
-    expect(t.captureCharFrame()).toContain('VISUAL')
-    await type(t, 'v')
-    expect(t.captureCharFrame()).toContain('VISUAL')
+    const { t, file } = await vimEditor()
+    await type(t, 'V')   // linewise select entire first line
+    await type(t, 'j')   // extend to second line (still linewise)
+    await type(t, 'v')   // switch to charwise — extends cursor to end of last line
+    await type(t, 'd')   // delete charwise selection
+    expect(await save(t, file)).toBe('three\n')
   })
 })
 
