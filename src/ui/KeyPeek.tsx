@@ -4,10 +4,17 @@ import { createMemo, For } from 'solid-js'
 
 import { ui } from '../themes'
 import { keysFor } from './keys'
+import type { KeyScope } from './keys'
 import { PAD } from './modal'
 
 /** Columns between one key/label pair and the next. */
 const GAP = 3
+
+const SCOPE_LABELS: Record<KeyScope, string> = {
+  tree: 'file tree',
+  editor: 'editor',
+  git: 'source control',
+}
 
 const clip = (label: string, width: number) =>
   label.length > width ? `${label.slice(0, width - 1)}…` : label
@@ -17,7 +24,7 @@ const clip = (label: string, width: number) =>
  * the status bar. Opened by a key and closed by the next one, so it reads as
  * "hold to see" without needing key-release events no classic terminal sends.
  */
-export function KeyPeek(props: { pane: 'tree' | 'editor' }) {
+export function KeyPeek(props: { pane: KeyScope }) {
   const dimensions = useTerminalDimensions()
 
   const layout = createMemo(() => {
@@ -56,7 +63,7 @@ export function KeyPeek(props: { pane: 'tree' | 'editor' }) {
       border
       borderStyle="rounded"
       borderColor={ui.accent}
-      title={` Keys · ${props.pane === 'tree' ? 'file tree' : 'editor'} `}
+      title={` Keys · ${SCOPE_LABELS[props.pane]} `}
       titleColor={ui.text}
       paddingLeft={PAD}
       paddingRight={PAD}

@@ -29,7 +29,7 @@ scripts/
     fileOps.ts       move/copy/delete batches and the x/c/p clipboard
     git.ts           git signals, the serialised mutation runner, refresh effects
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
-    panes.ts         focus + sidebar visibility
+    panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
     settings.ts      config store + the actions that patch and persist it
     status.ts        status-bar message + the one busy/progress slot
@@ -67,7 +67,7 @@ scripts/
     window.ts        visual rows -> logical lines, for the highlight window
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
-    EditorPane, FileTree, Tabs, StatusBar, CommandPalette, FilePicker,
+    EditorPane, FileTree, GitPanel, Tabs, StatusBar, CommandPalette, FilePicker,
     SearchPanel, DiffView, UpdateBanner, Overlay, TextInput, PromptModal,
     ConfirmModal, ChoiceModal, HelpOverlay
 ```
