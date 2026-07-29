@@ -52,7 +52,10 @@ export interface CommandActions {
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   openSettings: () => void
   gitDiffFile: () => void
-  gitDiffAll: (focusPath?: string) => void
+  /** Not a command: the panel's cursor is what opens a diff, and this is it. */
+  showDiff: (path: string) => void
+  /** Not a command: `App` runs it when git or a buffer moves under an open diff. */
+  refreshDiff: () => void
   gitCommit: () => void
   gitUndoCommit: () => void
   gitPush: () => void
@@ -60,6 +63,13 @@ export interface CommandActions {
   gitPull: () => void
   gitStash: () => void
   gitStashPop: () => void
+  gitSwitchBranch: () => void
+  gitNewBranch: () => void
+  gitNewBranchFrom: () => void
+  gitMergeBranch: () => void
+  gitRenameBranch: () => void
+  gitDeleteBranch: () => void
+  gitDeleteBranchForce: () => void
   showHelp: () => void
   quit: () => void
 }
@@ -114,8 +124,9 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       id: 'git',
       label: 'Git',
       children: [
+        // The only way in: it opens the source-control panel on this file, which
+        // is where the cursor pages through every other change.
         { id: 'git.diffFile', label: 'Diff current file', run: actions.gitDiffFile },
-        { id: 'git.diffAll', label: 'Diff all changes', run: actions.gitDiffAll },
         { id: 'git.commit', label: 'Commit…', run: actions.gitCommit },
         { id: 'git.undo', label: 'Undo last commit', run: actions.gitUndoCommit },
         { id: 'git.push', label: 'Push', run: actions.gitPush },
@@ -123,6 +134,32 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         { id: 'git.pull', label: 'Pull (fast-forward only)', run: actions.gitPull },
         { id: 'git.stash', label: 'Stash changes', run: actions.gitStash },
         { id: 'git.stashPop', label: 'Stash pop', run: actions.gitStashPop },
+        {
+          id: 'git.branch',
+          label: 'Branch',
+          children: [
+            {
+              id: 'git.branch.switch',
+              label: 'Switch branch…',
+              hint: 'b in source control',
+              run: actions.gitSwitchBranch,
+            },
+            { id: 'git.branch.new', label: 'New branch…', run: actions.gitNewBranch },
+            { id: 'git.branch.newFrom', label: 'New branch from…', run: actions.gitNewBranchFrom },
+            {
+              id: 'git.branch.merge',
+              label: 'Merge branch into current…',
+              run: actions.gitMergeBranch,
+            },
+            { id: 'git.branch.rename', label: 'Rename branch…', run: actions.gitRenameBranch },
+            { id: 'git.branch.delete', label: 'Delete branch…', run: actions.gitDeleteBranch },
+            {
+              id: 'git.branch.deleteForce',
+              label: 'Delete branch (force)…',
+              run: actions.gitDeleteBranchForce,
+            },
+          ],
+        },
       ],
     },
     {

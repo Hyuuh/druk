@@ -4,6 +4,7 @@ import { createMemo, createSignal } from 'solid-js'
 
 import { createDir, createFile, isDirectory } from '../core/fs'
 import { commitPaths, undoLastCommit } from '../core/git'
+import type { Branches } from './branches'
 import type { EditorBridge } from './editor'
 import type { FileOps } from './fileOps'
 import type { GitOp } from './git'
@@ -24,6 +25,8 @@ const PROMPT_TITLES: Partial<Record<PromptKind, string>> = {
   rename: 'Rename to',
   gotoLine: 'Go to line',
   commit: 'Commit message',
+  newBranch: 'New branch name',
+  renameBranch: 'Rename branch to',
 }
 
 /**
@@ -49,8 +52,10 @@ export function createPromptHandlers(deps: {
   workspace: Workspace
   fileOps: FileOps
   gitOp: GitOp
+  branches: Branches
 }) {
-  const { rootDir, renderer, state, status, tree, panes, editor, workspace, fileOps, gitOp } = deps
+  const { rootDir, renderer, state, status, tree, panes, editor, workspace } = deps
+  const { fileOps, gitOp, branches } = deps
   const { prompt, setPrompt } = state
   const { say } = status
 
@@ -98,6 +103,10 @@ export function createPromptHandlers(deps: {
       say(`Renamed to ${name}`)
     } else if (p.kind === 'commit') {
       gitOp('Committing', () => commitPaths(rootDir, name, p.paths))
+    } else if (p.kind === 'newBranch') {
+      branches.create(name, p.from)
+    } else if (p.kind === 'renameBranch') {
+      branches.rename(p.from, name)
     }
   }
 
@@ -118,16 +127,27 @@ export function createPromptHandlers(deps: {
         return gitOp('Undoing commit', () => undoLastCommit(rootDir), {
           done: () => `Undid "${p.subject}" — its changes are staged`,
         })
+      case 'deleteBranch':
+        return branches.remove(p.name, p.force)
+      case 'mergeBranch':
+        return branches.merge(p.name)
     }
   }
 
   const promptTitle = () => {
     const p = prompt()
-    return p ? PROMPT_TITLES[p.kind] : undefined
+    if (!p) return undefined
+    // The start point is the whole point of "New branch from…", so it belongs in
+    // the title; the entry in PROMPT_TITLES is still what makes this a text prompt.
+    if (p.kind === 'newBranch' && p.from) return `New branch from ${p.from}`
+    return PROMPT_TITLES[p.kind]
   }
   const promptValue = () => {
     const p = prompt()
-    return p?.kind === 'rename' ? basename(p.target) : ''
+    if (p?.kind === 'rename') return basename(p.target)
+    // Renaming usually adjusts a name rather than replacing it.
+    if (p?.kind === 'renameBranch') return p.from
+    return ''
   }
 
   /**
@@ -170,6 +190,22 @@ export function createPromptHandlers(deps: {
           verb: 'undo it',
           danger: false,
           message: `Undo "${p.subject}"? Its changes come back as staged edits.`,
+        }
+      case 'deleteBranch':
+        return {
+          title: p.force ? 'Delete branch (force)' : 'Delete branch',
+          verb: 'delete it',
+          danger: p.force,
+          message: p.force
+            ? `Delete "${p.name}" even if it has commits on no other branch? They are lost.`
+            : `Delete "${p.name}"? Git refuses if it has commits that are not merged.`,
+        }
+      case 'mergeBranch':
+        return {
+          title: 'Merge branch',
+          verb: 'merge it',
+          danger: false,
+          message: `Merge "${p.name}" into the current branch? Conflicts are left in the working tree.`,
         }
       default:
         return null

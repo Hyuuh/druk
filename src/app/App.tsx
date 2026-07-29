@@ -2,13 +2,13 @@ import { basename } from 'node:path'
 
 import type { MouseEvent } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
 
 import { CONFIG_FILE } from '../core/config'
 import type { Config } from '../core/config'
 import { watchTree } from '../core/fs'
 import { isImagePath } from '../core/image'
-import { checkForUpdate } from '../core/update'
+import { checkForUpdate, currentVersion } from '../core/update'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
 import { ui } from '../themes'
@@ -19,9 +19,11 @@ import { FileTree } from '../ui/FileTree'
 import { GitPanel } from '../ui/GitPanel'
 import { ImageView } from '../ui/ImageView'
 import { SettingsView } from '../ui/SettingsView'
+import { SidebarTabs } from '../ui/SidebarTabs'
 import { StatusBar } from '../ui/StatusBar'
 import { Tabs } from '../ui/Tabs'
 import { createCommands } from './actions'
+import { createBranches } from './branches'
 import type { AppContext } from './context'
 import { createEditorBridge } from './editor'
 import { createFileOps } from './fileOps'
@@ -88,6 +90,7 @@ export function App(props: {
   })
   const fileOps = createFileOps({ rootDir, status, tree, workspace })
   const gitOp = createGitOp({ rootDir, git, status, workspace })
+  const branches = createBranches({ rootDir, status, gitOp, prompts: promptState })
   const promptHandlers = createPromptHandlers({
     rootDir,
     renderer,
@@ -99,8 +102,17 @@ export function App(props: {
     workspace,
     fileOps,
     gitOp,
+    branches,
   })
-  const overlays = createOverlays({ renderer, promptState, workspace, git, panes, editor })
+  const overlays = createOverlays({
+    renderer,
+    promptState,
+    workspace,
+    git,
+    branches,
+    panes,
+    editor,
+  })
 
   const ctx: AppContext = {
     rootDir,
@@ -111,6 +123,7 @@ export function App(props: {
     editor,
     git,
     gitOp,
+    branches,
     workspace,
     fileOps,
     prompts: { ...promptState, ...promptHandlers },
@@ -120,6 +133,12 @@ export function App(props: {
   wireGitEffects({ rootDir, git, tree, editor, workspace, config: settings.config })
   const { commands, actions } = createCommands(ctx)
   installKeyboard(ctx, actions)
+
+  // `revision` covers saves, git commands and anything the watcher sees in .git;
+  // `reloadKey` covers a buffer replaced from disk. `refreshDiff` returns at once
+  // when no diff is open, so the subprocess it needs is only ever spawned for a
+  // page that is actually on screen.
+  createEffect(on(() => [git.revision(), editor.reloadKey()] as const, actions.refreshDiff))
 
   const { config } = settings
   const { say } = status
@@ -235,49 +254,61 @@ export function App(props: {
         onMouseUp={() => setResizing(false)}
       >
         <Show when={panes.sidebar()}>
-          <Show
-            when={panes.view() === 'git'}
-            fallback={
-              <FileTree
-                rootName={basename(rootDir) || rootDir}
-                nodes={tree.nodes()}
-                selectedPath={tree.selectedPath()}
-                expanded={tree.expanded()}
+          <box
+            width={settings.treeWidth()}
+            flexShrink={0}
+            flexDirection="column"
+            backgroundColor={ui.panelBg}
+          >
+            <SidebarTabs
+              view={panes.view()}
+              focused={panes.focus() === 'tree'}
+              onSelect={view => panes.showView(view)}
+            />
+            <Show
+              when={panes.view() === 'git'}
+              fallback={
+                <FileTree
+                  rootName={basename(rootDir) || rootDir}
+                  nodes={tree.nodes()}
+                  selectedPath={tree.selectedPath()}
+                  expanded={tree.expanded()}
+                  focused={panes.focus() === 'tree'}
+                  width={settings.treeWidth()}
+                  gitStatus={git.gitStatus()}
+                  gitIgnored={git.gitIgnored()}
+                  cutPaths={fileOps.cut()}
+                  markedPaths={tree.marked()}
+                  onActivate={node => {
+                    // Landing in a file is how a page closes — the tree stays
+                    // interactive while one is up, like any other editor page.
+                    overlays.setDiff(null)
+                    overlays.setSettingsPage(false)
+                    workspace.activateNode(node)
+                  }}
+                  onPin={node => workspace.pinTab(node.path)}
+                  onFocus={() => panes.setFocus('tree')}
+                />
+              }
+            >
+              <GitPanel
+                branch={git.branch()}
+                ahead={git.upstream()?.ahead ?? 0}
+                behind={git.upstream()?.behind ?? 0}
+                changes={git.changes()}
+                cursor={panes.gitCursor()}
                 focused={panes.focus() === 'tree'}
                 width={settings.treeWidth()}
-                gitStatus={git.gitStatus()}
-                gitIgnored={git.gitIgnored()}
-                cutPaths={fileOps.cut()}
-                markedPaths={tree.marked()}
-                onActivate={node => {
-                  // Landing in a file is how a page closes — the tree stays
-                  // interactive while one is up, like any other editor page.
-                  overlays.setDiff(null)
-                  overlays.setSettingsPage(false)
-                  workspace.activateNode(node)
-                }}
-                onPin={node => workspace.pinTab(node.path)}
+                inRepo={git.inRepo()}
                 onFocus={() => panes.setFocus('tree')}
+                onActivate={index => {
+                  panes.setGitCursor(index)
+                  const file = git.changes()[index]
+                  if (file) actions.showDiff(file.path)
+                }}
               />
-            }
-          >
-            <GitPanel
-              branch={git.branch()}
-              ahead={git.upstream()?.ahead ?? 0}
-              behind={git.upstream()?.behind ?? 0}
-              changes={git.changes()}
-              cursor={panes.gitCursor()}
-              focused={panes.focus() === 'tree'}
-              width={settings.treeWidth()}
-              inRepo={git.inRepo()}
-              onFocus={() => panes.setFocus('tree')}
-              onActivate={index => {
-                panes.setGitCursor(index)
-                const file = git.changes()[index]
-                if (file) actions.gitDiffAll(file.path)
-              }}
-            />
-          </Show>
+            </Show>
+          </box>
           {/* Drag handle: the whole column is the grab target, but only a short
               grip is drawn at its middle — a full-height rule is a heavy line
               down the screen for something you touch once. The spacers centre it
@@ -308,6 +339,9 @@ export function App(props: {
           <EditorPane
             path={workspace.activePath()}
             content={workspace.activeBuffer()?.content ?? ''}
+            rootName={basename(rootDir) || rootDir}
+            branch={git.branch()}
+            version={currentVersion()}
             filetype={workspace.activePath() ? filetypeForPath(workspace.activePath()!) : undefined}
             // Also unfocused while the diff or an image viewer covers the pane:
             // the terminal's own cursor tracks the focused textarea and is drawn
@@ -369,17 +403,15 @@ export function App(props: {
             </box>
           </Show>
           <Show when={overlays.diff()}>
-            {(open: () => { files: DiffFile[]; index: number }) => (
+            {(file: () => DiffFile) => (
               <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={50}>
                 <DiffView
-                  files={open().files}
-                  index={open().index}
+                  file={file()}
                   mode={config.diffView}
                   width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
                   focused={panes.focus() === 'editor'}
                   blocked={overlays.overlay()}
                   onFocus={() => panes.setFocus('editor')}
-                  onIndex={index => overlays.setDiff({ files: open().files, index })}
                   onToggleMode={settings.toggleDiffView}
                   onClose={() => overlays.setDiff(null)}
                 />

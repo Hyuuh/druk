@@ -4,7 +4,17 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { launch, openPalette, press, pressEscape, runCommand, settle } from './helpers'
+import {
+  launch,
+  openDiff,
+  openPalette,
+  press,
+  pressEscape,
+  runCommand,
+  until,
+  untilFrame,
+  untilGone,
+} from './helpers'
 
 interface Span {
   text: string
@@ -26,18 +36,15 @@ function repo(files: Record<string, string>) {
   return dir
 }
 
-test('diff of the current file shows deletions, additions and both line numbers', async () => {
+test('the diff shows deletions, additions and both line numbers', async () => {
   const dir = repo({ 'a.ts': 'one\ntwo\nthree\n' })
   writeFileSync(join(dir, 'a.ts'), 'one\nTWO\nthree\nfour\n')
 
   const t = await launch(dir)
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter())
-  await runCommand(t, 'Diff current file')
+  await openDiff(t)
   // The renderable assembles its panes on a queued microtask and renders async;
-  // under a loaded parallel suite a single flush is not always enough, and no
-  // fixed wait is safe — poll until the diff body is on screen.
-  for (let n = 0; n < 20 && !t.captureCharFrame().includes('+ four'); n++) await settle(t, 50)
+  // under a loaded parallel suite a single flush is not always enough.
+  await untilFrame(t, '+ four')
 
   const frame = t.captureCharFrame()
   expect(frame).toContain('a.ts')
@@ -48,14 +55,61 @@ test('diff of the current file shows deletions, additions and both line numbers'
   expect(frame).toContain('inline')
 })
 
-test('Tab switches to side-by-side and back, and the choice persists', async () => {
+test('"Diff current file" opens the panel on that file, cursor and all', async () => {
+  const dir = repo({ 'a.ts': 'alpha\n', 'b.ts': 'beta\n' })
+  writeFileSync(join(dir, 'a.ts'), 'ALPHA\n')
+  writeFileSync(join(dir, 'b.ts'), 'BETA\n')
+
+  const t = await launch(dir)
+  // Open b.ts — the second row, so a cursor left at the top would show a.ts.
+  await press(t, i => i.pressArrow('down'))
+  await press(t, i => i.pressArrow('down'))
+  await press(t, i => i.pressEnter())
+  await runCommand(t, 'Diff current file')
+
+  let frame = t.captureCharFrame()
+  expect(frame).toContain('source control')
+  expect(frame).toContain('+ BETA')
+
+  // The cursor landed on b.ts's row, so the arrows page on from there.
+  await press(t, i => i.pressArrow('up'))
+  frame = t.captureCharFrame()
+  expect(frame).toContain('+ ALPHA')
+})
+
+test('"Diff current file" on an unchanged file says so instead of opening', async () => {
+  const dir = repo({ 'a.ts': 'alpha\n', 'b.ts': 'beta\n' })
+  writeFileSync(join(dir, 'b.ts'), 'BETA\n')
+
+  const t = await launch(dir)
+  await press(t, i => i.pressArrow('down'))
+  await press(t, i => i.pressEnter()) // a.ts, still clean
+  await runCommand(t, 'Diff current file')
+
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('No changes in a.ts')
+  expect(frame).not.toContain('Esc close')
+})
+
+test('there is no "diff all" command — the panel is the only pager', async () => {
+  const dir = repo({ 'a.ts': 'one\n' })
+  writeFileSync(join(dir, 'a.ts'), 'ONE\n')
+
+  const t = await launch(dir)
+  await openPalette(t)
+  await press(t, i => void i.typeText('diff'))
+  expect(t.captureCharFrame()).not.toContain('Diff all changes')
+})
+
+test('Tab into the diff, then Tab switches to side-by-side and back', async () => {
   const dir = repo({ 'a.ts': 'one\ntwo\nthree\n' })
   writeFileSync(join(dir, 'a.ts'), 'one\nTWO\nthree\n')
 
   const t = await launch(dir)
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter())
-  await runCommand(t, 'Diff current file')
+  await openDiff(t)
+  // The first Tab leaves the panel — the page only owns the keyboard once it
+  // has the focus, which is what keeps the arrows paging the changes.
+  await press(t, i => i.pressTab())
   await press(t, i => i.pressTab())
 
   const frame = t.captureCharFrame()
@@ -68,67 +122,25 @@ test('Tab switches to side-by-side and back, and the choice persists', async () 
   expect(t.captureCharFrame()).not.toContain('side-by-side')
 })
 
-test('diff of all changes pages through the changed files', async () => {
+test('the panel cursor pages the diff: ↓ to the next change, ↑ back', async () => {
   const dir = repo({ 'a.ts': 'alpha\n', 'b.ts': 'beta\n' })
   writeFileSync(join(dir, 'a.ts'), 'ALPHA\n')
   writeFileSync(join(dir, 'b.ts'), 'BETA\n')
 
   const t = await launch(dir)
-  await runCommand(t, 'Diff all changes')
+  await openDiff(t)
+  expect(t.captureCharFrame()).toContain('+ ALPHA')
 
+  await press(t, i => i.pressArrow('down'))
   let frame = t.captureCharFrame()
-  expect(frame).toContain('file 1/2')
-  expect(frame).toContain('a.ts')
-  expect(frame).toContain('+ ALPHA')
-
-  await press(t, i => i.pressArrow('right'))
-  frame = t.captureCharFrame()
-  expect(frame).toContain('file 2/2')
   expect(frame).toContain('b.ts')
   expect(frame).toContain('+ BETA')
-})
+  expect(frame).not.toContain('+ ALPHA')
 
-test('F opens a file picker with per-file counts, filters, and jumps', async () => {
-  const dir = repo({ 'alpha.ts': 'alpha\n', 'beta.ts': 'beta\none\ntwo\n' })
-  writeFileSync(join(dir, 'alpha.ts'), 'ALPHA\n')
-  writeFileSync(join(dir, 'beta.ts'), 'BETA\none\ntwo\nextra\n')
-
-  const t = await launch(dir)
-  await runCommand(t, 'Diff all changes')
-  expect(t.captureCharFrame()).toContain('file 1/2')
-
-  await press(t, i => void i.typeText('f'))
-  let frame = t.captureCharFrame()
-  expect(frame).toContain('Changed files — 2 · +3 −2') // totals across both files
-  expect(frame).toContain('alpha.ts')
-  expect(frame).toContain('beta.ts')
-  expect(frame).toContain('+2 −1') // beta's own counts on its row
-
-  await press(t, i => void i.typeText('bet'))
+  await press(t, i => i.pressArrow('up'))
   frame = t.captureCharFrame()
-  // Filtered out of the list — the hits left are the tree row and the header.
-  expect(frame.match(/alpha\.ts/g)).toHaveLength(2)
-  await press(t, i => i.pressEnter())
-
-  frame = t.captureCharFrame()
-  expect(frame).toContain('file 2/2')
-  expect(frame).toContain('+ BETA')
-})
-
-test('Esc closes the picker but keeps the diff open', async () => {
-  const dir = repo({ 'a.ts': 'alpha\n', 'b.ts': 'beta\n' })
-  writeFileSync(join(dir, 'a.ts'), 'ALPHA\n')
-  writeFileSync(join(dir, 'b.ts'), 'BETA\n')
-
-  const t = await launch(dir)
-  await runCommand(t, 'Diff all changes')
-  await press(t, i => void i.typeText('f'))
-  expect(t.captureCharFrame()).toContain('Changed files')
-
-  await pressEscape(t)
-  const frame = t.captureCharFrame()
-  expect(frame).not.toContain('Changed files')
-  expect(frame).toContain('file 1/2') // still in the diff
+  expect(frame).toContain('+ ALPHA')
+  expect(frame).not.toContain('+ BETA')
 })
 
 test('an untracked file diffs as all additions', async () => {
@@ -136,7 +148,7 @@ test('an untracked file diffs as all additions', async () => {
   writeFileSync(join(dir, 'new.ts'), 'fresh\nlines\n')
 
   const t = await launch(dir)
-  await runCommand(t, 'Diff all changes')
+  await openDiff(t)
 
   const frame = t.captureCharFrame()
   expect(frame).toContain('new.ts')
@@ -152,29 +164,12 @@ test('long unchanged stretches stay out of the hunks', async () => {
   writeFileSync(join(dir, 'a.ts'), `${changed.join('\n')}\n`)
 
   const t = await launch(dir, {}, { height: 30 })
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter())
-  await runCommand(t, 'Diff current file')
+  await openDiff(t)
 
   const frame = t.captureCharFrame()
   expect(frame).toContain('CHANGED')
   expect(frame).toContain('line2') // context under the change
   expect(frame).not.toContain('line10') // deep in the unchanged middle — not shown
-})
-
-test('Esc closes the diff and returns to the editor', async () => {
-  const dir = repo({ 'a.ts': 'one\n' })
-  writeFileSync(join(dir, 'a.ts'), 'ONE\n')
-
-  const t = await launch(dir)
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter())
-  await runCommand(t, 'Diff current file')
-  expect(t.captureCharFrame()).toContain('+1 −1')
-
-  await pressEscape(t)
-  expect(t.captureCharFrame()).not.toContain('+1 −1')
-  expect(t.captureCharFrame()).toContain('ONE')
 })
 
 test('the mouse wheel scrolls the diff', async () => {
@@ -184,32 +179,28 @@ test('the mouse wheel scrolls the diff', async () => {
   writeFileSync(join(dir, 'a.ts'), `${lines.map(l => `${l}!`).join('\n')}\n`)
 
   const t = await launch(dir)
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter())
-  await runCommand(t, 'Diff current file')
-  expect(t.captureCharFrame()).toContain('- line0')
+  await openDiff(t)
+  await untilFrame(t, '- line0')
 
   await t.mockMouse.scroll(60, 10, 'down')
-  await settle(t)
-  expect(t.captureCharFrame()).not.toContain('- line0')
+  await untilGone(t, '- line0')
 
   await t.mockMouse.scroll(60, 10, 'up')
-  await settle(t)
-  expect(t.captureCharFrame()).toContain('- line0')
+  await untilFrame(t, '- line0')
 })
 
-test('the diff is a page: tree, tabs and status bar all stay around it', async () => {
+test('the diff is a page: sidebar, tabs and status bar all stay around it', async () => {
   const dir = repo({ 'a.ts': 'one\n' })
   writeFileSync(join(dir, 'a.ts'), 'ONE\n')
 
   const t = await launch(dir)
   await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter())
-  await runCommand(t, 'Diff current file')
+  await press(t, i => i.pressEnter()) // the file, so the tab row has one
+  await openDiff(t)
 
   const frame = t.captureCharFrame()
   expect(frame).toContain('+1 −1') // the diff itself
-  expect(frame).toContain('explorer') // the tree does not make way
+  expect(frame).toContain('source control') // the panel does not make way
   const lines = frame.split('\n')
   expect(lines[0]).toContain('a.ts') // tab row still up top
   expect(lines.at(-2)).toContain('⎇ main') // status bar still below
@@ -222,7 +213,7 @@ test('the palette opens over the diff, and Ctrl+W closes the page', async () => 
   const t = await launch(dir)
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
-  await runCommand(t, 'Diff current file')
+  await openDiff(t)
 
   // Not a modal: global chords still work on top of the page.
   await openPalette(t)
@@ -251,7 +242,7 @@ test('a long path is cut from the left so the hints stay on screen', async () =>
   writeFileSync(join(dir, deep), 'ONE\n')
 
   const t = await launch(dir)
-  await runCommand(t, 'Diff all changes')
+  await openDiff(t)
 
   const headerRow = t.captureCharFrame().split('\n')[1]!
   expect(headerRow).toContain('Esc') // hints survived
@@ -279,15 +270,15 @@ test('removed lines highlight like added ones in split view', async () => {
   writeFileSync(join(dir, 'a.tsx'), base.replace('theme={config.theme}', 'mode={config.mode}'))
 
   const t = await launch(dir, { diffView: 'split' }, { width: 130 })
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressEnter())
-  await runCommand(t, 'Diff current file')
-  await settle(t, 600) // the async highlight pass has to land
+  await openDiff(t)
+  // The highlight pass is async; poll for its line rather than outwait it.
+  const removedLine = () =>
+    (t.captureSpans() as { lines: { spans: Span[] }[] }).lines
+      .map(line => line.spans)
+      .find(line => line.some(span => span.text === 'theme'))
+  await until(t, () => removedLine() !== undefined)
 
-  const spans = (t.captureSpans() as { lines: { spans: Span[] }[] }).lines
-    .map(line => line.spans)
-    .find(line => line.some(span => span.text === 'theme'))!
-  expect(spans).toBeDefined()
+  const spans = removedLine()!
   const fgOf = (text: string) => String(spans.find(span => span.text === text)?.fg)
   // The removed side's attribute name wears the same color as the added side's.
   expect(fgOf('theme')).toBe(fgOf('mode')!)
@@ -295,22 +286,28 @@ test('removed lines highlight like added ones in split view', async () => {
   expect(fgOf('theme')).not.toBe(fgOf('=')!)
 })
 
-test('a clean working tree refuses with a status message', async () => {
+test('a clean working tree has no row to open a diff from', async () => {
   const t = await launch(repo({ 'a.ts': 'alpha\n' }))
-  await runCommand(t, 'Diff all changes')
-  expect(t.captureCharFrame()).toContain('working tree clean')
+  await runCommand(t, 'Source control')
+  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressArrow('down'))
+
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('no changes')
+  expect(frame).not.toContain('Esc close') // no page came up
 })
 
 test('unsaved edits diff against HEAD before the file is saved', async () => {
   const dir = repo({ 'a.ts': 'alpha\n' })
+  writeFileSync(join(dir, 'a.ts'), 'saved\n')
 
   const t = await launch(dir)
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
   await press(t, i => void i.typeText('typed '))
-  await runCommand(t, 'Diff current file')
+  await openDiff(t)
 
   const frame = t.captureCharFrame()
   expect(frame).toContain('- alpha')
-  expect(frame).toContain('+ typed alpha')
+  expect(frame).toContain('+ typed saved')
 })

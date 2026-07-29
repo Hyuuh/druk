@@ -127,27 +127,35 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     if (panes.view() === 'git') {
       const files = git.changes()
       const clamp = (row: number) => Math.max(0, Math.min(row, files.length - 1))
+      /** The cursor is the diff's pager: the page follows it, so moving here is
+       * the only way through the changes. */
+      const goTo = (row: number) => {
+        panes.setGitCursor(row)
+        const file = files[row]
+        if (file) actions.showDiff(file.path)
+      }
       switch (config.vim ? (vimNav[k] ?? k) : k) {
         case 'tab':
           if (workspace.activePath() || overlays.diff()) panes.setFocus('editor')
           break
         case 'up':
-          panes.setGitCursor(at => clamp(at - 1))
+          goTo(clamp(panes.gitCursor() - 1))
           break
         case 'down':
-          panes.setGitCursor(at => clamp(at + 1))
+          goTo(clamp(panes.gitCursor() + 1))
           break
         case 'return':
-        case 'enter': {
-          const file = files[clamp(panes.gitCursor())]
-          if (file) actions.gitDiffAll(file.path)
+        case 'enter':
+          goTo(clamp(panes.gitCursor()))
           break
-        }
         case 'c':
           actions.gitCommit()
           break
         case 'p':
           actions.gitPush()
+          break
+        case 'b':
+          actions.gitSwitchBranch()
           break
         case '[':
           settings.nudgeSidebar(-2)
@@ -156,7 +164,11 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
           settings.nudgeSidebar(2)
           break
         case 'escape':
-          panes.toggleGitView()
+          // A diff opened from this panel sits on top of it: Esc dismisses that
+          // first, or the panel would close and leave the page it opened behind,
+          // with no key here that closes it.
+          if (overlays.diff()) overlays.setDiff(null)
+          else panes.toggleGitView()
           break
       }
       return

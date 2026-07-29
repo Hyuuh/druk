@@ -39,16 +39,17 @@ export function createPanes(tree: Tree, initialSidebar: boolean) {
     focusTree()
   }
 
-  /** Ctrl+Opt+G, as VS Code's Ctrl+Shift+G: show the panel, or put the tree back. */
-  const toggleGitView = () => {
-    if (sidebar() && view() === 'git') {
-      setView('files')
-      focusTree()
-      return
-    }
-    setView('git')
+  /** Open the sidebar on one of its views, as the tab strip above it does. */
+  const showView = (next: 'files' | 'git') => {
+    setView(next)
     setSidebar(true)
     focusTree()
+  }
+
+  /** Ctrl+Opt+G, as VS Code's Ctrl+Shift+G: show the panel, or put the tree back. */
+  const toggleGitView = () => {
+    if (sidebar() && view() === 'git') return showView('files')
+    showView('git')
   }
 
   /** Which keymap is live, for the peek strip: the panel has its own keys and
@@ -62,6 +63,7 @@ export function createPanes(tree: Tree, initialSidebar: boolean) {
     focusTree,
     toggleSidebar,
     view,
+    showView,
     toggleGitView,
     keyPane,
     gitCursor,

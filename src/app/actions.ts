@@ -59,6 +59,22 @@ export function createCommands(ctx: AppContext) {
     return { path, rel, status: fileStatus, oldText, newText }
   }
 
+  /**
+   * Show one changed file's diff over the editor slot. The source-control
+   * panel's cursor is what pages through the changes, so everything that opens
+   * a diff moves that cursor first and calls this second — a page the arrows
+   * cannot move from is a dead end.
+   */
+  const showDiff = (path: string) => {
+    // The panel only lists changed files, but its list is a frame behind a fresh
+    // edit — 'modified' is the fallback for a path git has not caught up with,
+    // and diffing it against HEAD is right either way.
+    const file = diffFileFor(path, git.gitStatus().get(path) ?? 'modified')
+    if (!file) return say('Cannot diff this file', 'warn')
+    ctx.overlays.setSettingsPage(false)
+    ctx.overlays.setDiff(file)
+  }
+
   const actions = {
     save: workspace.saveActive,
     openFile: () => ctx.overlays.setPicker('files'),
@@ -104,30 +120,36 @@ export function createCommands(ctx: AppContext) {
       ctx.overlays.setSettingsPage(true)
       panes.setFocus('editor')
     },
+    showDiff,
+    /**
+     * "Diff current file" — the palette's way into the panel: it opens the
+     * source-control view with the cursor on the file being edited, so the
+     * arrows carry on from there like any other diff.
+     */
     gitDiffFile: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
       const path = workspace.activePath()
       if (!path) return say('No file open', 'warn')
-      // The status map only covers changed files; a clean file still diffs (as
-      // empty) when the buffer holds unsaved edits, so 'modified' is the fallback.
-      const file = diffFileFor(path, git.gitStatus().get(path) ?? 'modified')
-      if (!file) return say('Cannot diff this file', 'warn')
-      ctx.overlays.setSettingsPage(false)
-      ctx.overlays.setDiff({ files: [file], index: 0 })
-      panes.setFocus('editor')
+      const row = git.changes().findIndex(change => change.path === path)
+      if (row < 0) return say(`No changes in ${relative(rootDir, path)}`)
+      panes.showView('git')
+      panes.setGitCursor(row)
+      showDiff(path)
     },
-    gitDiffAll: (focusPath?: string) => {
-      if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
-      const files = [...statusMap(rootDir)]
-        .map(([path, fileStatus]) => diffFileFor(path, fileStatus))
-        .filter((file): file is DiffFile => file !== null)
-        .toSorted((a, b) => a.rel.localeCompare(b.rel))
-      if (files.length === 0) return say('Nothing to diff — working tree clean')
-      const target = focusPath ?? workspace.activePath()
-      const active = files.findIndex(file => file.path === target)
-      ctx.overlays.setSettingsPage(false)
-      ctx.overlays.setDiff({ files, index: Math.max(0, active) })
-      panes.setFocus('editor')
+    /**
+     * Rebuild the open diff from the repository as it is now. The page is a
+     * snapshot taken when it opened, so a commit, stash or save made anywhere
+     * else would otherwise leave it showing changes that no longer exist. Not a
+     * palette command: `App` runs it whenever git or a buffer moves.
+     */
+    refreshDiff: () => {
+      const shown = ctx.overlays.diff()?.path
+      if (!shown) return
+      // The page belongs to a row in the panel: once the change is committed,
+      // stashed or reverted the row is gone, and so is the page it opened.
+      const fileStatus = git.gitStatus().get(shown)
+      if (!fileStatus) return ctx.overlays.setDiff(null)
+      ctx.overlays.setDiff(diffFileFor(shown, fileStatus))
     },
     gitCommit: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
@@ -166,6 +188,13 @@ export function createCommands(ctx: AppContext) {
     gitPull: () => gitOp('Pulling', () => pull(rootDir), { touchesTree: true }),
     gitStash: () => gitOp('Stashing', () => stashPush(rootDir), { touchesTree: true }),
     gitStashPop: () => gitOp('Popping stash', () => stashPop(rootDir), { touchesTree: true }),
+    gitSwitchBranch: () => ctx.branches.open('switch'),
+    gitNewBranch: ctx.branches.newBranch,
+    gitNewBranchFrom: () => ctx.branches.open('from'),
+    gitMergeBranch: () => ctx.branches.open('merge'),
+    gitRenameBranch: () => ctx.branches.open('rename'),
+    gitDeleteBranch: () => ctx.branches.open('delete'),
+    gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
     showHelp: () => ctx.overlays.setHelp(true),
     quit: ctx.prompts.quit,
   }

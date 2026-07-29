@@ -57,6 +57,8 @@ test('Enter opens the diff for the file under the cursor', async () => {
   const shown = frame(t)
   expect(shown).toContain('alpha changed')
   expect(shown).toContain('+1 −1')
+  // The keyboard stays in the panel: the arrows are the pager, not the scroll.
+  expect(shown).toContain('↑↓ diff')
 })
 
 test('c commits the change from the panel, p reports on push', async () => {
@@ -90,7 +92,8 @@ test('the peek strip advertises the panel keys, not the tree ones', async () => 
 
   const peek = frame(t)
   expect(peek).toContain('Keys · source control')
-  expect(peek).toContain('Enter · c · p')
+  expect(peek).toContain('↑↓ · Enter')
+  expect(peek).toContain('c · p · b · Esc')
   expect(peek).not.toContain('a / A')
 })
 

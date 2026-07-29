@@ -29,6 +29,7 @@ scripts/
     tree.ts          file-tree state: expansion, selection, marked ranges
     fileOps.ts       move/copy/delete batches and the x/c/p clipboard
     git.ts           git signals, the serialised mutation runner, refresh effects
+    branches.ts      branch picker state + the switch/create/merge/rename/delete runs
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
@@ -42,7 +43,7 @@ scripts/
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
     image.ts         PNG/JPEG decode + scaling onto half-block cells, for the viewer
-    git.ts           read-only queries: diff hunks, status, branch, ahead/behind
+    git.ts           queries (diff hunks, status, branches, ahead/behind) + mutations
     diff.ts          Myers line diff between two texts, emitted as a unified patch
     bulk.ts          delete/copy/move in the background, reporting progress
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
@@ -70,9 +71,10 @@ scripts/
     window.ts        visual rows -> logical lines, for the highlight window
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
-    EditorPane, FileTree, GitPanel, Tabs, StatusBar, CommandPalette, FilePicker,
+    EditorPane, FileTree, GitPanel, SidebarTabs, Tabs, StatusBar, CommandPalette,
+    FilePicker,
     SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay,
-    TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay
+    TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
 ```
 
 Dependency direction is one-way: `ui/` and feature folders never import from `app/`.
@@ -316,10 +318,13 @@ vim mode).
   stops handing them out a few thousand in, so a photo would blank the pane the way the
   unwindowed tree once did. OpenTUI detects `kitty_graphics`/`sixel` but exposes no way
   to emit them past the cell diff; when it does, that is the upgrade path.
-- **git is read-only.** `core/git.ts` runs queries and nothing else: `diff` for the gutter
-  marks, `status` for the tree marks, `rev-parse`/`rev-list` for the branch and
-  ahead/behind. There is no commit, push, stash, checkout or discard, and adding one would
-  bring back the whole problem of a subprocess rewriting files under open buffers.
+- **git queries are synchronous, mutations are not.** `core/git.ts` runs `diff`,
+  `status` and `rev-parse`/`rev-list` with `spawnSync` — they sit behind the gutter and
+  tree marks and finish in milliseconds. Everything that writes (commit, push, stash,
+  checkout, merge, branch create/rename/delete) goes through the async `mutate`, because a
+  push talks to the network and would freeze the TUI for its duration. `createGitOp`
+  serialises them, and anything that rewrites the working tree passes `touchesTree` so
+  open buffers are pulled back from disk rather than waiting for the watcher.
 - **git output is not capped at 1 MB.** `spawnSync` truncates there by default and
   reports ENOBUFS, which every caller in `core/git.ts` reads as "no output" — `status` in a
   repository with thousands of changed files would silently become "nothing changed" and
@@ -329,6 +334,18 @@ vim mode).
   deferred tick and `branch` starts null — `statusMap` alone can take hundreds of
   milliseconds in a large repository, all of it otherwise spent before anything is on
   screen. The marks and branch appear a beat later; nothing else changes cadence.
+- **The diff page is a snapshot, and something has to refresh it.** `overlays.diff`
+  holds one file's two texts as they read when it opened, so a commit, stash or save
+  leaves it showing changes that are gone — `App` re-runs `actions.refreshDiff` on
+  `git.revision()` and `editor.reloadKey()` for that reason, and closes the page once
+  the path is no longer in the status map.
+- **The source-control panel is the diff's pager, and its only entry point.** The page
+  holds one file because `panes.gitCursor` says which: ↑/↓ in the panel move the cursor
+  and swap the page under it, so nothing else may open a diff without moving that cursor
+  first (`actions.gitDiffFile` shows the panel and selects the row). A page reached any
+  other way would be one the arrows could not move from. Inside the page the arrows scroll
+  and Tab toggles the layout — the panel and the page each own their arrows, so neither
+  needs a chord, and that split only holds while the panel keeps the focus.
 - **Destroyed natives outlive the ref.** Closing the last tab swaps the textarea for the
   placeholder and destroys the native buffer while `editor` still points at it. Both
   pending timers touch it, so they are cleared from the ref's own `onCleanup` — the pane's

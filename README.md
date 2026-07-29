@@ -154,10 +154,13 @@ from upstream — `⎇ main ↑2 ↓1 ~3` is two commits to push, one to pull, t
 files. Work you do in another terminal shows up without a restart.
 
 `Ctrl+Opt+G` swaps the sidebar for a small source-control panel, as in VS Code: the
-changed files under the branch name. `Enter` shows a file's diff, `c` commits (pick the
-files, type the message), `p` pushes, and `Esc` puts the file tree back. The same
-commands — with diff, pull, fetch, stash and undo-commit beside them — live in the
-palette under *Git*.
+changed files under the branch name. `↑↓` walks the changes and the diff for the one
+under the cursor opens beside the panel — that is the way to read a diff, and the way
+to move between them. `Tab` steps into the page (`Tab` again lays it out side by side,
+`Esc` closes it), `c` commits (pick the files, type the message), `p` pushes, `b`
+switches branch, and `Esc` puts the file tree back. *Git → Diff current file* in the
+palette opens the panel on the file you are editing; commit, pull, fetch, stash,
+undo-commit and the branch commands live beside it.
 
 ## Settings
 
@@ -175,7 +178,7 @@ instead of breaking startup.
 | `vim` | `false` | normal / insert / visual modes, `hjkl w b 0 $ gg G`, counts, `i a o`, `x dd dw cw`, `v` + `d y c`, `yy p P`, `u` / `Ctrl+R` |
 | `sidebarWidth` | `"auto"` | a quarter of the window, or pin 15–80 columns |
 | `trimOnSave` | `false` | on save: strip trailing spaces and end the file with one newline |
-| `autoSaveOnBlur` | `false` | save unsaved tabs when switching tabs or when the terminal window loses focus |
+| `autoSaveOnBlur` | `true` | save unsaved tabs when switching tabs or when the terminal window loses focus |
 | `showDotfiles` | `true` | set `false` to hide dotfiles in the file tree |
 | `respectGitignore` | `false` | set `true` to hide git-ignored files in the file tree |
 | `diffView` | `"inline"` | `inline` or `split` — how the diff view lays out changes |

@@ -25,7 +25,7 @@ test('losing terminal focus saves the dirty buffer', async () => {
   expect(t.captureCharFrame()).toContain('Saved a.ts')
 })
 
-test('off by default: blur leaves the buffer dirty', async () => {
+test('turned off: blur leaves the buffer dirty', async () => {
   const { t, file } = await edited({ autoSaveOnBlur: false })
   await blur(t)
 

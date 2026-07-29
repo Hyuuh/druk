@@ -188,6 +188,11 @@ export function FileTree(props: FileTreeProps) {
       flexDirection="column"
       backgroundColor={ui.panelBg}
       flexShrink={0}
+      flexGrow={1}
+      // The tree fills what the sidebar's tab strip leaves. `flexBasis` must be 0:
+      // with the default `auto` the box starts at its content's height, the
+      // scrollbox below grows past the screen and its scrollbar never appears.
+      flexBasis={0}
       onMouseDown={() => props.onFocus()}
     >
       <box height={2} flexDirection="column" backgroundColor={ui.panelBg} paddingLeft={2}>

@@ -68,6 +68,58 @@ export function currentBranch(cwd: string): string | null {
   return branch.length > 0 && branch !== 'HEAD' ? branch : null
 }
 
+export interface Branch {
+  /** `main` for a local branch, `origin/main` for a remote-tracking one. */
+  name: string
+  remote: boolean
+  current: boolean
+  /** Where this local branch pushes and pulls, e.g. `origin/main`. */
+  upstream: string | null
+}
+
+/**
+ * The local name a remote-tracking branch checks out as: `origin/feat` → `feat`.
+ * Both the checkout and the message that reports it derive it the same way, so a
+ * remote whose name contains a slash cannot make the two disagree.
+ */
+export function localBranchName(name: string): string {
+  return name.slice(name.indexOf('/') + 1)
+}
+
+/**
+ * Every branch, most recently committed to first — the order a picker wants,
+ * since the branch you are looking for is nearly always one you touched today.
+ * Empty outside a repository.
+ */
+export function listBranches(cwd: string): Branch[] {
+  // Tab-separated: every field is a ref name or a single character, none of
+  // which can contain a tab.
+  const format = ['%(refname)', '%(refname:short)', '%(HEAD)', '%(upstream:short)']
+  const run = git(cwd, [
+    'for-each-ref',
+    '--sort=-committerdate',
+    `--format=${format.join('\t')}`,
+    'refs/heads',
+    'refs/remotes',
+  ])
+  if (run.status !== 0 || !run.stdout) return []
+
+  const branches: Branch[] = []
+  for (const line of run.stdout.split('\n')) {
+    const [ref, name, head, upstream] = line.split('\t')
+    if (!ref || !name) continue
+    // `origin/HEAD` is the remote's default-branch pointer, not a branch of its own.
+    if (name.endsWith('/HEAD')) continue
+    branches.push({
+      name,
+      remote: ref.startsWith('refs/remotes/'),
+      current: head === '*',
+      upstream: upstream || null,
+    })
+  }
+  return branches
+}
+
 const STATUS_BY_CODE: Record<string, FileStatus> = {
   '?': 'untracked',
   'A': 'added',
@@ -319,15 +371,31 @@ export const KNOWN: ReadonlyArray<readonly [RegExp, string]> = [
     /local changes to the following files would be overwritten/i,
     'Commit or stash your changes first — this would overwrite them',
   ],
+  // Above the general conflict row, and matching both halves of the output: a
+  // stash pop that conflicts keeps the entry, and saying so is the difference
+  // between a scare and a fact. A conflict with no stash line is a merge.
+  [
+    /(?:^CONFLICT|Merge conflict in)[\s\S]*stash entry is kept/im,
+    'Conflicts in the working tree — the stash was kept, resolve them first',
+  ],
   [
     /^CONFLICT|Merge conflict in/im,
-    'Conflicts in the working tree — the stash was kept, resolve them first',
+    'Conflicts in the working tree — resolve them, then commit the merge',
   ],
   [
     /unmerged files|needs merge|unresolved conflict/i,
     'Resolve the merge conflicts in your working tree first',
   ],
   [/nothing to commit|no changes added to commit/i, 'Nothing to commit'],
+  [/branch named '.*' already exists/i, 'A branch of that name already exists'],
+  // Short on purpose: the status bar is one line wide, and a longer sentence is
+  // cut off exactly where it would have said what to do instead.
+  [/is not fully merged/i, 'Branch has unmerged commits — a force delete discards them'],
+  [
+    /Cannot delete branch .* checked out/i,
+    'That is the branch you are on — switch to another one first',
+  ],
+  [/is not a valid branch name/i, 'Not a valid branch name'],
   // Undo is `reset --soft HEAD~1`, so a root commit has nothing to reset to.
   [/ambiguous argument 'HEAD~1'/i, 'Nothing to undo — this is the only commit'],
   [/No stash entries found/i, 'No stash to pop'],
@@ -464,4 +532,37 @@ export function fetchRemote(cwd: string): Promise<GitResult> {
 export function pull(cwd: string): Promise<GitResult> {
   // --ff-only: a real merge wants an editor and a conflict UI druk does not have.
   return mutate(cwd, ['pull', '--ff-only'])
+}
+
+/** Create `name` off `from` (HEAD when null) and switch to it. */
+export function createBranch(cwd: string, name: string, from: string | null): Promise<GitResult> {
+  return mutate(cwd, from ? ['checkout', '-b', name, from] : ['checkout', '-b', name])
+}
+
+/**
+ * Switch to `name`. A remote-tracking ref is not something to be on — checking
+ * one out directly only detaches HEAD — so the first switch to `origin/x`
+ * creates the local `x` that tracks it, and later ones move to that branch.
+ */
+export function switchBranch(cwd: string, name: string, remote: boolean): Promise<GitResult> {
+  if (!remote) return mutate(cwd, ['checkout', name])
+  const local = localBranchName(name)
+  const exists = git(cwd, ['rev-parse', '--verify', '--quiet', `refs/heads/${local}`], 3000)
+  return exists.status === 0
+    ? mutate(cwd, ['checkout', local])
+    : mutate(cwd, ['checkout', '-b', local, '--track', name])
+}
+
+export function renameBranch(cwd: string, from: string, to: string): Promise<GitResult> {
+  return mutate(cwd, ['branch', '-m', from, to])
+}
+
+/** Delete a local branch. Without `force`, git refuses one that is not merged. */
+export function deleteBranch(cwd: string, name: string, force: boolean): Promise<GitResult> {
+  return mutate(cwd, ['branch', force ? '-D' : '-d', name])
+}
+
+export function mergeBranch(cwd: string, name: string): Promise<GitResult> {
+  // --no-edit: a merge commit otherwise opens an editor druk cannot show.
+  return mutate(cwd, ['merge', '--no-edit', name])
 }

@@ -1,3 +1,4 @@
+import { expect } from 'bun:test'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -72,6 +73,56 @@ export async function press(t: Harness, action: (input: Harness['mockInput']) =>
 }
 
 /**
+ * Repeat one key `times` and flush once, the way a held-down key arrives. A flush
+ * per key costs a macrotask each, which is seconds over a scroll of a long file —
+ * enough on a loaded parallel run to blow the 5s per-test budget.
+ */
+export async function pressTimes(
+  t: Harness,
+  times: number,
+  action: (input: Harness['mockInput']) => void,
+) {
+  for (let n = 0; n < times; n++) action(t.mockInput)
+  await settle(t)
+}
+
+/**
+ * Open `name` through Ctrl+O, which pins a permanent tab where a tree click would
+ * only reuse the preview one. The three keys go in on one flush: the picker
+ * filters off the signal, not off the frame.
+ */
+export async function openFile(t: Harness, name: string) {
+  t.mockInput.pressKey('o', { ctrl: true })
+  t.mockInput.typeText(name)
+  t.mockInput.pressEnter()
+  await settle(t)
+}
+
+/**
+ * Render until `cond` holds, then assert it did.
+ *
+ * Anything asynchronous the app does — the watcher's debounce, a git read, the
+ * highlight pass — used to be waited out with a fixed `settle(t, 400)` or worse,
+ * which has to be long enough for the slowest machine and is paid in full on
+ * every run. Polling costs what the wait actually takes.
+ */
+export async function until(t: Harness, cond: () => boolean, timeoutMs = 4000) {
+  const started = Date.now()
+  while (!cond() && Date.now() - started < timeoutMs) await settle(t, 15)
+  expect(cond()).toBe(true)
+}
+
+/** `until`, on the rendered frame. */
+export function untilFrame(t: Harness, text: string, timeoutMs?: number) {
+  return until(t, () => t.captureCharFrame().includes(text), timeoutMs)
+}
+
+/** `untilFrame`'s opposite: wait for something on screen to go away. */
+export function untilGone(t: Harness, text: string, timeoutMs?: number) {
+  return until(t, () => !t.captureCharFrame().includes(text), timeoutMs)
+}
+
+/**
  * Escape is the prefix of every arrow/function-key sequence, so the terminal
  * parser holds it until it knows no sequence follows. Real typing supplies that
  * gap; tests have to wait for it explicitly.
@@ -93,6 +144,19 @@ export async function openPalette(t: Harness) {
 export async function runCommand(t: Harness, label: string) {
   await openPalette(t)
   await press(t, input => void input.typeText(label))
+  await press(t, input => input.pressEnter())
+}
+
+/**
+ * Show the diff for the `row`-th changed file. The source-control panel is the
+ * only way to one: its cursor pages through the changes, so the arrows are what
+ * a test uses to reach the second file, exactly as a user would.
+ */
+export async function openDiff(t: Harness, row = 0) {
+  await runCommand(t, 'Source control')
+  for (let i = 0; i < row; i++) {
+    await press(t, input => input.pressArrow('down'))
+  }
   await press(t, input => input.pressEnter())
 }
 

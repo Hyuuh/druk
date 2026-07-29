@@ -3,9 +3,11 @@ import { basename } from 'node:path'
 import { createMemo, createSignal, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 
+import type { Branch } from '../core/git'
 import { replaceAll, replaceMatch } from '../core/search'
 import type { Match } from '../core/search'
 import type { UpdateInfo } from '../core/update'
+import { BranchPicker } from '../ui/BranchPicker'
 import { ChoiceModal } from '../ui/ChoiceModal'
 import { CommandPalette } from '../ui/CommandPalette'
 import { CommitModal } from '../ui/CommitModal'
@@ -19,6 +21,7 @@ import { PromptModal } from '../ui/PromptModal'
 import { SearchPanel } from '../ui/SearchPanel'
 import type { SearchScope } from '../ui/SearchPanel'
 import { UpdateBanner } from '../ui/UpdateBanner'
+import type { Branches } from './branches'
 import type { Command } from './commands'
 import type { AppContext } from './context'
 import type { EditorBridge } from './editor'
@@ -34,10 +37,11 @@ export function createOverlays(deps: {
   promptState: PromptState
   workspace: Workspace
   git: Git
+  branches: Branches
   panes: Panes
   editor: EditorBridge
 }) {
-  const { renderer, promptState, workspace, git, panes, editor } = deps
+  const { renderer, promptState, workspace, git, branches, panes, editor } = deps
 
   const [help, setHelp] = createSignal(false)
   /** The Opt+/ strip of every key alive in this pane; any next key closes it. */
@@ -47,8 +51,12 @@ export function createOverlays(deps: {
   /** Open search: its scope, and whether the replacement field starts showing. */
   const [search, setSearch] = createSignal<{ scope: SearchScope; replacing?: boolean } | null>(null)
   const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
-  /** Open diff view: the changed files it pages through and which one shows. */
-  const [diff, setDiff] = createSignal<{ files: DiffFile[]; index: number } | null>(null)
+  /**
+   * The file whose diff covers the editor slot, as its two texts read when the
+   * page was built. The source-control panel is the only thing that opens one:
+   * its cursor is the pager, so the page never holds more than the row it is on.
+   */
+  const [diff, setDiff] = createSignal<DiffFile | null>(null)
   /** The settings page — covers the editor slot like the diff, not a modal. */
   const [settingsPage, setSettingsPage] = createSignal(false)
 
@@ -63,7 +71,8 @@ export function createOverlays(deps: {
         search() ||
         update() ||
         picker() ||
-        git.commitPick()
+        git.commitPick() ||
+        branches.pick()
       ),
   )
 
@@ -212,6 +221,16 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
               prompts.setPrompt({ kind: 'commit', paths })
             }}
             onCancel={() => git.setCommitPick(null)}
+          />
+        )}
+      </Show>
+      <Show when={app.branches.pick()}>
+        {(open: () => { branches: Branch[] }) => (
+          <BranchPicker
+            title={app.branches.pickTitle()}
+            branches={open().branches}
+            onPick={app.branches.choose}
+            onClose={() => app.branches.setPick(null)}
           />
         )}
       </Show>

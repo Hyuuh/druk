@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, pressTimes, settle } from './helpers'
 import type { Harness } from './helpers'
 
 /** More entries than rows, so the thumb is as small as the file count makes it. */
@@ -14,8 +14,9 @@ function thumb(t: Harness, sidebarWidth = 30) {
     .captureCharFrame()
     .split('\n')
     .filter(row => row.length > 0)
-    // Past the tab bar and the tree's two-row header, where the track starts.
-    .slice(3, -1)
+    // Past the tab bar, the sidebar's view tabs and the tree's two-row header,
+    // where the track starts.
+    .slice(4, -1)
   const column = rows.map(row => row[sidebarWidth - 1] ?? ' ')
   const filled = column.flatMap((glyph, row) => ('█▀▄'.includes(glyph) ? [row] : []))
   return { column, filled }
@@ -43,8 +44,7 @@ describe('the sidebar scrollbar', () => {
     await settle(t)
     const before = thumb(t).filled[0] ?? 0
 
-    for (let step = 0; step < 120; step++) await press(t, input => input.pressArrow('down'))
-    await settle(t)
+    await pressTimes(t, 120, input => input.pressArrow('down'))
 
     expect(thumb(t).filled[0] ?? 0).toBeGreaterThan(before)
   }, 30000)

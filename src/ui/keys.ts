@@ -27,6 +27,8 @@ export interface KeyInfo {
   /** Footer advertisement: which pane shows it, as what, in what order.
    * `key` overrides the display key where the full spelling is too wide. */
   hint?: { pane: Pane | 'all'; label: string; rank: number; key?: string }
+  /** Row on the empty-editor welcome screen. Same `key` override as `hint`. */
+  welcome?: { label: string; rank: number; key?: string }
 }
 
 export const KEYS: KeyInfo[] = [
@@ -38,6 +40,7 @@ export const KEYS: KeyInfo[] = [
     section: 'General',
     where: 'all',
     hint: { pane: 'all', label: 'commands', rank: 0, key: 'F1' },
+    welcome: { label: 'Run any command', rank: 2, key: 'F1' },
   },
   {
     key: 'Ctrl+K',
@@ -45,8 +48,15 @@ export const KEYS: KeyInfo[] = [
     section: 'General',
     where: 'all',
     hint: { pane: 'all', label: 'keys', rank: 1 },
+    welcome: { label: 'Peek at every key', rank: 5 },
   },
-  { key: 'Ctrl+P · Ctrl+O', label: 'Open file (fuzzy)', section: 'General', where: 'all' },
+  {
+    key: 'Ctrl+P · Ctrl+O',
+    label: 'Open file (fuzzy)',
+    section: 'General',
+    where: 'all',
+    welcome: { label: 'Open a file by name', rank: 1, key: 'Ctrl+P' },
+  },
   { key: 'Ctrl+G', label: 'Go to line', section: 'General', where: 'all' },
   { key: 'Ctrl+Q', label: 'Quit', section: 'General', where: 'all' },
   { key: 'Mouse', label: 'Click tabs, tree rows, editor', section: 'General', where: 'help' },
@@ -72,7 +82,13 @@ export const KEYS: KeyInfo[] = [
     section: 'Search & replace',
     where: 'editor',
   },
-  { key: 'Ctrl+R', label: 'Find in project', section: 'Search & replace', where: 'all' },
+  {
+    key: 'Ctrl+R',
+    label: 'Find in project',
+    section: 'Search & replace',
+    where: 'all',
+    welcome: { label: 'Search the project', rank: 3 },
+  },
   {
     key: 'Enter / Ctrl+A',
     label: 'Replace this match / all (in replace)',
@@ -93,7 +109,13 @@ export const KEYS: KeyInfo[] = [
   { key: 'Ctrl+T', label: 'Switch to open tab', section: 'Files & tabs', where: 'all' },
   { key: `Ctrl+${ALT}+← / →`, label: 'Previous / next tab', section: 'Files & tabs', where: 'all' },
 
-  { key: 'Enter', label: 'Open file / toggle folder', section: 'File tree', where: 'tree' },
+  {
+    key: 'Enter',
+    label: 'Open file / toggle folder',
+    section: 'File tree',
+    where: 'tree',
+    welcome: { label: 'Open what the tree has selected', rank: 0 },
+  },
   { key: '↑↓', label: 'Move in tree / popup', section: 'File tree', where: 'tree' },
   { key: 'Shift+↑ / ↓', label: 'Select a range (in tree)', section: 'File tree', where: 'tree' },
   { key: '→ / ←', label: 'Expand / collapse folder', section: 'File tree', where: 'tree' },
@@ -118,19 +140,20 @@ export const KEYS: KeyInfo[] = [
     label: 'Source control panel (git)',
     section: 'Source control',
     where: 'all',
+    welcome: { label: 'Review changes and commit', rank: 4 },
   },
   // Short labels on purpose: a label that wraps costs the help table a second row,
   // and the table only just fits a 60-row terminal — `test/help-scroll.test.tsx`
   // measures exactly that.
   {
-    key: 'Enter · c · p',
-    label: 'Diff / commit… / push',
+    key: '↑↓ · Enter',
+    label: 'Diff the change under the cursor',
     section: 'Source control',
     where: 'git',
   },
   {
-    key: '↑↓ · Esc',
-    label: 'Move / back to the file tree',
+    key: 'c · p · b · Esc',
+    label: 'Commit / push / branch / back',
     section: 'Source control',
     where: 'git',
   },
@@ -170,6 +193,13 @@ export function hintsFor(pane: Pane): ReadonlyArray<readonly [string, string]> {
   return KEYS.filter(info => info.hint && (info.hint.pane === pane || info.hint.pane === 'all'))
     .toSorted((a, b) => a.hint!.rank - b.hint!.rank)
     .map(info => [info.hint!.key ?? info.key, info.hint!.label] as const)
+}
+
+/** Rows for the welcome screen, most useful first. */
+export function welcomeKeys(): ReadonlyArray<readonly [string, string]> {
+  return KEYS.filter(info => info.welcome)
+    .toSorted((a, b) => a.welcome!.rank - b.welcome!.rank)
+    .map(info => [info.welcome!.key ?? info.key, info.welcome!.label] as const)
 }
 
 /** Everything alive in `pane`, for the peek strip. */
