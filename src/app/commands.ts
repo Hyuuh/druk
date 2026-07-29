@@ -53,6 +53,9 @@ export interface CommandActions {
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   toggleTrim: () => void
   toggleAutoSave: () => void
+  problemsList: () => void
+  problemsNext: () => void
+  problemsPrev: () => void
   gitDiffFile: () => void
   gitDiffAll: () => void
   gitCommit: () => void
@@ -131,6 +134,15 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         { id: 'git.pull', label: 'Pull (fast-forward only)', run: actions.gitPull },
         { id: 'git.stash', label: 'Stash changes', run: actions.gitStash },
         { id: 'git.stashPop', label: 'Stash pop', run: actions.gitStashPop },
+      ],
+    },
+    {
+      id: 'problems',
+      label: 'Problems',
+      children: [
+        { id: 'problems.list', label: 'List problems', run: actions.problemsList },
+        { id: 'problems.next', label: 'Next problem', run: actions.problemsNext },
+        { id: 'problems.prev', label: 'Previous problem', run: actions.problemsPrev },
       ],
     },
     {

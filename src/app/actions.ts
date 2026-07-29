@@ -21,6 +21,7 @@ import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
 import type { AppContext } from './context'
+import { problemFrom } from './lsp'
 
 /** Wire the palette's command tree to the controllers that carry the actions out. */
 export function createCommands(ctx: AppContext) {
@@ -57,6 +58,17 @@ export function createCommands(ctx: AppContext) {
       }
     }
     return { path, rel, status: fileStatus, oldText, newText }
+  }
+
+  /** Jump to the neighbouring problem and read it out in the status bar. */
+  const jumpProblem = (direction: 1 | -1) => {
+    const path = workspace.activePath()
+    const list = path ? ctx.lsp.problems[path] : undefined
+    const cursor = editor.cursor()
+    const target = list ? problemFrom(list, cursor.line, cursor.col, direction) : null
+    if (!target) return say('No problems in this file')
+    editor.requestGoto(target.line, target.col)
+    say(target.message.replaceAll(/\s+/g, ' '), target.severity === 'error' ? 'error' : 'warn')
   }
 
   const actions = {
@@ -101,6 +113,13 @@ export function createCommands(ctx: AppContext) {
     lineOp: editor.requestLineOp,
     toggleTrim: settings.toggleTrim,
     toggleAutoSave: settings.toggleAutoSave,
+    problemsList: () => {
+      const any = workspace.tabs().some(path => (ctx.lsp.problems[path] ?? []).length > 0)
+      if (!any) return say('No problems')
+      ctx.overlays.setProblemsOpen(true)
+    },
+    problemsNext: () => jumpProblem(1),
+    problemsPrev: () => jumpProblem(-1),
     gitDiffFile: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
       const path = workspace.activePath()

@@ -14,7 +14,9 @@ Features: file tree with bulk file operations, preview/pinned tabs, tree-sitter 
 highlighting, search (current file and project-wide), command palette, themes, vim mode,
 git marks in tree/gutter/status bar plus palette commands for commit/undo/stash/push/
 fetch/pull, a diff view (inline or side-by-side, one file or every change), file watching
-with conflict prompts, per-project session restore, and a startup update check.
+with conflict prompts, per-project session restore, a startup update check, and LSP
+diagnostics from the user's own language servers (gutter marks, status-bar counts, a
+problems list in the palette).
 
 ## Runtime and tooling
 
@@ -116,6 +118,7 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts` |
+| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts` (users override per-server with the `lspServers` setting) |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
@@ -123,7 +126,7 @@ dependency rule, and recipes for the extension points:
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 
-`ui/` and the feature folders (`core/`, `languages/`, `themes/`, `editor/`) must never
+`ui/` and the feature folders (`core/`, `languages/`, `themes/`, `editor/`, `lsp/`) must never
 import from `app/`. State lives in the `app/` controller modules (`createWorkspace`,
 `createTree`, …), which `App.tsx` creates once in dependency order and composes;
 components take props and call callbacks.

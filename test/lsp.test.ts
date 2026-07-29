@@ -1,0 +1,162 @@
+import { describe, expect, test } from 'bun:test'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { problemFrom } from '../src/app/lsp'
+import type { Problem } from '../src/app/lsp'
+import { spawnLspClient } from '../src/lsp/client'
+import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
+import { severityOf } from '../src/lsp/protocol'
+import { resolveServer } from '../src/lsp/servers'
+import { createDecoder, encodeMessage } from '../src/lsp/transport'
+
+const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
+
+/** Deliveries arrive when the server feels like it; `atLeast` awaits the event itself. */
+function collector<T>() {
+  const items: T[] = []
+  const waiters: { count: number; resolve: () => void }[] = []
+  return {
+    items,
+    push(item: T) {
+      items.push(item)
+      for (let at = waiters.length - 1; at >= 0; at--) {
+        if (items.length >= waiters[at]!.count) {
+          waiters[at]!.resolve()
+          waiters.splice(at, 1)
+        }
+      }
+    },
+    atLeast(count: number): Promise<void> {
+      if (items.length >= count) return Promise.resolve()
+      const { promise, resolve } = Promise.withResolvers<void>()
+      waiters.push({ count, resolve })
+      return promise
+    },
+  }
+}
+
+describe('framing', () => {
+  const collect = () => {
+    const messages: RpcMessage[] = []
+    return { messages, sink: createDecoder(message => void messages.push(message)) }
+  }
+
+  test('a message split anywhere still decodes', () => {
+    const { messages, sink } = collect()
+    const frame = encodeMessage({ jsonrpc: '2.0', method: 'x', params: { a: 1 } })
+    for (const byte of frame) sink(Buffer.from([byte]))
+    expect(messages).toEqual([{ jsonrpc: '2.0', method: 'x', params: { a: 1 } }])
+  })
+
+  test('several messages in one chunk all decode', () => {
+    const { messages, sink } = collect()
+    sink(Buffer.concat([encodeMessage({ id: 1 }), encodeMessage({ id: 2 })]))
+    expect(messages.map(m => m.id)).toEqual([1, 2])
+  })
+
+  test('Content-Length counts bytes, not characters', () => {
+    const { messages, sink } = collect()
+    sink(encodeMessage({ method: 'x', params: { text: 'héllo — ★' } }))
+    expect((messages[0]!.params as { text: string }).text).toBe('héllo — ★')
+  })
+
+  test('header name is case-insensitive', () => {
+    const { messages, sink } = collect()
+    const body = Buffer.from('{"id":7}', 'utf8')
+    sink(Buffer.concat([Buffer.from(`content-length: ${body.length}\r\n\r\n`), body]))
+    expect(messages[0]!.id).toBe(7)
+  })
+})
+
+describe('protocol mapping', () => {
+  const at = (line: number, col: number): Diagnostic => ({
+    range: { start: { line, character: col }, end: { line, character: col } },
+    message: 'm',
+  })
+
+  test('severity defaults to error and maps the four levels', () => {
+    expect(severityOf(at(0, 0))).toBe('error')
+    expect(severityOf({ ...at(0, 0), severity: 2 })).toBe('warning')
+    expect(severityOf({ ...at(0, 0), severity: 3 })).toBe('info')
+    expect(severityOf({ ...at(0, 0), severity: 4 })).toBe('hint')
+  })
+
+  test('overrides replace a server command, and an empty one disables it', () => {
+    expect(resolveServer('typescript', {})?.command[0]).toBe('typescript-language-server')
+    expect(resolveServer('typescript', { typescript: ['deno', 'lsp'] })?.command).toEqual([
+      'deno',
+      'lsp',
+    ])
+    expect(resolveServer('typescript', { typescript: [] })).toBeNull()
+    expect(resolveServer('brainfuck', {})).toBeNull()
+    expect(resolveServer(undefined, {})).toBeNull()
+  })
+})
+
+describe('problemFrom', () => {
+  const problem = (line: number, col: number): Problem => ({
+    path: '/p',
+    line,
+    col,
+    severity: 'error',
+    message: 'm',
+  })
+  const list = [problem(1, 4), problem(5, 0), problem(5, 9)]
+
+  test('finds the next problem after the cursor, wrapping at the end', () => {
+    expect(problemFrom(list, 0, 0, 1)).toEqual(problem(1, 4))
+    expect(problemFrom(list, 1, 4, 1)).toEqual(problem(5, 0))
+    expect(problemFrom(list, 5, 9, 1)).toEqual(problem(1, 4))
+  })
+
+  test('finds the previous problem, wrapping at the start', () => {
+    expect(problemFrom(list, 5, 9, -1)).toEqual(problem(5, 0))
+    expect(problemFrom(list, 1, 4, -1)).toEqual(problem(5, 9))
+    expect(problemFrom([], 0, 0, -1)).toBeNull()
+  })
+})
+
+describe('client against a live server', () => {
+  test('handshake, didOpen diagnostics, didChange clearing them, dispose', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'druk-lsp-'))
+    const path = join(dir, 'a.ts')
+    const deliveries = collector<Diagnostic[]>()
+    const client = spawnLspClient({
+      command: [process.execPath, FAKE],
+      rootDir: dir,
+      onDiagnostics: (_uri, diagnostics) => deliveries.push(diagnostics),
+      onFail: reason => {
+        throw new Error(`fake server failed: ${reason}`)
+      },
+    })
+
+    // Sent while the server is still initializing, so this also proves queueing.
+    client.openDocument(path, 'typescript', 'const oops = 1\n')
+    await deliveries.atLeast(1)
+    expect(deliveries.items[0]).toHaveLength(1)
+    expect(deliveries.items[0]![0]!.range.start).toEqual({ line: 0, character: 6 })
+    expect(client.ready()).toBe(true)
+
+    client.changeDocument(path, 'const fine = 1\n')
+    await deliveries.atLeast(2)
+    expect(deliveries.items[1]).toHaveLength(0)
+
+    client.dispose()
+  }, 20_000)
+
+  test('a command that is not on PATH reports failure instead of wedging', async () => {
+    const { promise: failed, resolve: onFail } = Promise.withResolvers<string>()
+    const client = spawnLspClient({
+      command: ['druk-no-such-language-server'],
+      rootDir: tmpdir(),
+      onDiagnostics: () => {},
+      onFail,
+    })
+    // Bun and Node word the ENOENT differently; both name the command.
+    expect(await failed).toContain('druk-no-such-language-server')
+    expect(client.ready()).toBe(false)
+    client.dispose()
+  }, 10_000)
+})

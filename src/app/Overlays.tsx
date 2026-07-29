@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 
-import { createMemo, createSignal, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 
 import { replaceAll, replaceMatch } from '../core/search'
@@ -49,6 +49,8 @@ export function createOverlays(deps: {
   const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
   /** Open diff view: the changed files it pages through and which one shows. */
   const [diff, setDiff] = createSignal<{ files: DiffFile[]; index: number } | null>(null)
+  /** The problems list, jumping to a diagnostic on Enter. */
+  const [problemsOpen, setProblemsOpen] = createSignal(false)
 
   /** True while a modal or overlay owns the keyboard. One list, two readers. */
   const overlay = createMemo(
@@ -61,7 +63,8 @@ export function createOverlays(deps: {
         search() ||
         update() ||
         picker() ||
-        git.commitPick()
+        git.commitPick() ||
+        problemsOpen()
       ),
   )
 
@@ -98,6 +101,8 @@ export function createOverlays(deps: {
     setUpdate,
     diff,
     setDiff,
+    problemsOpen,
+    setProblemsOpen,
     overlay,
     selection,
     jumpTo,
@@ -110,8 +115,35 @@ export type Overlays = ReturnType<typeof createOverlays>
 export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Command[]> }) {
   // ctx is assembled once in App and never replaced, so reading it eagerly is safe.
   const app = props.ctx
-  const { status, settings, panes, git, workspace, prompts, overlays } = app
+  const { status, settings, panes, git, workspace, prompts, overlays, editor, lsp } = app
   const { say } = status
+
+  /** Every open file's problems flattened for the list, in tab order. */
+  const problemRows = createMemo(() => {
+    const glyph = { error: '●', warning: '▲', info: '○', hint: '○' }
+    const rows: { path: string; line: number; col: number; label: string }[] = []
+    for (const path of workspace.tabs()) {
+      for (const problem of lsp.problems[path] ?? []) {
+        rows.push({
+          path,
+          line: problem.line,
+          col: problem.col,
+          label:
+            `${basename(path)}:${problem.line + 1}:${problem.col + 1}  ` +
+            `${glyph[problem.severity]} ${problem.message.replaceAll(/\s+/g, ' ')}`,
+        })
+      }
+    }
+    // ChoiceModal draws every row it is given; a pathological file could hold
+    // thousands, and the ones past the screen would push the modal apart.
+    return rows.slice(0, 50)
+  })
+
+  // The list closes itself when the last problem is fixed while it is up —
+  // otherwise `overlay()` would keep the keyboard with a modal no longer there.
+  createEffect(() => {
+    if (overlays.problemsOpen() && problemRows().length === 0) overlays.setProblemsOpen(false)
+  })
 
   return (
     <>
@@ -208,6 +240,23 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             onCancel={() => git.setCommitPick(null)}
           />
         )}
+      </Show>
+      <Show when={overlays.problemsOpen()}>
+        <ChoiceModal
+          title="Problems"
+          message="Enter jumps to the diagnostic."
+          choices={problemRows().map((row, at) => ({ id: String(at), label: row.label }))}
+          onPick={id => {
+            const row = problemRows()[Number(id)]
+            overlays.setProblemsOpen(false)
+            if (!row) return
+            overlays.setDiff(null)
+            if (row.path !== workspace.activePath()) workspace.openFile(row.path)
+            editor.requestGoto(row.line, row.col)
+            panes.setFocus('editor')
+          }}
+          onCancel={() => overlays.setProblemsOpen(false)}
+        />
       </Show>
       <Show when={workspace.conflict()}>
         {(c: () => Conflict) => (
