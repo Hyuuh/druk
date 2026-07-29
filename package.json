@@ -52,6 +52,8 @@
   "dependencies": {
     "@opentui/core": "^0.4.5",
     "@opentui/solid": "^0.4.5",
+    "fast-png": "^8.0.0",
+    "jpeg-js": "^0.4.4",
     "nypm": "^0.6.8",
     "solid-js": "^1.9.14",
     "tree-sitter-wasms": "^0.1.13"

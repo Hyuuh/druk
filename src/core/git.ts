@@ -229,13 +229,113 @@ export interface GitResult {
 /** Long enough for a slow push; nothing druk runs should legitimately outlast it. */
 const MUTATE_TIMEOUT = 60_000
 
+function lines(text: string): string[] {
+  return text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+}
+
 function firstLine(text: string): string {
-  return (
-    text
-      .split('\n')
-      .map(line => line.trim())
-      .find(line => line.length > 0) ?? ''
-  )
+  return lines(text)[0] ?? ''
+}
+
+/** Advice and progress chatter git emits around the one line that says what broke. */
+const NOISE = /^(?:hint|warning|note):|^To\s|^remote:\s*$/i
+
+/**
+ * What the status bar shows when git fails. Git puts its advice *before* the
+ * cause, so the first line is usually the wrong one: a rejected pull opens with
+ * a dozen `hint:` lines and only ends with the `fatal:` that names the problem.
+ * Prefer that line, fall back to whatever survives the noise filter, and strip
+ * the severity prefix — the bar already colours the message as an error.
+ */
+export function failureLine(text: string): string {
+  const all = lines(text)
+  const signal = all.filter(line => !NOISE.test(line))
+  const chosen = signal.find(line => line.startsWith('fatal:')) ?? signal[0] ?? all[0] ?? ''
+  return chosen.replace(/^(?:fatal|error):\s*/, '')
+}
+
+/**
+ * Failures worth naming, in the terms of what to do next. Git's own wording
+ * assumes a shell where the fix is one command away, and druk runs a fixed set
+ * of commands with no shell to offer — so each of these says what happened and
+ * where the fix lives, pointing at druk's own commands where it has one.
+ *
+ * Matched against git's whole output, not the chosen line: the reason and the
+ * command that failed routinely sit on different lines. First match wins, so
+ * the specific patterns have to stay above the general ones — "Authentication
+ * failed" would otherwise swallow the missing-credentials case below it.
+ */
+export const KNOWN: ReadonlyArray<readonly [RegExp, string]> = [
+  // druk pulls with --ff-only; a real merge needs an editor and a conflict UI.
+  [
+    /Not possible to fast-forward|Need to specify how to reconcile/i,
+    'Branch and origin have both moved on — merge or rebase in a terminal',
+  ],
+  [
+    /\[rejected\].*(?:non-fast-forward|fetch first)/i,
+    "origin has commits you don't — pull first, then push",
+  ],
+  [
+    /local changes to the following files would be overwritten/i,
+    'Commit or stash your changes first — this would overwrite them',
+  ],
+  [
+    /^CONFLICT|Merge conflict in/im,
+    'Conflicts in the working tree — the stash was kept, resolve them first',
+  ],
+  [
+    /unmerged files|needs merge|unresolved conflict/i,
+    'Resolve the merge conflicts in your working tree first',
+  ],
+  [/nothing to commit|no changes added to commit/i, 'Nothing to commit'],
+  // Undo is `reset --soft HEAD~1`, so a root commit has nothing to reset to.
+  [/ambiguous argument 'HEAD~1'/i, 'Nothing to undo — this is the only commit'],
+  [/No stash entries found/i, 'No stash to pop'],
+  [
+    /No configured push destination|does not appear to be a git repository/i,
+    "No remote — add an 'origin' in a terminal",
+  ],
+  [
+    /Could not resolve host|unable to access.*(?:Couldn't connect|Connection refused|Operation timed out)/i,
+    "Can't reach the remote — check your network",
+  ],
+  // Ours: GIT_TERMINAL_PROMPT=0 turns git's credential prompt into this.
+  [
+    /terminal prompts disabled|could not read (?:Username|Password)/i,
+    "No stored credentials for the remote — druk can't prompt for them",
+  ],
+  [/Permission denied \(publickey\)/i, 'The remote rejected your SSH key'],
+  [
+    /Authentication failed|Invalid username or password|Access denied/i,
+    'Authentication failed — check your credentials for the remote',
+  ],
+  [
+    /(?:repository|Repository) .*not found|remote: Not Found/i,
+    "Remote repository not found — check the 'origin' URL",
+  ],
+  [
+    /index\.lock.*File exists|Another git process seems to be running/i,
+    'Another git process is running in this repository — let it finish',
+  ],
+]
+
+/**
+ * A known failure named in druk's terms, or git's own most useful line.
+ *
+ * Both streams are matched, because git routinely splits one failure across the
+ * two: a stash pop onto an unmerged index puts `error: could not write index` on
+ * stderr and the `f.txt: needs merge` that actually explains it on stdout. Only
+ * the fallback keeps to one stream, where stderr is the better guess.
+ */
+export function explain(stderr: string, stdout = ''): string {
+  const both = `${stderr}\n${stdout}`
+  for (const [pattern, message] of KNOWN) {
+    if (pattern.test(both)) return message
+  }
+  return failureLine(stderr || stdout)
 }
 
 function mutate(cwd: string, args: string[]): Promise<GitResult> {
@@ -252,7 +352,11 @@ function mutate(cwd: string, args: string[]): Promise<GitResult> {
     let stderr = ''
     child.stdout.on('data', chunk => (stdout += chunk))
     child.stderr.on('data', chunk => (stderr += chunk))
-    const timer = setTimeout(() => child.kill('SIGKILL'), MUTATE_TIMEOUT)
+    let killed = false
+    const timer = setTimeout(() => {
+      killed = true
+      child.kill('SIGKILL')
+    }, MUTATE_TIMEOUT)
     // 'error' (spawn failure) and 'close' can both fire; the first one answers.
     let settled = false
     const finish = (result: GitResult) => {
@@ -261,12 +365,27 @@ function mutate(cwd: string, args: string[]): Promise<GitResult> {
       clearTimeout(timer)
       resolve(result)
     }
-    child.on('error', err => finish({ ok: false, detail: err.message }))
+    child.on('error', err =>
+      finish({
+        ok: false,
+        detail:
+          // The one failure with no git output to explain: there is no git.
+          'code' in err && err.code === 'ENOENT'
+            ? 'git is not installed, or not on PATH'
+            : err.message,
+      }),
+    )
     child.on('close', code => {
       // Success chatter (push progress, fetch summaries) arrives on stderr too,
       // so on failure stderr is the answer and on success either will do.
       const ok = code === 0
-      finish({ ok, detail: firstLine(ok ? stdout || stderr : stderr || stdout) })
+      if (ok) return finish({ ok, detail: firstLine(stdout || stderr) })
+      // A killed process leaves whatever it had already written, which for a
+      // hung fetch is nothing at all — say why it stopped instead of going blank.
+      const detail = killed
+        ? `Timed out after ${MUTATE_TIMEOUT / 1000}s and was stopped`
+        : explain(stderr, stdout)
+      finish({ ok, detail })
     })
   })
 }

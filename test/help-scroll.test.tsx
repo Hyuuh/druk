@@ -1,12 +1,12 @@
 import { expect, test } from 'bun:test'
 
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openPalette, press } from './helpers'
 
 const PROJECT = { 'a.ts': 'const a = 1\n' }
 
 async function openHelp(height: number) {
   const t = await launch(fixture(PROJECT), {}, { height })
-  await press(t, i => i.pressKey('p', { ctrl: true }))
+  await openPalette(t)
   await press(t, i => void i.typeText('shortcuts'))
   await press(t, i => i.pressEnter())
   return t

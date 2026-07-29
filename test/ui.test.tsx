@@ -4,21 +4,13 @@ import { join } from 'node:path'
 
 import { buildCommands } from '../src/app/commands'
 import type { CommandActions } from '../src/app/commands'
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openPalette, press } from './helpers'
 import type { Harness } from './helpers'
 
 /** Row index of a top-level command, so tests survive new commands. */
 function rowOf(label: string): number {
   const actions = new Proxy({} as CommandActions, { get: () => () => {} })
-  const tree = buildCommands(actions, {
-    vimEnabled: false,
-    activeTheme: 'dark',
-    tabSize: 2,
-    trimOnSave: false,
-    autoSaveOnBlur: false,
-    showDotfiles: true,
-    respectGitignore: false,
-  })
+  const tree = buildCommands(actions, { activeTheme: 'dark' })
   return tree.findIndex(command => command.label === label)
 }
 
@@ -69,7 +61,7 @@ describe('editor', () => {
 describe('command palette', () => {
   test('nests into submenus and applies a theme', async () => {
     const t = await launch(fixture(PROJECT))
-    await press(t, i => i.pressKey('p', { ctrl: true }))
+    await openPalette(t)
     // `›`, the same glyph the title trail and the README use for nesting.
     expect(t.captureCharFrame()).toContain('Themes ›')
 
@@ -82,7 +74,7 @@ describe('command palette', () => {
 
   test('typing filters across levels with breadcrumbs', async () => {
     const t = await launch(fixture(PROJECT))
-    await press(t, i => i.pressKey('p', { ctrl: true }))
+    await openPalette(t)
     await press(t, i => void i.typeText('light'))
     expect(t.captureCharFrame()).toContain('Themes ›   GitHub Light')
   })

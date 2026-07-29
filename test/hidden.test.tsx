@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { listDir } from '../src/core/fs'
 import { ignoredPaths } from '../src/core/git'
 import { listFiles } from '../src/core/search'
-import { fixture, launch, runCommand } from './helpers'
+import { fixture, launch, toggleSetting } from './helpers'
 
 const PROJECT = { 'src/main.ts': 'const a = 1\n', '.DS_Store': 'junk\n', '.gitignore': 'dist\n' }
 
@@ -33,10 +33,10 @@ describe('showDotfiles: false', () => {
     expect(frame).not.toContain('.DS_Store')
   })
 
-  test('the palette toggles it back on', async () => {
+  test('the settings page toggles it back on', async () => {
     const t = await launch(fixture(PROJECT), { showDotfiles: false })
     expect(t.captureCharFrame()).not.toContain('.DS_Store')
-    await runCommand(t, 'Show dotfiles')
+    await toggleSetting(t, 'Show dotfiles')
     expect(t.captureCharFrame()).toContain('.DS_Store')
   })
 })
@@ -84,10 +84,10 @@ describe('respectGitignore: true', () => {
     expect(frame).toContain('.gitignore')
   })
 
-  test('the palette toggles it', async () => {
+  test('the settings page toggles it', async () => {
     const t = await launch(repo())
     expect(t.captureCharFrame()).toContain('dist')
-    await runCommand(t, 'Hide git-ignored')
+    await toggleSetting(t, 'Hide git-ignored')
     expect(t.captureCharFrame()).not.toContain('dist')
   })
 })

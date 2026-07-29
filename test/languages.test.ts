@@ -102,6 +102,25 @@ describe('abandoning a highlight that arrived too late', () => {
   })
 })
 
+describe('reusing a parse across tab switches', () => {
+  test('the same text comes back as the same parse, not a new one', async () => {
+    const source = 'const beta = 2 // note\n'
+    const first = await computeHighlights(source, 'typescript', 2)
+    const again = await computeHighlights(source, 'typescript', 2)
+    expect(first).not.toBe(STALE)
+    // Identity, not equality: a re-parse would produce an equal object and
+    // still mean the worker round-trip was paid again.
+    expect(again).toBe(first)
+  })
+
+  test('a different tab size is not the same parse', async () => {
+    const source = 'if (a) {\n    b()\n}\n'
+    const two = await computeHighlights(source, 'typescript', 2)
+    const four = await computeHighlights(source, 'typescript', 4)
+    expect(four).not.toBe(two)
+  })
+})
+
 describe('segmenting a window instead of the document', () => {
   const source = `${Array.from(
     { length: 300 },

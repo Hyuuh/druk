@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test'
 import { DEFAULTS } from '../src/core/config'
 import { THEMES } from '../src/themes'
 import type { ThemeName } from '../src/themes'
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openPalette, press } from './helpers'
 import type { Harness } from './helpers'
 
 /** Foreground/background of the span containing `needle`, as [r,g,b] pairs. */
@@ -38,7 +38,7 @@ test('typed text is readable in the palette, search and prompts', async () => {
   for (const theme of Object.keys(THEMES) as ThemeName[]) {
     const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }), { ...DEFAULTS, theme })
 
-    await press(t, i => i.pressKey('p', { ctrl: true }))
+    await openPalette(t)
     await press(t, i => void i.typeText('zzz'))
     const palette = spanColors(t, 'zzz')
     expect(`${theme} palette:${palette !== null}`).toBe(`${theme} palette:true`)

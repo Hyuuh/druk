@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { currentBranch, diffLines, statusMap } from '../src/core/git'
+import { currentBranch, diffLines, explain, failureLine, KNOWN, statusMap } from '../src/core/git'
 import { launch, press } from './helpers'
 
 /** A real repository with one committed file. */
@@ -129,4 +129,126 @@ test('every file inside a brand-new directory is marked, not just the directory'
   expect(frame).toContain('newdir')
   expect(frame).toContain('a.ts')
   expect(frame.split('\n').find(row => row.includes('a.ts'))).toContain('U')
+})
+
+test('a failed git command reports its cause, not its advice', () => {
+  // Verbatim from `git pull` on diverged branches: git prints its advice first
+  // and the reason last, so taking the first line showed a truncated hint.
+  const diverged = [
+    "hint: Diverging branches can't be fast-forwarded, you need to either:",
+    'hint:',
+    'hint: \tgit merge --no-ff',
+    'hint:',
+    'hint: or:',
+    'hint:',
+    'hint: \tgit rebase',
+    'hint:',
+    'hint: Disable this message with "git config set advice.diverging false"',
+    'fatal: Not possible to fast-forward, aborting.',
+  ].join('\n')
+  expect(failureLine(diverged)).toBe('Not possible to fast-forward, aborting.')
+
+  // A rejected push has no `fatal:` at all: the destination header and the
+  // trailing hints are noise, and the rejection itself is what to show.
+  const rejected = [
+    'To https://github.com/user/repo',
+    ' ! [rejected]        main -> main (non-fast-forward)',
+    "error: failed to push some refs to 'https://github.com/user/repo'",
+    'hint: Updates were rejected because the tip of your current branch is behind',
+  ].join('\n')
+  expect(failureLine(rejected)).toBe('! [rejected]        main -> main (non-fast-forward)')
+
+  // Nothing but advice still has to say something rather than go blank.
+  expect(failureLine('hint: only advice here\n')).toBe('hint: only advice here')
+  expect(failureLine('')).toBe('')
+
+  // An `error:` with no rejection line loses its prefix — the bar colours it.
+  expect(failureLine("error: pathspec 'nope' did not match")).toBe("pathspec 'nope' did not match")
+})
+
+/**
+ * Every string below is verbatim git output, captured by provoking the failure
+ * against real repositories — the wording is the whole contract here, and a
+ * paraphrase would pass while the real message sailed past unrecognised.
+ */
+test('known git failures are named in terms of what to do next', () => {
+  const cases: Array<[string, string]> = [
+    [
+      'fatal: Not possible to fast-forward, aborting.',
+      'Branch and origin have both moved on — merge or rebase in a terminal',
+    ],
+    [
+      'fatal: Need to specify how to reconcile divergent branches.',
+      'Branch and origin have both moved on — merge or rebase in a terminal',
+    ],
+    [
+      'To https://github.com/user/repo\n ! [rejected]        main -> main (non-fast-forward)\nerror: failed to push some refs',
+      "origin has commits you don't — pull first, then push",
+    ],
+    [
+      'error: Your local changes to the following files would be overwritten by merge:\n\tf.txt\nPlease commit your changes or stash them before you merge.\nAborting',
+      'Commit or stash your changes first — this would overwrite them',
+    ],
+    [
+      'Auto-merging f.txt\nCONFLICT (content): Merge conflict in f.txt\nThe stash entry is kept in case you need it again.',
+      'Conflicts in the working tree — the stash was kept, resolve them first',
+    ],
+    [
+      'error: Pulling is not possible because you have unmerged files.\nfatal: Exiting because of an unresolved conflict.',
+      'Resolve the merge conflicts in your working tree first',
+    ],
+    ['On branch master\nnothing to commit, working tree clean', 'Nothing to commit'],
+    [
+      "fatal: ambiguous argument 'HEAD~1': unknown revision or path not in the working tree.",
+      'Nothing to undo — this is the only commit',
+    ],
+    ['No stash entries found.', 'No stash to pop'],
+    ['fatal: No configured push destination.', "No remote — add an 'origin' in a terminal"],
+    [
+      "fatal: unable to access 'https://x.invalid/y.git/': Could not resolve host: x.invalid",
+      "Can't reach the remote — check your network",
+    ],
+    [
+      "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+      "No stored credentials for the remote — druk can't prompt for them",
+    ],
+    [
+      'git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.',
+      'The remote rejected your SSH key',
+    ],
+    [
+      "remote: HTTP Basic: Access denied.\nfatal: Authentication failed for 'https://gitlab.com/x/y.git/'",
+      'Authentication failed — check your credentials for the remote',
+    ],
+    [
+      "remote: Repository not found.\nfatal: repository 'https://github.com/x/y.git/' not found",
+      "Remote repository not found — check the 'origin' URL",
+    ],
+    [
+      "fatal: Unable to create '/repo/.git/index.lock': File exists.\n\nAnother git process seems to be running in this repository",
+      'Another git process is running in this repository — let it finish',
+    ],
+  ]
+  for (const [output, message] of cases)
+    expect([output, explain(output)]).toEqual([output, message])
+
+  // Anything unrecognised still falls through to git's own most useful line.
+  expect(explain("error: pathspec 'nope' did not match any file(s)")).toBe(
+    "pathspec 'nope' did not match any file(s)",
+  )
+})
+
+test('a message never outgrows the status bar', () => {
+  // The bar clips with an ellipsis, and these messages exist to be read whole.
+  for (const [, message] of KNOWN) expect(message.length).toBeLessThanOrEqual(70)
+})
+
+test('a failure split across both streams is still recognised', () => {
+  // Verbatim from a second `git stash pop` onto the conflicted tree the first
+  // one left. Reading either stream alone reports "could not write index",
+  // which names the symptom and not one thing the user can act on.
+  const stderr = 'error: could not write index'
+  const stdout = 'f.txt: needs merge\nThe stash entry is kept in case you need it again.'
+  expect(explain(stderr, stdout)).toBe('Resolve the merge conflicts in your working tree first')
+  expect(explain(stderr)).toBe('could not write index')
 })

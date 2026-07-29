@@ -4,8 +4,10 @@ import type { MouseEvent } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 
+import { CONFIG_FILE } from '../core/config'
 import type { Config } from '../core/config'
 import { watchTree } from '../core/fs'
+import { isImagePath } from '../core/image'
 import { checkForUpdate } from '../core/update'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
@@ -14,6 +16,8 @@ import { DiffView } from '../ui/DiffView'
 import type { DiffFile } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
 import { FileTree } from '../ui/FileTree'
+import { ImageView } from '../ui/ImageView'
+import { SettingsView } from '../ui/SettingsView'
 import { StatusBar } from '../ui/StatusBar'
 import { Tabs } from '../ui/Tabs'
 import { createCommands } from './actions'
@@ -122,6 +126,12 @@ export function App(props: {
   /** True between grabbing the sidebar divider and letting go. */
   const [resizing, setResizing] = createSignal(false)
 
+  /** The active tab when it is an image — a viewer page covers the editor slot. */
+  const activeImage = () => {
+    const path = workspace.activePath()
+    return path && isImagePath(path) ? path : null
+  }
+
   onMount(() => {
     // Same refusal `druk file.ts` deserves as opening one from the tree, and for the
     // same reason: an empty editor with a status line under it looks like a bug.
@@ -202,9 +212,10 @@ export function App(props: {
         }))}
         activePath={workspace.activePath()}
         onSelect={p => {
-          // A tab picked while the diff covers the editor must show the file, not
-          // change what the diff pane happens to sit on top of.
+          // A tab picked while a page covers the editor must show the file, not
+          // change what the page happens to sit on top of.
           overlays.setDiff(null)
+          overlays.setSettingsPage(false)
           workspace.openFile(p)
         }}
         onClose={workspace.closeTab}
@@ -234,9 +245,10 @@ export function App(props: {
             cutPaths={fileOps.cut()}
             markedPaths={tree.marked()}
             onActivate={node => {
-              // Landing in a file is how the diff page closes — the tree stays
-              // interactive while it is up, like any other editor page.
+              // Landing in a file is how a page closes — the tree stays
+              // interactive while one is up, like any other editor page.
               overlays.setDiff(null)
+              overlays.setSettingsPage(false)
               workspace.activateNode(node)
             }}
             onPin={node => workspace.pinTab(node.path)}
@@ -273,10 +285,16 @@ export function App(props: {
             path={workspace.activePath()}
             content={workspace.activeBuffer()?.content ?? ''}
             filetype={workspace.activePath() ? filetypeForPath(workspace.activePath()!) : undefined}
-            // Also unfocused while the diff covers the pane: the terminal's own
-            // cursor tracks the focused textarea and is drawn over everything,
-            // so a focused editor bleeds a phantom block into the diff.
-            focused={panes.focus() === 'editor' && !overlays.diff()}
+            // Also unfocused while the diff or an image viewer covers the pane:
+            // the terminal's own cursor tracks the focused textarea and is drawn
+            // over everything, so a focused editor bleeds a phantom block into
+            // whatever page sits on top.
+            focused={
+              panes.focus() === 'editor' &&
+              !overlays.diff() &&
+              !overlays.settingsPage() &&
+              !activeImage()
+            }
             theme={config.theme}
             reloadKey={editor.reloadKey()}
             goto={editor.goto()}
@@ -289,13 +307,43 @@ export function App(props: {
             notice={workspace.notice()}
             // The diff is a page over this pane, not an overlay — but the hidden
             // textarea must still not eat keys meant for it.
-            blocked={overlays.overlay() || overlays.diff() !== null}
+            blocked={
+              overlays.overlay() ||
+              overlays.diff() !== null ||
+              overlays.settingsPage() ||
+              activeImage() !== null
+            }
             onChange={workspace.onEditorChange}
             onCursor={editor.setCursor}
             onFocus={() => panes.setFocus('editor')}
             onVimMode={editor.setVimMode}
             onQuit={promptHandlers.quit}
           />
+          <Show when={activeImage()}>
+            {(path: () => string) => (
+              <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={40}>
+                <ImageView
+                  path={path()}
+                  width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                  height={dimensions().height - 2}
+                  onFocus={() => panes.setFocus('editor')}
+                />
+              </box>
+            )}
+          </Show>
+          <Show when={overlays.settingsPage()}>
+            <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={60}>
+              <SettingsView
+                rows={settings.rows()}
+                configFile={CONFIG_FILE}
+                width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                focused={panes.focus() === 'editor'}
+                blocked={overlays.overlay()}
+                onFocus={() => panes.setFocus('editor')}
+                onClose={() => overlays.setSettingsPage(false)}
+              />
+            </box>
+          </Show>
           <Show when={overlays.diff()}>
             {(open: () => { files: DiffFile[]; index: number }) => (
               <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={50}>
@@ -320,13 +368,16 @@ export function App(props: {
         message={status.status().msg}
         tone={status.status().tone}
         filetype={
-          workspace.activePath()
-            ? languageLabel(filetypeForPath(workspace.activePath()!) ?? 'plain')
-            : undefined
+          activeImage()
+            ? 'image'
+            : workspace.activePath()
+              ? languageLabel(filetypeForPath(workspace.activePath()!) ?? 'plain')
+              : undefined
         }
-        cursor={workspace.activePath() ? editor.cursor() : undefined}
+        // A viewer tab has no caret: the numbers would be wherever the editor last was.
+        cursor={workspace.activePath() && !activeImage() ? editor.cursor() : undefined}
         dirty={workspace.activeBuffer()?.dirty ?? false}
-        vimMode={workspace.activePath() ? editor.vimMode() : null}
+        vimMode={workspace.activePath() && !activeImage() ? editor.vimMode() : null}
         branch={git.branch()}
         ahead={git.upstream()?.ahead ?? 0}
         behind={git.upstream()?.behind ?? 0}

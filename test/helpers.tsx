@@ -82,9 +82,32 @@ export async function pressEscape(t: Harness) {
   await settle(t)
 }
 
+/** F1 as the terminal sends it (SS3 P) — the palette key that works everywhere. */
+export const F1 = '\u001BOP'
+
+export async function openPalette(t: Harness) {
+  await press(t, input => void input.pressKeys([F1]))
+}
+
 /** Run a palette leaf by typing enough of its label to select it. */
 export async function runCommand(t: Harness, label: string) {
-  await press(t, input => input.pressKey('p', { ctrl: true }))
+  await openPalette(t)
   await press(t, input => void input.typeText(label))
   await press(t, input => input.pressEnter())
+}
+
+/** Open the settings page, step the `label` row's value once, close the page. */
+export async function toggleSetting(t: Harness, label: string) {
+  await runCommand(t, 'Settings')
+  // Walk the selection down until the marker sits on the wanted row.
+  for (let i = 0; i < 16; i++) {
+    const row = t
+      .captureCharFrame()
+      .split('\n')
+      .find(line => line.includes(label))
+    if (row?.includes('▌')) break
+    await press(t, input => input.pressArrow('down'))
+  }
+  await press(t, input => input.pressEnter())
+  await pressEscape(t)
 }

@@ -5,6 +5,7 @@ import { createStore, produce, unwrap } from 'solid-js/store'
 
 import { BinaryFileError, exists, mtimeOf, readFile, writeFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
+import { isImagePath } from '../core/image'
 import { loadSession, saveSession } from '../core/session'
 import { trimTrailing } from '../editor/lines'
 import type { EditorBridge } from './editor'
@@ -39,9 +40,12 @@ export function restoreWorkspace(rootDir: string, single: string | null) {
   // folder's own layout is not this invocation's to inherit or to overwrite.
   if (single) {
     try {
-      const buffer = { content: readFile(single), dirty: false, mtime: mtimeOf(single) }
+      // An image opens as a viewer tab: no buffer, so nothing can write it back.
+      const buffers: Record<string, FileBuffer> = isImagePath(single)
+        ? {}
+        : { [single]: { content: readFile(single), dirty: false, mtime: mtimeOf(single) } }
       return {
-        buffers: { [single]: buffer },
+        buffers,
         tabs: [single],
         activePath: single as string | null,
         expanded: [] as string[],
@@ -64,15 +68,16 @@ export function restoreWorkspace(rootDir: string, single: string | null) {
   const saved = loadSession(rootDir)
   const buffers: Record<string, FileBuffer> = {}
   for (const path of saved.tabs) {
+    if (isImagePath(path)) continue // a viewer tab has no buffer to restore
     try {
       buffers[path] = { content: readFile(path), dirty: false, mtime: mtimeOf(path) }
     } catch {
       // unreadable since last time — the tab is dropped below
     }
   }
-  const tabs = saved.tabs.filter(path => buffers[path])
+  const tabs = saved.tabs.filter(path => buffers[path] || (isImagePath(path) && exists(path)))
   const activePath =
-    saved.activePath && buffers[saved.activePath] ? saved.activePath : (tabs[0] ?? null)
+    saved.activePath && tabs.includes(saved.activePath) ? saved.activePath : (tabs[0] ?? null)
   return {
     buffers,
     tabs,
@@ -126,7 +131,10 @@ export function createWorkspace(deps: {
 
   const openFile = (path: string, preview = false) => {
     setNotice(null)
-    if (!buffers[path]) {
+    // Images get a viewer tab and no buffer — the door stays shut to a FileBuffer
+    // for anything that is not text, which is what keeps "never written back"
+    // structural. The tab itself flows through the same preview/pin/session logic.
+    if (!buffers[path] && !isImagePath(path)) {
       try {
         setBuffers(path, { content: readFile(path), dirty: false, mtime: mtimeOf(path) })
       } catch (e) {
@@ -223,7 +231,10 @@ export function createWorkspace(deps: {
 
   const onEditorChange = (text: string) => {
     const path = activePath()
-    if (!path || buffers[path]?.content === text) return
+    // No buffer means a viewer tab — creating one here would hand an image to the
+    // save path. The editor is blocked while a viewer is up, but this is the guard
+    // that makes the invariant hold rather than depend on that.
+    if (!path || !buffers[path] || buffers[path].content === text) return
     pinTab(path)
     setBuffers(path, { content: text, dirty: true })
   }
@@ -349,6 +360,11 @@ export function createWorkspace(deps: {
       // Unsaved edits stay untouched; the user is warned and asked on save.
       if (buffer.dirty) changed.push(basename(path))
       else updates.push([path, { content: disk, dirty: false, mtime: mtimeOf(path) }])
+    }
+    // Viewer tabs have no buffer, so the walk above never sees them; a deleted
+    // image has nothing to show and its tab goes the way of a clean buffer's.
+    for (const path of tabs()) {
+      if (!buffers[path] && !exists(path)) vanished.push(path)
     }
     // After the walk: closing a tab mutates the store being iterated.
     for (const path of vanished) closeTab(path, true)

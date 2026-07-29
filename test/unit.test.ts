@@ -70,15 +70,7 @@ describe('registries', () => {
     const actions = new Proxy({} as CommandActions, {
       get: (_t, name: string) => () => ran.push(name),
     })
-    const tree = buildCommands(actions, {
-      vimEnabled: false,
-      activeTheme: 'dark',
-      tabSize: 2,
-      trimOnSave: false,
-      autoSaveOnBlur: false,
-      showDotfiles: true,
-      respectGitignore: false,
-    })
+    const tree = buildCommands(actions, { activeTheme: 'dark' })
     const leaves = flattenCommands(tree)
 
     expect(leaves.length).toBeGreaterThan(10)

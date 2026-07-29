@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { ROWS } from '../src/ui/keys'
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { F1, fixture, launch, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const ESC = String.fromCharCode(27)
@@ -31,8 +31,17 @@ test('every advertised hotkey does something', async () => {
   const check = (name: string, ok: boolean) => report.push(`${ok ? 'ok  ' : 'DEAD'}  ${name}`)
 
   let t = await tree()
+  await press(t, i => void i.pressKeys([F1]))
+  check('F1 palette', frame(t).includes('Commands'))
+
+  // Ctrl+Opt+P: Opt sends an ESC prefix ahead of Ctrl+P (0x10).
+  t = await tree()
+  await press(t, i => void i.pressKeys([`${ESC}${String.fromCharCode(16)}`]))
+  check('Ctrl+Opt+P palette', frame(t).includes('Commands'))
+
+  t = await tree()
   await press(t, i => i.pressKey('p', { ctrl: true }))
-  check('Ctrl+P palette', frame(t).includes('Commands'))
+  check('Ctrl+P file picker', frame(t).includes('Open file'))
 
   t = await tree()
   await press(t, i => i.pressKey('o', { ctrl: true }))

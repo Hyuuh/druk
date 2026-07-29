@@ -49,6 +49,8 @@ export function createOverlays(deps: {
   const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
   /** Open diff view: the changed files it pages through and which one shows. */
   const [diff, setDiff] = createSignal<{ files: DiffFile[]; index: number } | null>(null)
+  /** The settings page — covers the editor slot like the diff, not a modal. */
+  const [settingsPage, setSettingsPage] = createSignal(false)
 
   /** True while a modal or overlay owns the keyboard. One list, two readers. */
   const overlay = createMemo(
@@ -76,8 +78,9 @@ export function createOverlays(deps: {
 
   const jumpTo = (match: Match) => {
     setSearch(null)
-    // The diff page gives way to anything that lands in a file.
+    // A page gives way to anything that lands in a file.
     setDiff(null)
+    setSettingsPage(false)
     if (match.path && match.path !== workspace.activePath()) workspace.openFile(match.path)
     editor.requestGoto(match.line, match.col)
     panes.setFocus('editor')
@@ -98,6 +101,8 @@ export function createOverlays(deps: {
     setUpdate,
     diff,
     setDiff,
+    settingsPage,
+    setSettingsPage,
     overlay,
     selection,
     jumpTo,
@@ -188,6 +193,7 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             onPick={path => {
               overlays.setPicker(null)
               overlays.setDiff(null)
+              overlays.setSettingsPage(false)
               workspace.openFile(path)
             }}
             onClose={() => overlays.setPicker(null)}

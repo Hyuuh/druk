@@ -48,7 +48,12 @@ export function installKeyboard(ctx: AppContext) {
     // renderer's own selection covers mouse drags only. Either way it
     // routes through `quit()`, so a dirty buffer still gets its prompt.
     if (key.ctrl && k === 'c' && panes.focus() !== 'editor') return claim(prompts.quit)
-    if (key.ctrl && k === 'p') return claim(() => overlays.setPalette(true))
+    // VS Code's layout: Ctrl+P is the file picker, the palette sits on the
+    // Ctrl+Shift+P chord — which most terminals cannot send (see the chord note
+    // below), so F1, VS Code's other palette key, carries it everywhere.
+    if (key.ctrl && chord(key) && k === 'p') return claim(() => overlays.setPalette(true))
+    if (k === 'f1') return claim(() => overlays.setPalette(true))
+    if (key.ctrl && k === 'p') return claim(() => overlays.setPicker('files'))
     if (key.ctrl && k === 'o') return claim(() => overlays.setPicker('files'))
     if (key.ctrl && chord(key) && k === 't') return claim(workspace.reopenTab)
     // Ctrl+E is line-end in every terminal; keep the tab family on the arrows.
@@ -71,7 +76,8 @@ export function installKeyboard(ctx: AppContext) {
     if (key.ctrl && k === 'f') return claim(() => overlays.setSearch({ scope: 'file' }))
     if (key.ctrl && k === 'w') {
       return claim(() => {
-        // The diff page is the frontmost "tab": close it before any file tab.
+        // A page is the frontmost "tab": close it before any file tab.
+        if (overlays.settingsPage()) return overlays.setSettingsPage(false)
         if (overlays.diff()) return overlays.setDiff(null)
         if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
       })
@@ -94,9 +100,10 @@ export function installKeyboard(ctx: AppContext) {
       // leaving now would mean EditorPane's vim handler is already unfocused when
       // it runs and never sees the key.
       const vimOwnsEscape = config.vim && editor.vimMode() !== 'normal'
-      // With the diff page up, Esc belongs to it (it closes the page) — moving
+      // With a page up, Esc belongs to it (it closes the page) — moving
       // focus to the tree here would take the key away before it ever arrives.
-      if (k === 'escape' && panes.sidebar() && !vimOwnsEscape && !overlays.diff()) {
+      const pageUp = overlays.diff() !== null || overlays.settingsPage()
+      if (k === 'escape' && panes.sidebar() && !vimOwnsEscape && !pageUp) {
         panes.focusTree()
       }
       return // everything else belongs to the textarea
@@ -113,8 +120,10 @@ export function installKeyboard(ctx: AppContext) {
     const vimNav: Record<string, string> = { h: 'left', j: 'down', k: 'up', l: 'right' }
     switch (config.vim ? (vimNav[k] ?? k) : k) {
       case 'tab':
-        // The diff page counts as an editor to hand focus to, file open or not.
-        if (workspace.activePath() || overlays.diff()) panes.setFocus('editor')
+        // A page counts as an editor to hand focus to, file open or not.
+        if (workspace.activePath() || overlays.diff() || overlays.settingsPage()) {
+          panes.setFocus('editor')
+        }
         break
       case 'up':
         if (key.shift) tree.extendSelection(-1)

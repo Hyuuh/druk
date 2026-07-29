@@ -894,7 +894,8 @@ export function EditorPane(props: EditorPaneProps) {
             <text fg={ui.dim} bg={ui.bg} content="druk" attributes={TextAttributes.BOLD} />
             <text fg={ui.faint} bg={ui.bg} content="" />
             <text fg={ui.faint} bg={ui.bg} content="Enter   open file from the tree" />
-            <text fg={ui.faint} bg={ui.bg} content="Ctrl+P  commands" />
+            <text fg={ui.faint} bg={ui.bg} content="Ctrl+P  open file (fuzzy)" />
+            <text fg={ui.faint} bg={ui.bg} content="F1      commands" />
             <text fg={ui.faint} bg={ui.bg} content="Ctrl+F  find" />
           </box>
         }
