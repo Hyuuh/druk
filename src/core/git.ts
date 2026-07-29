@@ -16,8 +16,14 @@ export type FileStatus = 'untracked' | 'added' | 'modified' | 'deleted'
  */
 const MAX_OUTPUT = 128 * 1024 * 1024
 
-function git(cwd: string, args: string[], timeout = 5000) {
-  return spawnSync('git', args, { cwd, encoding: 'utf8', timeout, maxBuffer: MAX_OUTPUT })
+function git(cwd: string, args: string[], timeout = 5000, input?: string) {
+  return spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    timeout,
+    maxBuffer: MAX_OUTPUT,
+    input,
+  })
 }
 
 /**
@@ -121,6 +127,36 @@ export function statusMap(cwd: string): Map<string, FileStatus> {
 }
 
 /**
+ * Which of `paths` gitignore would skip. Empty outside a repository.
+ *
+ * The companion to `ignoredPaths`, and not a duplicate of it: that one answers
+ * "what may the tree hide", which needs no key for anything inside a collapsed
+ * directory. This one answers "what does the tree draw dim", which is asked about
+ * rows that are on screen *because* nothing is hidden — including the children of
+ * an expanded `node_modules`, which `--directory` deliberately never enumerates.
+ * Asking per visible path bounds the work by the sidebar's height either way.
+ *
+ * Paths come back in the same spelling they went in: we feed absolute tree paths
+ * on stdin and get those absolutes out, so there is no `keyBase` remapping the
+ * way `statusMap` needs for porcelain's repo-relative names — and no `keyBase`
+ * call either, which would double the subprocesses this costs per refresh.
+ */
+export function ignoredAmong(cwd: string, paths: string[]): Set<string> {
+  const ignored = new Set<string>()
+  if (paths.length === 0) return ignored
+
+  // `-z` + `--stdin`: one NUL-terminated path each way. Exit 1 means none of the
+  // paths are ignored, and 128 means there is no repository here — both are an
+  // empty set rather than a failure, so only 0 has output worth reading.
+  const run = git(cwd, ['check-ignore', '--stdin', '-z'], 5000, `${paths.join('\0')}\0`)
+  if (run.status !== 0) return ignored
+  for (const path of run.stdout.split('\0')) {
+    if (path.length > 0) ignored.add(path)
+  }
+  return ignored
+}
+
+/**
  * The file's content at HEAD, or null when HEAD has no such file (untracked,
  * added, unborn branch, outside a repository). `cwd` anchors the lookup — the
  * `./` spelling makes the path cwd-relative, so a deleted file still resolves
@@ -188,7 +224,8 @@ export function stagedPaths(cwd: string): Set<string> {
  * enumerating everything inside it — the difference between one line for
  * `node_modules` and a hundred thousand. The tree matches these keys exactly:
  * it hides an ignored directory at its top and never descends, so the collapsed
- * entry is the only key it ever asks about.
+ * entry is the only key it ever asks about. Dimming cannot use these keys for
+ * exactly that reason — see `ignoredAmong`.
  */
 export function ignoredPaths(cwd: string): Set<string> {
   const ignored = new Set<string>()

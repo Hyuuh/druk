@@ -4,8 +4,18 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { currentBranch, diffLines, explain, failureLine, KNOWN, statusMap } from '../src/core/git'
-import { launch, press } from './helpers'
+import {
+  currentBranch,
+  diffLines,
+  explain,
+  failureLine,
+  ignoredAmong,
+  KNOWN,
+  statusMap,
+} from '../src/core/git'
+import { THEMES } from '../src/themes'
+import { launch, press, settle } from './helpers'
+import type { Harness } from './helpers'
 
 /** A real repository with one committed file. */
 function repo(committed: string) {
@@ -14,6 +24,8 @@ function repo(committed: string) {
   git('init', '-q', '-b', 'main')
   git('config', 'user.email', 'test@example.com')
   git('config', 'user.name', 'Test')
+  // Local gpgsign=true would fail every fixture commit — no test key is available.
+  git('config', 'commit.gpgsign', 'false')
   writeFileSync(join(dir, 'a.ts'), committed)
   git('add', '.')
   git('commit', '-q', '-m', 'init')
@@ -251,4 +263,113 @@ test('a failure split across both streams is still recognised', () => {
   const stdout = 'f.txt: needs merge\nThe stash entry is kept in case you need it again.'
   expect(explain(stderr, stdout)).toBe('Resolve the merge conflicts in your working tree first')
   expect(explain(stderr)).toBe('could not write index')
+})
+
+test('ignoredAmong reports only the gitignored paths asked about', () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n*.log\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+  writeFileSync(join(dir, 'noise.log'), 'log\n')
+  writeFileSync(join(dir, 'keep.ts'), 'ok\n')
+
+  const paths = [
+    join(dir, 'dist'),
+    join(dir, 'dist', 'out.js'),
+    join(dir, 'noise.log'),
+    join(dir, 'keep.ts'),
+    join(dir, 'a.ts'),
+  ]
+  const ignored = ignoredAmong(dir, paths)
+  expect(ignored.has(join(dir, 'dist'))).toBe(true)
+  expect(ignored.has(join(dir, 'dist', 'out.js'))).toBe(true)
+  expect(ignored.has(join(dir, 'noise.log'))).toBe(true)
+  expect(ignored.has(join(dir, 'keep.ts'))).toBe(false)
+  expect(ignored.has(join(dir, 'a.ts'))).toBe(false)
+})
+
+test('ignoredAmong is empty outside a repository', () => {
+  // `check-ignore` exits 128 here rather than reporting nothing, and that has to
+  // read as "nothing is ignored" — the tree still draws these rows.
+  const dir = mkdtempSync(join(tmpdir(), 'druk-'))
+  writeFileSync(join(dir, 'a.ts'), 'x\n')
+  expect(ignoredAmong(dir, [join(dir, 'a.ts')]).size).toBe(0)
+})
+
+test('a tracked file is never ignored, whatever .gitignore says about it', () => {
+  // `git add -f` on a matching path is common enough (a committed lockfile under
+  // a broad rule) that dimming it as ignored would be a plain lie.
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), '*.ts\n')
+  const ignored = ignoredAmong(dir, [join(dir, 'a.ts'), join(dir, '.gitignore')])
+  expect(ignored.has(join(dir, 'a.ts'))).toBe(false)
+})
+
+/**
+ * The colour the tree draws `name` in, as "r,g,b" — dimming is only a colour, so
+ * `captureCharFrame` cannot see it at all.
+ *
+ * Matched on the end of the span, not the whole of it: neighbouring runs that
+ * share a colour are captured as one span, and a dimmed folder is exactly the
+ * case where the arrow ahead of the name already uses `ui.dim`.
+ */
+function nameColor(t: Harness, name: string) {
+  const capture = t.captureSpans() as unknown as {
+    lines: { spans: { text: string; fg?: { buffer: Record<string, number> } }[] }[]
+  }
+  for (const line of capture.lines) {
+    for (const span of line.spans) {
+      if (!span.fg || !span.text.endsWith(name)) continue
+      return `${span.fg.buffer['0']},${span.fg.buffer['1']},${span.fg.buffer['2']}`
+    }
+  }
+  return null
+}
+
+const hexToRgb = (hex: string) => {
+  const h = hex.replace('#', '')
+  return [0, 2, 4].map(i => Number.parseInt(h.slice(i, i + 2), 16)).join(',')
+}
+
+test('a gitignored entry is dimmed, and a tracked one beside it is not', async () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+
+  const t = await launch(dir)
+  await settle(t)
+  const { ui } = THEMES.dark
+  expect(nameColor(t, 'dist')).toBe(hexToRgb(ui.dim))
+  // Not the folder colour it would have had, and not the faint of a cut row.
+  expect(nameColor(t, 'a.ts')).toBe(hexToRgb(ui.text))
+})
+
+test('a status mark outranks dimming, and ignoring never invents one', async () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+  writeFileSync(join(dir, 'a.ts'), 'changed\n')
+
+  const t = await launch(dir)
+  await settle(t)
+  const frame = t.captureCharFrame()
+  // Ignored is drawn, not hidden: hiding is `respectGitignore`, a separate setting.
+  expect(frame).toContain('dist')
+  expect(frame.split('\n').find(row => /\bdist\b/.test(row))!).not.toMatch(/[UMAD]/)
+  expect(frame.split('\n').find(row => row.includes('a.ts'))).toContain('M')
+  expect(nameColor(t, 'a.ts')).toBe(hexToRgb(THEMES.dark.ui.gitModified))
+})
+
+test('with respectGitignore on there is nothing left to dim', async () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+
+  const t = await launch(dir, { respectGitignore: true })
+  await settle(t)
+  expect(t.captureCharFrame()).not.toContain('dist')
+  expect(nameColor(t, 'a.ts')).toBe(hexToRgb(THEMES.dark.ui.text))
 })
