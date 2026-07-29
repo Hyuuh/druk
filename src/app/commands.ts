@@ -52,6 +52,7 @@ export interface CommandActions {
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   openSettings: () => void
   gitDiffFile: () => void
+  gitCompareBranches: () => void
   /** Not a command: the panel's cursor is what opens a diff, and this is it. */
   showDiff: (path: string) => void
   /** Not a command: `App` runs it when git or a buffer moves under an open diff. */
@@ -127,6 +128,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         // The only way in: it opens the source-control panel on this file, which
         // is where the cursor pages through every other change.
         { id: 'git.diffFile', label: 'Diff current file', run: actions.gitDiffFile },
+        {
+          id: 'git.compare',
+          label: 'Compare branches',
+          hint: 'B in source control',
+          run: actions.gitCompareBranches,
+        },
         { id: 'git.commit', label: 'Commit…', run: actions.gitCommit },
         { id: 'git.undo', label: 'Undo last commit', run: actions.gitUndoCommit },
         { id: 'git.push', label: 'Push', run: actions.gitPush },

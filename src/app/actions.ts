@@ -24,7 +24,19 @@ import type { AppContext } from './context'
 
 /** Wire the palette's command tree to the controllers that carry the actions out. */
 export function createCommands(ctx: AppContext) {
-  const { rootDir, status, settings, tree, panes, editor, git, gitOp, workspace, fileOps } = ctx
+  const {
+    rootDir,
+    status,
+    settings,
+    tree,
+    panes,
+    editor,
+    git,
+    gitOp,
+    comparison,
+    workspace,
+    fileOps,
+  } = ctx
   const { say } = status
   const { config } = settings
 
@@ -121,6 +133,11 @@ export function createCommands(ctx: AppContext) {
       panes.setFocus('editor')
     },
     showDiff,
+    gitCompareBranches: () => {
+      ctx.overlays.setDiff(null)
+      panes.showView('git')
+      comparison.open()
+    },
     /**
      * "Diff current file" — the palette's way into the panel: it opens the
      * source-control view with the cursor on the file being edited, so the

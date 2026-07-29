@@ -146,14 +146,14 @@ export const KEYS: KeyInfo[] = [
   // and the table only just fits a 60-row terminal — `test/help-scroll.test.tsx`
   // measures exactly that.
   {
-    key: '↑↓ · Enter',
-    label: 'Diff the change under the cursor',
+    key: '↑↓ Enter c p',
+    label: 'Move/open · commit/push',
     section: 'Source control',
     where: 'git',
   },
   {
-    key: 'c · p · b · Esc',
-    label: 'Commit / push / branch / back',
+    key: 'B b / g d Esc',
+    label: 'Compare/branch · review/back',
     section: 'Source control',
     where: 'git',
   },

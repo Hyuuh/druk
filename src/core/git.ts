@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 
 export type LineChange = 'added' | 'modified' | 'deleted'
 export type FileStatus = 'untracked' | 'added' | 'modified' | 'deleted'
@@ -23,6 +24,74 @@ function git(cwd: string, args: string[], timeout = 5000, input?: string) {
     timeout,
     maxBuffer: MAX_OUTPUT,
     input,
+  })
+}
+
+interface AsyncGit {
+  status: number | null
+  stdout: string
+  stderr: string
+  timedOut: boolean
+  overflow: boolean
+}
+
+interface AsyncGitOptions {
+  timeout?: number
+  collectStdout?: boolean
+  onStdout?: (chunk: Buffer) => void
+}
+
+function gitAsync(cwd: string, args: string[], options: AsyncGitOptions = {}): Promise<AsyncGit> {
+  return new Promise(resolve => {
+    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    const stdout: Buffer[] = []
+    const stderr: Buffer[] = []
+    let outputSize = 0
+    let timedOut = false
+    let overflow = false
+    let finished = false
+    let timer: ReturnType<typeof setTimeout>
+
+    const finish = (status: number | null) => {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      resolve({
+        status,
+        stdout: Buffer.concat(stdout).toString('utf8'),
+        stderr: Buffer.concat(stderr).toString('utf8'),
+        timedOut,
+        overflow,
+      })
+    }
+    const collect = (target: Buffer[], chunk: Buffer) => {
+      outputSize += chunk.length
+      if (outputSize > MAX_OUTPUT) {
+        overflow = true
+        child.kill()
+        return
+      }
+      target.push(chunk)
+    }
+    timer = setTimeout(() => {
+      timedOut = true
+      child.kill()
+    }, options.timeout ?? 10_000)
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      options.onStdout?.(chunk)
+      if (options.collectStdout !== false) collect(stdout, chunk)
+      else {
+        outputSize += chunk.length
+        if (outputSize > MAX_OUTPUT) {
+          overflow = true
+          child.kill()
+        }
+      }
+    })
+    child.stderr.on('data', (chunk: Buffer) => collect(stderr, chunk))
+    child.on('error', () => finish(null))
+    child.on('close', finish)
   })
 }
 
@@ -77,6 +146,106 @@ export interface Branch {
   upstream: string | null
 }
 
+export type ComparisonFileStatus =
+  | 'added'
+  | 'modified'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'typeChanged'
+
+export interface ComparisonRef {
+  name: string
+  oid: string
+}
+
+export interface ComparisonFile {
+  path: string
+  oldPath: string | null
+  status: ComparisonFileStatus
+  similarity: number | null
+  binary: boolean
+  additions: number | null
+  deletions: number | null
+  oldOid: string | null
+  newOid: string | null
+}
+
+export interface ComparisonCommit {
+  oid: string
+  shortOid: string
+  subject: string
+  authorName: string
+  authorEmail: string
+  authoredAt: string
+  parents: string[]
+}
+
+export interface ComparisonStats {
+  files: number
+  additions: number
+  deletions: number
+  binaryFiles: number
+}
+
+export interface BranchComparison {
+  base: ComparisonRef
+  compare: ComparisonRef
+  mergeBase: string
+  ahead: number
+  behind: number
+  files: ComparisonFile[]
+  commits: ComparisonCommit[]
+  stats: ComparisonStats
+}
+
+export type ComparisonFailure =
+  | 'notRepository'
+  | 'detachedHead'
+  | 'unbornBranch'
+  | 'noDefaultBranch'
+  | 'invalidBase'
+  | 'invalidCompare'
+  | 'noMergeBase'
+  | 'gitError'
+  | 'timeout'
+
+export type ComparisonResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; reason: ComparisonFailure; detail: string }
+
+export interface ComparisonIdentity {
+  base: ComparisonRef
+  compare: ComparisonRef
+  mergeBase: string
+  ahead: number
+  behind: number
+}
+
+export interface ComparisonFileDraft extends Omit<
+  ComparisonFile,
+  'binary' | 'additions' | 'deletions'
+> {
+  binary: boolean | undefined
+  additions: number | null | undefined
+  deletions: number | null | undefined
+}
+
+export interface ComparisonProgress {
+  changes: ComparisonFileDraft[]
+  stats: ComparisonStats
+}
+
+export type ComparisonContent =
+  | { binary: true }
+  | { binary: false; oldText: string; newText: string }
+
+export interface ComparisonCommitDetail {
+  commit: ComparisonCommit
+  files: ComparisonFile[]
+  stats: ComparisonStats
+}
+
 /**
  * The local name a remote-tracking branch checks out as: `origin/feat` → `feat`.
  * Both the checkout and the message that reports it derive it the same way, so a
@@ -118,6 +287,481 @@ export function listBranches(cwd: string): Branch[] {
     })
   }
   return branches
+}
+
+/**
+ * The configured branch a comparison starts from. Remote HEAD is repository
+ * evidence; `init.defaultBranch` is useful only when that branch actually
+ * exists. Guessing main/master would make the same repository compare
+ * differently across machines.
+ */
+export function defaultBranch(cwd: string): string | null {
+  const remotes = git(cwd, ['remote']).stdout?.trim().split('\n').filter(Boolean) ?? []
+  for (const remote of remotes.toSorted((a, b) => {
+    if (a === 'origin') return -1
+    if (b === 'origin') return 1
+    return a.localeCompare(b)
+  })) {
+    const head = git(cwd, ['symbolic-ref', '--quiet', '--short', `refs/remotes/${remote}/HEAD`])
+    if (head.status === 0 && head.stdout.trim()) return head.stdout.trim()
+  }
+
+  const configured = git(cwd, ['config', '--get', 'init.defaultBranch'])
+  const name = configured.status === 0 ? configured.stdout.trim() : ''
+  if (!name) return null
+  return git(cwd, ['show-ref', '--verify', '--quiet', `refs/heads/${name}`]).status === 0
+    ? name
+    : null
+}
+
+function comparisonFailure(reason: ComparisonFailure, detail: string): ComparisonResult<never> {
+  return { ok: false, reason, detail }
+}
+
+function asyncFailure(run: AsyncGit, fallback: string): ComparisonResult<never> {
+  if (run.timedOut) return comparisonFailure('timeout', `${fallback} timed out`)
+  if (run.overflow) return comparisonFailure('gitError', `${fallback} produced too much output`)
+  return comparisonFailure('gitError', run.stderr.trim() || fallback)
+}
+
+/**
+ * Resolve the two branch tips and their history relationship before any file
+ * metadata is loaded. Explicit OIDs make every later query a stable snapshot
+ * even if a ref moves while it is running.
+ */
+export async function resolveComparison(
+  cwd: string,
+  baseName: string,
+  compareName?: string,
+): Promise<ComparisonResult<ComparisonIdentity>> {
+  if (!inRepository(cwd)) return comparisonFailure('notRepository', 'Not a git repository')
+
+  let compare = compareName
+  if (!compare) {
+    const symbolic = git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'], 3000)
+    if (symbolic.status !== 0) {
+      return comparisonFailure('detachedHead', 'Branch comparison needs a checked-out branch')
+    }
+    compare = symbolic.stdout.trim()
+  }
+
+  const [baseRun, compareRun] = await Promise.all([
+    gitAsync(cwd, ['rev-parse', '--verify', `${baseName}^{commit}`]),
+    gitAsync(cwd, ['rev-parse', '--verify', `${compare}^{commit}`]),
+  ])
+  if (compareRun.status !== 0) {
+    if (compareRun.timedOut || compareRun.overflow || compareRun.status === null) {
+      return asyncFailure(compareRun, `Could not resolve ${compare}`)
+    }
+    return comparisonFailure(
+      compareName ? 'invalidCompare' : 'unbornBranch',
+      compareName
+        ? `Compare branch "${compare}" does not exist`
+        : `Branch "${compare}" has no commits yet`,
+    )
+  }
+  if (baseRun.status !== 0) {
+    if (baseRun.timedOut || baseRun.overflow || baseRun.status === null) {
+      return asyncFailure(baseRun, `Could not resolve ${baseName}`)
+    }
+    return comparisonFailure('invalidBase', `Base branch "${baseName}" does not exist`)
+  }
+
+  const baseOid = baseRun.stdout.trim()
+  const compareOid = compareRun.stdout.trim()
+  const mergeBase = await gitAsync(cwd, ['merge-base', baseOid, compareOid])
+  if (mergeBase.status !== 0) {
+    if (mergeBase.timedOut || mergeBase.overflow || mergeBase.status === null) {
+      return asyncFailure(mergeBase, 'Could not find the merge base')
+    }
+    return comparisonFailure('noMergeBase', 'The branches have no common ancestor')
+  }
+
+  const counts = await gitAsync(cwd, [
+    'rev-list',
+    '--left-right',
+    '--count',
+    `${baseOid}...${compareOid}`,
+  ])
+  if (counts.status !== 0) return asyncFailure(counts, 'Could not count branch commits')
+  const [behind = 0, ahead = 0] = counts.stdout.trim().split(/\s+/).map(Number)
+
+  return {
+    ok: true,
+    value: {
+      base: { name: baseName, oid: baseOid },
+      compare: { name: compare, oid: compareOid },
+      mergeBase: mergeBase.stdout.trim(),
+      ahead,
+      behind,
+    },
+  }
+}
+
+const COMPARISON_STATUS: Record<string, ComparisonFileStatus | undefined> = {
+  A: 'added',
+  M: 'modified',
+  D: 'deleted',
+  R: 'renamed',
+  C: 'copied',
+  T: 'typeChanged',
+}
+
+function comparisonKey(oldPath: string | null, path: string): string {
+  return `${oldPath ?? ''}\0${path}`
+}
+
+function nulStream(onToken: (token: string) => void) {
+  const decoder = new StringDecoder('utf8')
+  let tail = ''
+  const consume = (text: string) => {
+    const tokens = `${tail}${text}`.split('\0')
+    tail = tokens.pop() ?? ''
+    for (const token of tokens) onToken(token)
+  }
+  return {
+    write: (chunk: Buffer) => consume(decoder.write(chunk)),
+    end: () => {
+      consume(decoder.end())
+      if (tail.length > 0) onToken(tail)
+      tail = ''
+    },
+  }
+}
+
+function parseCount(value: string): number | null {
+  return value === '-' ? null : Number(value)
+}
+
+function comparisonCommit(fields: string[], at = 0): ComparisonCommit {
+  return {
+    oid: fields[at]!,
+    shortOid: fields[at + 1]!,
+    subject: fields[at + 2]!,
+    authorName: fields[at + 3]!,
+    authorEmail: fields[at + 4]!,
+    authoredAt: fields[at + 5]!,
+    parents: fields[at + 6]!.split(' ').filter(Boolean),
+  }
+}
+
+/**
+ * Load all cheap comparison metadata while progressively publishing file rows.
+ * The two resolved OIDs make this a stable snapshot; file contents stay lazy.
+ */
+export async function loadResolvedComparison(
+  cwd: string,
+  identity: ComparisonIdentity,
+  onProgress?: (progress: ComparisonProgress) => void,
+): Promise<ComparisonResult<BranchComparison>> {
+  const files = new Map<string, ComparisonFileDraft>()
+  const numstats = new Map<
+    string,
+    { binary: boolean; additions: number | null; deletions: number | null }
+  >()
+  const statsApplied = new Set<string>()
+  const stats: ComparisonStats = { files: 0, additions: 0, deletions: 0, binaryFiles: 0 }
+  let pending: ComparisonFileDraft[] = []
+
+  const emit = (force = false) => {
+    if (!onProgress || pending.length === 0 || (!force && pending.length < 256)) return
+    const changes = pending
+    pending = []
+    onProgress({ changes, stats: { ...stats } })
+  }
+  const publish = (file: ComparisonFileDraft) => {
+    pending.push(file)
+    emit()
+  }
+  const applyNumstat = (
+    key: string,
+    file: ComparisonFileDraft,
+    numstat: { binary: boolean; additions: number | null; deletions: number | null },
+  ) => {
+    const complete: ComparisonFileDraft = { ...file, ...numstat }
+    files.set(key, complete)
+    if (!statsApplied.has(key)) {
+      statsApplied.add(key)
+      if (numstat.binary) stats.binaryFiles++
+      else {
+        stats.additions += numstat.additions ?? 0
+        stats.deletions += numstat.deletions ?? 0
+      }
+    }
+    publish(complete)
+  }
+
+  const rawTokens: string[] = []
+  const drainRaw = () => {
+    while (rawTokens.length > 0) {
+      const header = rawTokens[0]
+      if (!header?.startsWith(':')) return
+      const fields = header.slice(1).split(' ')
+      const statusSpec = fields[4] ?? ''
+      const code = statusSpec[0] ?? ''
+      const status = COMPARISON_STATUS[code]
+      if (!status) {
+        rawTokens.shift()
+        continue
+      }
+      const pathCount = code === 'R' || code === 'C' ? 2 : 1
+      if (rawTokens.length < pathCount + 1) return
+      rawTokens.shift()
+      const paths = rawTokens.splice(0, pathCount)
+      const oldPath = pathCount === 2 ? paths[0]! : null
+      const path = paths.at(-1)!
+      const key = comparisonKey(oldPath, path)
+      const draft: ComparisonFileDraft = {
+        path,
+        oldPath,
+        status,
+        similarity: statusSpec.length > 1 ? Number(statusSpec.slice(1)) : null,
+        binary: undefined,
+        additions: undefined,
+        deletions: undefined,
+        oldOid: /^0+$/.test(fields[2] ?? '') ? null : (fields[2] ?? null),
+        newOid: /^0+$/.test(fields[3] ?? '') ? null : (fields[3] ?? null),
+      }
+      files.set(key, draft)
+      stats.files++
+      publish(draft)
+      const known = numstats.get(key)
+      if (known) applyNumstat(key, draft, known)
+    }
+  }
+
+  const numstatTokens: string[] = []
+  const drainNumstats = () => {
+    while (numstatTokens.length > 0) {
+      const record = numstatTokens[0]!
+      const firstTab = record.indexOf('\t')
+      const secondTab = firstTab < 0 ? -1 : record.indexOf('\t', firstTab + 1)
+      if (firstTab < 0 || secondTab < 0) {
+        numstatTokens.shift()
+        continue
+      }
+      const inlinePath = record.slice(secondTab + 1)
+      const renamed = inlinePath.length === 0
+      if (renamed && numstatTokens.length < 3) return
+      numstatTokens.shift()
+      const oldPath = renamed ? numstatTokens.shift()! : null
+      const path = renamed ? numstatTokens.shift()! : inlinePath
+      const additions = parseCount(record.slice(0, firstTab))
+      const deletions = parseCount(record.slice(firstTab + 1, secondTab))
+      const value = {
+        binary: additions === null || deletions === null,
+        additions,
+        deletions,
+      }
+      const key = comparisonKey(oldPath, path)
+      numstats.set(key, value)
+      const draft = files.get(key)
+      if (draft) applyNumstat(key, draft, value)
+    }
+  }
+
+  const rawStream = nulStream(token => {
+    rawTokens.push(token)
+    drainRaw()
+  })
+  const numstatStream = nulStream(token => {
+    numstatTokens.push(token)
+    drainNumstats()
+  })
+  const range = `${identity.mergeBase}..${identity.compare.oid}`
+  const [rawRun, numstatRun, logRun] = await Promise.all([
+    gitAsync(
+      cwd,
+      ['diff', '--raw', '-z', '--abbrev=64', '--find-renames', '--find-copies', range],
+      { collectStdout: false, onStdout: rawStream.write },
+    ),
+    gitAsync(cwd, ['diff', '--numstat', '-z', '--find-renames', '--find-copies', range], {
+      collectStdout: false,
+      onStdout: numstatStream.write,
+    }),
+    gitAsync(cwd, [
+      'log',
+      '-z',
+      '--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P',
+      `${identity.base.oid}..${identity.compare.oid}`,
+    ]),
+  ])
+  rawStream.end()
+  numstatStream.end()
+  drainRaw()
+  drainNumstats()
+  emit(true)
+
+  if (rawRun.status !== 0) return asyncFailure(rawRun, 'Could not read changed files')
+  if (numstatRun.status !== 0) return asyncFailure(numstatRun, 'Could not read line totals')
+  if (logRun.status !== 0) return asyncFailure(logRun, 'Could not read comparison commits')
+  if (rawTokens.length > 0 || numstatTokens.length > 0) {
+    return comparisonFailure('gitError', 'Git returned incomplete comparison metadata')
+  }
+  if (
+    files.size !== numstats.size ||
+    [...files.values()].some(
+      file =>
+        file.binary === undefined || file.additions === undefined || file.deletions === undefined,
+    )
+  ) {
+    return comparisonFailure('gitError', 'Git returned inconsistent comparison metadata')
+  }
+
+  const commitFields = logRun.stdout.split('\0')
+  if (commitFields.at(-1) === '') commitFields.pop()
+  if (commitFields.length % 7 !== 0) {
+    return comparisonFailure('gitError', 'Git returned incomplete commit metadata')
+  }
+  const commits: ComparisonCommit[] = []
+  for (let at = 0; at < commitFields.length; at += 7) {
+    commits.push(comparisonCommit(commitFields, at))
+  }
+
+  return {
+    ok: true,
+    value: {
+      ...identity,
+      files: [...files.values()]
+        .map(file => ({
+          ...file,
+          binary: file.binary!,
+          additions: file.additions!,
+          deletions: file.deletions!,
+        }))
+        .toSorted((a, b) => a.path.localeCompare(b.path)),
+      commits,
+      stats,
+    },
+  }
+}
+
+export async function loadBranchComparison(
+  cwd: string,
+  baseName: string,
+  compareName?: string,
+  onProgress?: (progress: ComparisonProgress) => void,
+): Promise<ComparisonResult<BranchComparison>> {
+  const identity = await resolveComparison(cwd, baseName, compareName)
+  return identity.ok ? loadResolvedComparison(cwd, identity.value, onProgress) : identity
+}
+
+/** The two textual sides of one comparison row, fetched only when it is opened. */
+export async function comparisonFileContent(
+  cwd: string,
+  file: ComparisonFile,
+): Promise<ComparisonResult<ComparisonContent>> {
+  if (file.binary) return { ok: true, value: { binary: true } }
+
+  const read = (oid: string | null) =>
+    oid ? gitAsync(cwd, ['cat-file', 'blob', oid]) : Promise.resolve<AsyncGit | null>(null)
+  const [oldRun, newRun] = await Promise.all([read(file.oldOid), read(file.newOid)])
+  if (oldRun && oldRun.status !== 0) return asyncFailure(oldRun, `Could not read ${file.oldPath}`)
+  if (newRun && newRun.status !== 0) return asyncFailure(newRun, `Could not read ${file.path}`)
+  return {
+    ok: true,
+    value: {
+      binary: false,
+      oldText: oldRun?.stdout ?? '',
+      newText: newRun?.stdout ?? '',
+    },
+  }
+}
+
+async function rootCommitFiles(
+  cwd: string,
+  oid: string,
+): Promise<ComparisonResult<{ files: ComparisonFile[]; stats: ComparisonStats }>> {
+  const [treeRun, numstatRun] = await Promise.all([
+    gitAsync(cwd, ['ls-tree', '-r', '-z', '--full-tree', oid]),
+    gitAsync(cwd, ['diff-tree', '--root', '--no-commit-id', '--numstat', '-z', '-r', oid]),
+  ])
+  if (treeRun.status !== 0) return asyncFailure(treeRun, 'Could not read the root commit tree')
+  if (numstatRun.status !== 0) {
+    return asyncFailure(numstatRun, 'Could not read the root commit line totals')
+  }
+
+  const oids = new Map<string, string>()
+  for (const record of treeRun.stdout.split('\0')) {
+    if (!record) continue
+    const tab = record.indexOf('\t')
+    const header = tab < 0 ? [] : record.slice(0, tab).split(' ')
+    if (header.length >= 3) oids.set(record.slice(tab + 1), header[2]!)
+  }
+
+  const files: ComparisonFile[] = []
+  const stats: ComparisonStats = { files: 0, additions: 0, deletions: 0, binaryFiles: 0 }
+  for (const record of numstatRun.stdout.split('\0')) {
+    if (!record) continue
+    const firstTab = record.indexOf('\t')
+    const secondTab = firstTab < 0 ? -1 : record.indexOf('\t', firstTab + 1)
+    if (firstTab < 0 || secondTab < 0) {
+      return comparisonFailure('gitError', 'Git returned incomplete root commit metadata')
+    }
+    const path = record.slice(secondTab + 1)
+    const additions = parseCount(record.slice(0, firstTab))
+    const deletions = parseCount(record.slice(firstTab + 1, secondTab))
+    const binary = additions === null || deletions === null
+    files.push({
+      path,
+      oldPath: null,
+      status: 'added',
+      similarity: null,
+      binary,
+      additions,
+      deletions,
+      oldOid: null,
+      newOid: oids.get(path) ?? null,
+    })
+    stats.files++
+    if (binary) stats.binaryFiles++
+    else {
+      stats.additions += additions ?? 0
+      stats.deletions += deletions ?? 0
+    }
+  }
+  return {
+    ok: true,
+    value: { files: files.toSorted((a, b) => a.path.localeCompare(b.path)), stats },
+  }
+}
+
+/**
+ * Metadata and first-parent file changes for one commit. Reusing the branch
+ * loader for ordinary commits keeps rename/binary/path parsing in one place;
+ * only a root commit needs its empty-tree special case.
+ */
+export async function comparisonCommitDetail(
+  cwd: string,
+  oid: string,
+): Promise<ComparisonResult<ComparisonCommitDetail>> {
+  const metadata = await gitAsync(cwd, [
+    'log',
+    '-1',
+    '-z',
+    '--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P',
+    oid,
+  ])
+  if (metadata.status !== 0) return asyncFailure(metadata, 'Could not read commit metadata')
+  const fields = metadata.stdout.split('\0')
+  if (fields.at(-1) === '') fields.pop()
+  if (fields.length !== 7) {
+    return comparisonFailure('invalidCompare', `Commit "${oid}" does not exist`)
+  }
+  const commit = comparisonCommit(fields)
+  const parent = commit.parents[0]
+  if (!parent) {
+    const root = await rootCommitFiles(cwd, commit.oid)
+    return root.ok ? { ok: true, value: { commit, ...root.value } } : root
+  }
+
+  const comparison = await loadBranchComparison(cwd, parent, commit.oid)
+  return comparison.ok
+    ? {
+        ok: true,
+        value: { commit, files: comparison.value.files, stats: comparison.value.stats },
+      }
+    : comparison
 }
 
 const STATUS_BY_CODE: Record<string, FileStatus> = {

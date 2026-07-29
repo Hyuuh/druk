@@ -11,7 +11,8 @@ const chord = (key: KeyEvent) => key.shift || key.option || key.meta
 
 /** The global keymap: everything that fires before the focused pane sees the key. */
 export function installKeyboard(ctx: AppContext, actions: CommandActions) {
-  const { settings, tree, panes, editor, workspace, fileOps, prompts, overlays, git } = ctx
+  const { settings, tree, panes, editor, workspace, fileOps, prompts, overlays, git, comparison } =
+    ctx
   const { config } = settings
 
   useKeyboard((key: KeyEvent) => {
@@ -83,6 +84,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         // A page is the frontmost "tab": close it before any file tab.
         if (overlays.settingsPage()) return overlays.setSettingsPage(false)
         if (overlays.diff()) return overlays.setDiff(null)
+        if (comparison.selectedFile()) return comparison.closeDetail()
         if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
       })
     }
@@ -106,7 +108,8 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       const vimOwnsEscape = config.vim && editor.vimMode() !== 'normal'
       // With a page up, Esc belongs to it (it closes the page) — moving
       // focus to the tree here would take the key away before it ever arrives.
-      const pageUp = overlays.diff() !== null || overlays.settingsPage()
+      const pageUp =
+        overlays.diff() !== null || overlays.settingsPage() || comparison.selectedFile() !== null
       if (k === 'escape' && panes.sidebar() && !vimOwnsEscape && !pageUp) {
         panes.focusTree()
       }
@@ -125,6 +128,25 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     // The source-control panel borrows the tree's focus slot, so its keys replace
     // the tree's while it shows — or `d` would still offer to delete files.
     if (panes.view() === 'git') {
+      if (comparison.active()) {
+        if (key.shift && k === 'b') comparison.openBasePicker()
+        else if (k === 'b') actions.gitSwitchBranch()
+        else if (k === 'c') comparison.toggleMode()
+        else if (k === '/' || k === 'slash') comparison.openFilter()
+        else if (k === 'g') comparison.showCommits()
+        else if (k === 'up' || (config.vim && k === 'k')) comparison.move(-1)
+        else if (k === 'down' || (config.vim && k === 'j')) comparison.move(1)
+        else if (k === 'return' || k === 'enter') comparison.openSelection()
+        else if (k === 'tab') {
+          if (comparison.selectedFile()) panes.setFocus('editor')
+        } else if (k === 'escape') {
+          if (comparison.selectedFile() || comparison.selectedCommit()) comparison.closeDetail()
+          else comparison.close()
+        } else if (k === '[') settings.nudgeSidebar(-2)
+        else if (k === ']') settings.nudgeSidebar(2)
+        return
+      }
+
       const files = git.changes()
       const clamp = (row: number) => Math.max(0, Math.min(row, files.length - 1))
       /** The cursor is the diff's pager: the page follows it, so moving here is
@@ -133,6 +155,10 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         panes.setGitCursor(row)
         const file = files[row]
         if (file) actions.showDiff(file.path)
+      }
+      if (key.shift && k === 'b') {
+        actions.gitCompareBranches()
+        return
       }
       switch (config.vim ? (vimNav[k] ?? k) : k) {
         case 'tab':

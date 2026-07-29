@@ -160,6 +160,13 @@ export async function openDiff(t: Harness, row = 0) {
   await press(t, input => input.pressEnter())
 }
 
+/** Enter branch comparison from the source-control panel. */
+export async function openComparison(t: Harness) {
+  await runCommand(t, 'Source control')
+  await press(t, input => input.pressKey('b', { shift: true }))
+  await untilFrame(t, 'compare')
+}
+
 /** Open the settings page, step the `label` row's value once, close the page. */
 export async function toggleSetting(t: Harness, label: string) {
   await runCommand(t, 'Settings')

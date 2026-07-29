@@ -17,10 +17,11 @@ git marks in tree/gutter/status bar plus a source-control panel in the sidebar a
 palette commands for commit/undo/stash/push/fetch/pull and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
 side-by-side) for whichever change the panel's cursor is on — the arrows page
-through them and the panel is the only way in, an image viewer (PNG/JPEG as half-block
-cells), a settings page (palette → Settings) that edits and persists every option
-live, with a filterable value list per option, file watching with conflict prompts,
-per-project session restore, and a startup update check.
+through them and the panel is the only way in, branch comparison against the configured
+default or any selected base with progressive file metadata, commits and lazy diffs, an
+image viewer (PNG/JPEG as half-block cells), a settings page (palette → Settings) that
+edits and persists every option live, with a filterable value list per option, file
+watching with conflict prompts, per-project session restore, and a startup update check.
 
 ## Runtime and tooling
 
@@ -134,6 +135,7 @@ dependency rule, and recipes for the extension points:
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | handler in `src/app/keyboard.ts` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Alt+/ peek and the welcome screen) |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
+| branch-comparison behavior | Git queries and models in `src/core/git.ts`, state/caches in `src/app/comparison.ts`, and rows/details in `ComparePanel`, `CommitView`, `ComparisonBinaryView`, and `DiffView` |
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 

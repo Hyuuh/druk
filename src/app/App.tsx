@@ -3,15 +3,20 @@ import { basename } from 'node:path'
 import type { MouseEvent } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
+import type { Accessor } from 'solid-js'
 
 import { CONFIG_FILE } from '../core/config'
 import type { Config } from '../core/config'
 import { watchTree } from '../core/fs'
+import type { ComparisonCommitDetail, ComparisonContent } from '../core/git'
 import { isImagePath } from '../core/image'
 import { checkForUpdate, currentVersion } from '../core/update'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
 import { ui } from '../themes'
+import { CommitView } from '../ui/CommitView'
+import { ComparePanel } from '../ui/ComparePanel'
+import { ComparisonBinaryView } from '../ui/ComparisonBinaryView'
 import { DiffView } from '../ui/DiffView'
 import type { DiffFile } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
@@ -24,6 +29,7 @@ import { StatusBar } from '../ui/StatusBar'
 import { Tabs } from '../ui/Tabs'
 import { createCommands } from './actions'
 import { createBranches } from './branches'
+import { createComparison } from './comparison'
 import type { AppContext } from './context'
 import { createEditorBridge } from './editor'
 import { createFileOps } from './fileOps'
@@ -75,6 +81,7 @@ export function App(props: {
   )
   const panes = createPanes(tree, restored.sidebar)
   const git = createGit(rootDir)
+  const comparison = createComparison({ rootDir, git, status })
   const promptState = createPromptState()
   const workspace = createWorkspace({
     rootDir,
@@ -110,6 +117,7 @@ export function App(props: {
     workspace,
     git,
     branches,
+    comparison,
     panes,
     editor,
   })
@@ -124,6 +132,7 @@ export function App(props: {
     git,
     gitOp,
     branches,
+    comparison,
     workspace,
     fileOps,
     prompts: { ...promptState, ...promptHandlers },
@@ -138,7 +147,15 @@ export function App(props: {
   // `reloadKey` covers a buffer replaced from disk. `refreshDiff` returns at once
   // when no diff is open, so the subprocess it needs is only ever spawned for a
   // page that is actually on screen.
-  createEffect(on(() => [git.revision(), editor.reloadKey()] as const, actions.refreshDiff))
+  createEffect(
+    on(
+      () => [git.revision(), editor.reloadKey()] as const,
+      () => {
+        actions.refreshDiff()
+        comparison.refresh()
+      },
+    ),
+  )
 
   const { config } = settings
   const { say } = status
@@ -150,6 +167,11 @@ export function App(props: {
   const activeImage = () => {
     const path = workspace.activePath()
     return path && isImagePath(path) ? path : null
+  }
+
+  const closeComparisonDetail = () => {
+    comparison.closeDetail()
+    panes.focusTree()
   }
 
   onMount(() => {
@@ -291,22 +313,52 @@ export function App(props: {
                 />
               }
             >
-              <GitPanel
-                branch={git.branch()}
-                ahead={git.upstream()?.ahead ?? 0}
-                behind={git.upstream()?.behind ?? 0}
-                changes={git.changes()}
-                cursor={panes.gitCursor()}
-                focused={panes.focus() === 'tree'}
-                width={settings.treeWidth()}
-                inRepo={git.inRepo()}
-                onFocus={() => panes.setFocus('tree')}
-                onActivate={index => {
-                  panes.setGitCursor(index)
-                  const file = git.changes()[index]
-                  if (file) actions.showDiff(file.path)
-                }}
-              />
+              <Show
+                when={comparison.active()}
+                fallback={
+                  <GitPanel
+                    branch={git.branch()}
+                    ahead={git.upstream()?.ahead ?? 0}
+                    behind={git.upstream()?.behind ?? 0}
+                    changes={git.changes()}
+                    cursor={panes.gitCursor()}
+                    focused={panes.focus() === 'tree'}
+                    width={settings.treeWidth()}
+                    inRepo={git.inRepo()}
+                    onFocus={() => panes.setFocus('tree')}
+                    onActivate={index => {
+                      panes.setGitCursor(index)
+                      const file = git.changes()[index]
+                      if (file) actions.showDiff(file.path)
+                    }}
+                  />
+                }
+              >
+                <ComparePanel
+                  state={comparison.state()}
+                  comparison={comparison.result()}
+                  files={comparison.filteredFiles()}
+                  commits={comparison.filteredCommits()}
+                  mode={comparison.mode()}
+                  cursor={
+                    comparison.mode() === 'files'
+                      ? comparison.fileCursor()
+                      : comparison.commitCursor()
+                  }
+                  focused={panes.focus() === 'tree'}
+                  width={settings.treeWidth()}
+                  error={comparison.error()}
+                  onFocus={() => panes.setFocus('tree')}
+                  onActivate={index => {
+                    if (comparison.mode() === 'files') {
+                      comparison.move(index - comparison.fileCursor())
+                    } else {
+                      comparison.move(index - comparison.commitCursor())
+                    }
+                    comparison.openSelection()
+                  }}
+                />
+              </Show>
             </Show>
           </box>
           {/* Drag handle: the whole column is the grab target, but only a short
@@ -351,6 +403,7 @@ export function App(props: {
               panes.focus() === 'editor' &&
               !overlays.diff() &&
               !overlays.settingsPage() &&
+              !comparison.selectedFile() &&
               !activeImage()
             }
             theme={config.theme}
@@ -369,6 +422,7 @@ export function App(props: {
               overlays.overlay() ||
               overlays.diff() !== null ||
               overlays.settingsPage() ||
+              comparison.selectedFile() !== null ||
               activeImage() !== null
             }
             onChange={workspace.onEditorChange}
@@ -415,6 +469,70 @@ export function App(props: {
                   onToggleMode={settings.toggleDiffView}
                   onClose={() => overlays.setDiff(null)}
                 />
+              </box>
+            )}
+          </Show>
+          <Show when={comparison.selectedFile()}>
+            {(file: () => NonNullable<ReturnType<typeof comparison.selectedFile>>) => (
+              <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={55}>
+                <Show
+                  when={comparison.selectedCommit()}
+                  fallback={
+                    <Show
+                      when={comparison.selectedContent()}
+                      fallback={<text fg={ui.dim} bg={ui.bg} content="  loading diff…" />}
+                    >
+                      {(content: Accessor<ComparisonContent>) => {
+                        const value = content()
+                        return value.binary ? (
+                          <ComparisonBinaryView
+                            file={file()}
+                            focused={panes.focus() === 'editor'}
+                            blocked={overlays.overlay()}
+                            onFocus={() => panes.setFocus('editor')}
+                            onClose={closeComparisonDetail}
+                          />
+                        ) : (
+                          <DiffView
+                            file={{
+                              path: file().path,
+                              rel: file().path,
+                              oldPath: file().oldPath,
+                              status: file().status,
+                              oldText: value.oldText,
+                              newText: value.newText,
+                            }}
+                            mode={config.diffView}
+                            width={
+                              dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)
+                            }
+                            focused={panes.focus() === 'editor'}
+                            blocked={overlays.overlay()}
+                            onFocus={() => panes.setFocus('editor')}
+                            onToggleMode={settings.toggleDiffView}
+                            onClose={closeComparisonDetail}
+                          />
+                        )
+                      }}
+                    </Show>
+                  }
+                >
+                  {(detail: Accessor<ComparisonCommitDetail>) => (
+                    <CommitView
+                      detail={detail()}
+                      file={file()}
+                      content={comparison.selectedContent()}
+                      mode={config.diffView}
+                      width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                      focused={panes.focus() === 'editor'}
+                      blocked={overlays.overlay()}
+                      onFocus={() => panes.setFocus('editor')}
+                      onMoveFile={comparison.moveDetail}
+                      onToggleMode={settings.toggleDiffView}
+                      onClose={closeComparisonDetail}
+                    />
+                  )}
+                </Show>
               </box>
             )}
           </Show>

@@ -30,6 +30,7 @@ scripts/
     fileOps.ts       move/copy/delete batches and the x/c/p clipboard
     git.ts           git signals, the serialised mutation runner, refresh effects
     branches.ts      branch picker state + the switch/create/merge/rename/delete runs
+    comparison.ts    branch-comparison state, progressive loading and OID-keyed caches
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
@@ -43,7 +44,7 @@ scripts/
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
     image.ts         PNG/JPEG decode + scaling onto half-block cells, for the viewer
-    git.ts           queries (diff hunks, status, branches, ahead/behind) + mutations
+    git.ts           queries, mutations, and async branch-comparison metadata/blob reads
     diff.ts          Myers line diff between two texts, emitted as a unified patch
     bulk.ts          delete/copy/move in the background, reporting progress
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
@@ -71,10 +72,10 @@ scripts/
     window.ts        visual rows -> logical lines, for the highlight window
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
-    EditorPane, FileTree, GitPanel, SidebarTabs, Tabs, StatusBar, CommandPalette,
-    FilePicker,
-    SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay,
-    TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
+    EditorPane, FileTree, GitPanel, ComparePanel, CommitView, ComparisonBinaryView,
+    SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker, CompareFilter,
+    SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay, TextInput,
+    PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
 ```
 
 Dependency direction is one-way: `ui/` and feature folders never import from `app/`.
@@ -182,6 +183,22 @@ never both. Group related commands under a parent to keep the root list short �
 typing in the palette searches every leaf across all levels, so nesting never hides
 anything. Use the `check()` marker when a submenu reflects current state (themes,
 vim mode).
+
+### Add a branch-comparison ref source
+
+Resolve the source to a display name and commit OID before loading metadata, then pass a
+`ComparisonIdentity` to `loadResolvedComparison` in
+[`src/core/git.ts`](src/core/git.ts). The loader intentionally works from immutable OIDs:
+letting a tag, remote-tracking branch, or other moving ref reach the diff subprocesses
+would allow one comparison to mix two snapshots when the ref changes mid-load.
+
+The current controller constrains compare to the checked-out branch and gets base choices
+from `listBranches`. Add new picker choices in
+[`src/app/comparison.ts`](src/app/comparison.ts), but keep ref resolution in `core/` so
+the structured result remains usable without Solid or the TUI. Commit-like sources can
+reuse `BranchComparison`, merge-base scoping, caches, and detail views unchanged.
+Working-tree or index sources need a separate snapshot resolver because they have no
+stable commit OID; they may still reuse the file model, filtering, and rendering.
 
 ## Things worth knowing
 
@@ -325,6 +342,19 @@ vim mode).
   push talks to the network and would freeze the TUI for its duration. `createGitOp`
   serialises them, and anything that rewrites the working tree passes `touchesTree` so
   open buffers are pulled back from disk rather than waiting for the watcher.
+- **Branch comparison is the read-only async exception.** A large repository can return
+  thousands of paths, so comparison identity, raw status, numstat and commit metadata use
+  bounded asynchronous subprocesses. Raw and numstat output is NUL-delimited and streamed
+  into batches of at most 256 changes; blob contents are fetched by object ID only after a
+  row is opened. `app/comparison.ts` drops stale generations and caches comparisons,
+  commits and blobs by resolved OID, so changing a ref invalidates the right result
+  without making every cursor move call Git.
+- **Comparison means merge-base to compare tip.** The base branch tip establishes
+  topology and ahead/behind counts, but the file list is
+  `git diff <merge-base>..<compare>`. This excludes work introduced only on the base side
+  after branches diverge. Default-base discovery follows a remote HEAD (preferring
+  `origin`) and then an existing `init.defaultBranch`; it deliberately never guesses
+  `main`, `master`, or the current branch.
 - **git output is not capped at 1 MB.** `spawnSync` truncates there by default and
   reports ENOBUFS, which every caller in `core/git.ts` reads as "no output" — `status` in a
   repository with thousands of changed files would silently become "nothing changed" and
@@ -339,13 +369,13 @@ vim mode).
   leaves it showing changes that are gone — `App` re-runs `actions.refreshDiff` on
   `git.revision()` and `editor.reloadKey()` for that reason, and closes the page once
   the path is no longer in the status map.
-- **The source-control panel is the diff's pager, and its only entry point.** The page
-  holds one file because `panes.gitCursor` says which: ↑/↓ in the panel move the cursor
-  and swap the page under it, so nothing else may open a diff without moving that cursor
-  first (`actions.gitDiffFile` shows the panel and selects the row). A page reached any
-  other way would be one the arrows could not move from. Inside the page the arrows scroll
-  and Tab toggles the layout — the panel and the page each own their arrows, so neither
-  needs a chord, and that split only holds while the panel keeps the focus.
+- **The source-control panel owns both diff entry paths.** Working-tree mode holds one
+  file because `panes.gitCursor` says which: ↑/↓ in the panel move the cursor and swap the
+  page under it, so nothing else may open a diff without moving that cursor first.
+  Comparison mode has independent file, commit and commit-file cursors in its controller;
+  uppercase `B` enters it or changes the base, while lowercase `b` remains branch
+  switching. In either mode a detail page is layered over the editor, and Esc closes that
+  detail before it leaves comparison or the Source Control panel.
 - **Destroyed natives outlive the ref.** Closing the last tab swaps the textarea for the
   placeholder and destroys the native buffer while `editor` still points at it. Both
   pending timers touch it, so they are cleared from the ref's own `onCleanup` — the pane's
