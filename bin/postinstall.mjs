@@ -7,6 +7,12 @@
  * exit code is always zero — installing something that merely depends on druk must not
  * break because a download did.
  */
-import { fetchBinary, findBinary, supported } from './binary.mjs'
+import { fetchBinary, findBinary, supported, target } from './binary.mjs'
 
-if (supported && !findBinary()) await fetchBinary()
+// Bounded: an install must never hang on a stalled download (undici waits on a
+// trickling body for hours, and pnpm shows only "Running postinstall script…").
+// Giving up here costs nothing — the shim fetches again on first run.
+if (supported && !findBinary()) {
+  process.stderr.write(`druk: fetching the ${target} binary…\n`)
+  await fetchBinary({ timeout: 60_000 })
+}

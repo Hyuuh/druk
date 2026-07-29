@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openPalette, press } from './helpers'
 import type { Harness } from './helpers'
 
 // The bytes a terminal sends; the mock's pressKey cannot spell these chords.
@@ -94,17 +94,17 @@ test('the caret follows a moved line', async () => {
 test('the palette can comment and move lines without any chord', async () => {
   const { t, saved } = await open('one\ntwo\n')
 
-  await press(t, i => i.pressKey('p', { ctrl: true }))
+  await openPalette(t)
   await press(t, i => void i.typeText('Toggle comment'))
   await press(t, i => i.pressEnter())
   expect(await saved()).toBe('// one\ntwo\n')
 
-  await press(t, i => i.pressKey('p', { ctrl: true }))
+  await openPalette(t)
   await press(t, i => void i.typeText('Move line down'))
   await press(t, i => i.pressEnter())
   expect(await saved()).toBe('two\n// one\n')
 
-  await press(t, i => i.pressKey('p', { ctrl: true }))
+  await openPalette(t)
   await press(t, i => void i.typeText('Duplicate line'))
   await press(t, i => i.pressEnter())
   expect(await saved()).toBe('two\n// one\n// one\n')

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openFile, press } from './helpers'
 import type { Harness } from './helpers'
 
 const long = `${Array.from({ length: 200 }, (_, index) => `line ${index}`).join('\n')}\n`
@@ -15,9 +15,7 @@ const track = (t: Harness) =>
     .join('')
 
 async function open(t: Harness, name: string) {
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText(name))
-  await press(t, input => input.pressEnter())
+  await openFile(t, name)
 }
 
 describe('the editor scrollbar', () => {

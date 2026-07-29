@@ -5,11 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { watchTree } from '../src/core/fs'
-import { launch, settle } from './helpers'
-import type { Harness } from './helpers'
-
-/** Let the watcher's 80ms debounce fire, then render. */
-const watcherSettles = (t: Harness) => settle(t, 400)
+import { launch, untilFrame, untilGone } from './helpers'
 
 function repo() {
   const dir = mkdtempSync(join(tmpdir(), 'druk-outside-'))
@@ -34,12 +30,10 @@ describe('git work done in another terminal', () => {
     const { dir, git } = repo()
     writeFileSync(join(dir, 'a.ts'), 'const a = 2\n')
     const t = await launch(dir)
-    await watcherSettles(t)
-    expect(t.captureCharFrame()).toContain('~1')
+    await untilFrame(t, '~1')
 
     git('commit', '-aqm', 'outside')
-    await watcherSettles(t)
-    expect(t.captureCharFrame()).not.toContain('~1')
+    await untilGone(t, '~1')
   })
 
   test('reading status never feeds the watcher its own tail', async () => {
@@ -61,11 +55,9 @@ describe('git work done in another terminal', () => {
   test('a branch switch is reflected in the status bar', async () => {
     const { dir, git } = repo()
     const t = await launch(dir)
-    await watcherSettles(t)
-    expect(t.captureCharFrame()).toContain('main')
+    await untilFrame(t, 'main')
 
     git('checkout', '-q', '-b', 'sidequest')
-    await watcherSettles(t)
-    expect(t.captureCharFrame()).toContain('sidequest')
+    await untilFrame(t, 'sidequest')
   })
 })

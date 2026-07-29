@@ -1,7 +1,7 @@
 {
   "name": "druk",
   "displayName": "Druk",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "A terminal code editor — file tree, tabs, tree-sitter syntax highlighting and search; keyboard and mouse driven.",
   "keywords": [
@@ -52,6 +52,8 @@
   "dependencies": {
     "@opentui/core": "^0.4.5",
     "@opentui/solid": "^0.4.5",
+    "fast-png": "^8.0.0",
+    "jpeg-js": "^0.4.4",
     "nypm": "^0.6.8",
     "solid-js": "^1.9.14",
     "tree-sitter-wasms": "^0.1.13"
@@ -61,7 +63,8 @@
     "@types/bun": "latest",
     "oxfmt": "^0.60.0",
     "oxlint": "^1.75.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-language-server": "^5.3.0"
   },
   "engines": {
     "bun": ">=1.1"

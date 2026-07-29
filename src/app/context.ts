@@ -1,3 +1,4 @@
+import type { Branches } from './branches'
 import type { EditorBridge } from './editor'
 import type { FileOps } from './fileOps'
 import type { Git, GitOp } from './git'
@@ -21,6 +22,7 @@ export interface AppContext {
   git: Git
   gitOp: GitOp
   lsp: Lsp
+  branches: Branches
   workspace: Workspace
   fileOps: FileOps
   prompts: PromptState & PromptHandlers

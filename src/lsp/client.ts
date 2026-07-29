@@ -7,10 +7,44 @@
  * `initialize` — and flushed in order once the handshake lands.
  */
 import { spawn } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
 import type { Diagnostic, PublishDiagnosticsParams, RpcMessage } from './protocol'
 import { createDecoder, encodeMessage } from './transport'
+
+/**
+ * A server that spawns but never answers `initialize` would otherwise sit in
+ * `starting` forever, silently queueing every notification. Generous: on a cold
+ * cache rust-analyzer legitimately takes a while.
+ */
+const INITIALIZE_TIMEOUT_MS = 30_000
+
+/**
+ * Every live server process, killed from one shared `process.on('exit')` hook.
+ * One listener however many servers run — a hook per client would trip Node's
+ * ten-listener warning on `process`, printed to stderr over the TUI's frame.
+ * `exit` handlers are the one thing that still runs on `process.exit()`, and
+ * kill() is signal-only, so it is safe there.
+ */
+const liveChildren = new Set<ChildProcess>()
+let exitHookInstalled = false
+
+function trackChild(child: ChildProcess) {
+  liveChildren.add(child)
+  child.once('exit', () => liveChildren.delete(child))
+  if (exitHookInstalled) return
+  exitHookInstalled = true
+  process.on('exit', () => {
+    for (const live of liveChildren) {
+      try {
+        live.kill('SIGKILL')
+      } catch {
+        // already gone
+      }
+    }
+  })
+}
 
 export interface LspClientOptions {
   command: string[]
@@ -18,8 +52,8 @@ export interface LspClientOptions {
   onDiagnostics: (uri: string, diagnostics: Diagnostic[]) => void
   /**
    * The server is gone and will not be respawned: the command was not on PATH,
-   * the handshake failed, or the process died. Called at most once, and never
-   * for a `dispose()` the editor asked for.
+   * the handshake failed or timed out, or the process died. Called at most once,
+   * and never for a `dispose()` the editor asked for.
    */
   onFail: (reason: string) => void
 }
@@ -32,6 +66,7 @@ export function spawnLspClient(options: LspClientOptions) {
     // unread pipe would eventually block them mid-request.
     stdio: ['pipe', 'pipe', 'ignore'],
   })
+  trackChild(child)
 
   let state: 'starting' | 'ready' | 'dead' = 'starting'
   let disposed = false
@@ -45,7 +80,7 @@ export function spawnLspClient(options: LspClientOptions) {
   const versions = new Map<string, number>()
 
   const send = (message: RpcMessage) => {
-    if (child.stdin.writable) child.stdin.write(encodeMessage(message))
+    if (child.stdin?.writable) child.stdin.write(encodeMessage(message))
   }
 
   const request = (method: string, params?: unknown) =>
@@ -103,12 +138,10 @@ export function spawnLspClient(options: LspClientOptions) {
     // Everything else (logMessage, showMessage, $/progress) is server chatter.
   }
 
-  child.stdout.on('data', createDecoder(onMessage))
+  child.stdout?.on('data', createDecoder(onMessage))
   child.on('error', error => die(error.message))
   child.on('exit', () => die('exited'))
-  // The editor quitting must not orphan servers: `exit` handlers are the one
-  // thing that still runs on `process.exit()`, and kill() is signal-only, so it
-  // is safe there.
+
   const killNow = () => {
     try {
       child.kill('SIGKILL')
@@ -116,7 +149,13 @@ export function spawnLspClient(options: LspClientOptions) {
       // already gone
     }
   }
-  process.on('exit', killNow)
+
+  const initTimeout = setTimeout(() => {
+    if (state !== 'starting') return
+    die('did not answer initialize')
+    killNow()
+  }, INITIALIZE_TIMEOUT_MS)
+  initTimeout.unref?.()
 
   const rootUri = pathToFileURL(options.rootDir).href
   void request('initialize', {
@@ -143,6 +182,7 @@ export function spawnLspClient(options: LspClientOptions) {
       // this the client would sit in `starting` queueing notifications forever.
       die(error instanceof Error ? error.message : 'initialize failed')
     })
+    .finally(() => clearTimeout(initTimeout))
 
   return {
     /** True once the handshake finished and false again when the server dies. */
@@ -182,7 +222,6 @@ export function spawnLspClient(options: LspClientOptions) {
     dispose() {
       if (disposed) return
       disposed = true
-      process.off('exit', killNow)
       if (state === 'ready') {
         void request('shutdown').catch(() => {})
         send({ jsonrpc: '2.0', method: 'exit' })

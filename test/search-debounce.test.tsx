@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { searchProject } from '../src/core/search'
-import { fixture, launch, press, runCommand, settle } from './helpers'
+import { fixture, launch, openFile, press, runCommand, settle } from './helpers'
 import type { Harness } from './helpers'
 
 /** A project big enough that one scan is unmistakably slower than one keystroke. */
@@ -66,9 +66,7 @@ describe('project search waits for the typing to settle', () => {
 
   test('in-file search stays immediate — it only touches the open buffer', async () => {
     const t = await launch(fixture({ 'a.ts': 'alpha\nbeta alpha\n' }))
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText('a.ts'))
-    await press(t, input => input.pressEnter())
+    await openFile(t, 'a.ts')
 
     await press(t, input => input.pressKey('f', { ctrl: true }))
     await press(t, input => void input.typeText('alpha'))

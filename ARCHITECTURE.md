@@ -7,7 +7,8 @@ around it.
 
 ```
 src/
-  index.tsx          entry: flags → load config → apply theme → render <App/>
+  index.tsx          entry: argument handling, then a *dynamic* import of main.tsx
+  main.tsx           load config → apply theme → render <App/>
   assets.d.ts        types for `with { type: 'file' }` imports (wasm, .scm)
 build.ts             compiles a standalone binary per platform (Bun.build + Solid plugin)
 bin/druk.js          npm launcher: runs the binary, fetching it first if it is missing
@@ -19,7 +20,7 @@ scripts/
   formula.ts         Homebrew formula for the current version's archives
   app/
     App.tsx          composition root: creates the controllers, wires them, renders layout
-    commands.ts      command tree  ← the feature index (Ctrl+P palette)
+    commands.ts      command tree  ← the feature index (F1 palette)
     actions.ts       binds the command tree's actions to the controllers
     keyboard.ts      the global keymap (chords + tree keys)
     Overlays.tsx     overlay state + the modal stack (search, pickers, palette, help…)
@@ -28,11 +29,13 @@ scripts/
     tree.ts          file-tree state: expansion, selection, marked ranges
     fileOps.ts       move/copy/delete batches and the x/c/p clipboard
     git.ts           git signals, the serialised mutation runner, refresh effects
+    branches.ts      branch picker state + the switch/create/merge/rename/delete runs
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
-    panes.ts         focus + sidebar visibility
+    panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
     lsp.ts           language servers: spawn per language, sync buffers, diagnostics
-    settings.ts      config store + the actions that patch and persist it
+    settings.ts      config store, the actions that patch and persist it, and the
+                     settings page's rows
     status.ts        status-bar message + the one busy/progress slot
     types.ts         shared app types (FileBuffer, Prompt, Conflict…)
   core/
@@ -40,14 +43,15 @@ scripts/
     config.ts        user settings, persisted to ~/.config/druk/config.json
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
-    git.ts           read-only queries: diff hunks, status, branch, ahead/behind
+    image.ts         PNG/JPEG decode + scaling onto half-block cells, for the viewer
+    git.ts           queries (diff hunks, status, branches, ahead/behind) + mutations
     diff.ts          Myers line diff between two texts, emitted as a unified patch
     bulk.ts          delete/copy/move in the background, reporting progress
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
     session.ts       per-project open tabs + expanded folders, keyed by path
     update.ts        startup npm version check (best-effort, opt-out)
     upgrade.ts       `druk update`: which install is running, and how to upgrade it
-    assets.ts        pins OpenTUI's tree-sitter asset lookup (side-effect import)
+    assets.ts        pins OpenTUI's asset lookup; stages the native library (side-effect import)
   languages/
     index.ts         language registry  ← add a language here
     grammars.ts      wasm + query file imports, the form the binary can embed
@@ -73,9 +77,10 @@ scripts/
     window.ts        visual rows -> logical lines, for the highlight window
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
-    EditorPane, FileTree, Tabs, StatusBar, CommandPalette, FilePicker,
-    SearchPanel, DiffView, UpdateBanner, Overlay, TextInput, PromptModal,
-    ConfirmModal, ChoiceModal, HelpOverlay
+    EditorPane, FileTree, GitPanel, SidebarTabs, Tabs, StatusBar, CommandPalette,
+    FilePicker,
+    SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay,
+    TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
 ```
 
 Dependency direction is one-way: `ui/` and feature folders never import from `app/`.
@@ -105,7 +110,11 @@ nature, and threading twenty props would say less.
 
 Grammars OpenTUI already bundles (javascript, typescript, markdown, zig) only need
 `bundled: true` — no wasm or query. Parser registration and highlighting both read from
-this one table.
+this one table. A dialect close enough to an existing language can reuse its grammar
+outright: `javascriptreact` and `tsrx` are both `...GRAMMARS.tsx`.
+
+OpenTUI resolves the extension, so a filetype it has never heard of also needs a line in
+`filetypeForPath` (`src/languages/highlight.ts`), beside the `bun.lock` and `.env` cases.
 
 The status bar shows the `id`, which is fine for almost all of them. Add a `label` only
 where OpenTUI's filetype name is not what a person would call the file — `typescriptreact`
@@ -120,6 +129,16 @@ When no grammar works — tree-sitter-yaml, for one, needs an external scanner O
 worker cannot link — declare `patterns` instead: a list of `{ group, re }` painted in
 order, later entries winning the characters they overlap. Good enough for line-oriented
 config formats, and it needs no wasm.
+
+`patterns` beside a grammar means something else: an overlay for a dialect the grammar
+cannot parse. `.tsrx` is tsx plus Octane's `@if`/`@for`/`@{` directives, which land in
+tree-sitter `ERROR` regions — a query cannot reach inside one, so the tokens are regex-
+matched instead. `outsideProse` then drops any match a comment or string capture already
+covers, and *only* those: elsewhere the overlay has to win, because the grammar
+mis-attributes these tokens rather than missing them (tsx reads `@catch` as a call and
+captures `catch` as `function`). Ordering is load-bearing in the other direction too —
+patterns without a grammar must never reach tree-sitter, which is what keeps a yaml file
+from hanging the query engine.
 
 ### Add a theme
 
@@ -212,14 +231,19 @@ vim mode).
   every character it is given, so doing the whole document cost more than the parse did —
   measured at 5 000 lines: 179ms parse, 152ms segmentation, and only the second number
   blocks. `EditorPane` caches the parse and segments each window once.
+  `computeHighlights` also keeps the last eight parses keyed on the exact text (plus
+  filetype and tab size), so switching back to a tab never repeats the worker
+  round-trip — the cache is why first colour on a revisited tab is instant.
 - **Everything per-document belongs on `Highlighted`, not in `segmentsIn`.** The line
-  offsets and the specificity sort are computed once, at parse time, and this is not a
-  micro-optimisation: they are O(characters) and O(captures log n), so recomputing them
-  per call put a floor under a *window* proportional to the whole file. Measured on a
-  20 000-line file, segmenting a single line: 2.07ms before, 0.155ms after — and the
-  before figure was paid on every scroll tick. `test/perf.test.tsx` guards it as a ratio
-  against a whole-document pass, so a slow machine cannot make it pass by accident.
-  Adding a per-window `.map()`, `.filter()` or `.sort()` over `ordered` reintroduces it.
+  offsets, the specificity sort and the per-line capture buckets are computed once, at
+  parse time, and this is not a micro-optimisation: any per-call pass over the whole
+  capture list puts a floor under a *window* proportional to the whole file. Even the
+  skip-scan (`h.end <= sliceStart → continue`) cost 0.4ms per line at 8 000 lines; the
+  buckets took it to 0.005ms, and the earlier round of hoisting the sort had already
+  turned 2.07ms into 0.155ms on a 20 000-line file — each floor paid on every scroll
+  tick. `test/perf.test.tsx` guards it as a ratio against a whole-document pass, so a
+  slow machine cannot make it pass by accident. Adding a per-window `.map()`,
+  `.filter()` or `.sort()` over `ordered` reintroduces it.
 - **Incremental parsing is not available for this.** The client does expose
   `createBuffer`/`updateBuffer`, and it is roughly twice as fast — but it reports
   highlights only for the lines the edit *touched*, not the ones it invalidates. Typing
@@ -280,15 +304,54 @@ vim mode).
   "never written back" structural rather than a check someone has to remember. The single
   exception to listing everything is `VCS_DIRS`: a `.git` store is not project content and
   would swamp the tree, the fuzzy picker and project search. Ordinary dotfiles are not in
-  that class and must stay visible.
-- **git is read-only.** `core/git.ts` runs queries and nothing else: `diff` for the gutter
-  marks, `status` for the tree marks, `rev-parse`/`rev-list` for the branch and
-  ahead/behind. There is no commit, push, stash, checkout or discard, and adding one would
-  bring back the whole problem of a subprocess rewriting files under open buffers.
+  that class and stay visible by default. The opt-in `showDotfiles`/`respectGitignore`
+  settings filter *tree rows only*, as a predicate `App` hands to `createTree` — the
+  filter lives in `flattenVisible`, above `listDir`, so the picker, project search and
+  the watcher still see every file, and an ignored directory is pruned at its top row
+  (never descended into), which is why `ignoredPaths` can match git's collapsed
+  `--directory` output by exact path.
+- **Image tabs are viewer tabs: a tab without a buffer.** `isImagePath` branches before
+  the `readFile` in `openFile`, so a PNG/JPEG gets a tab that flows through the normal
+  preview/pin/session logic while `buffers` never learns about it — the no-buffer
+  invariant above is how "never written back" extends to images. Everything that assumes
+  a tab has a buffer must keep coping with one that does not: `onEditorChange` returns
+  early (a phantom buffer created there would hand the image to the save path), and
+  `syncFromDisk` closes vanished bufferless tabs in a separate pass, since its main walk
+  iterates `buffers`.
+- **The viewer paints cells, not renderables.** `ImageView` draws `▀` half-blocks
+  (upper pixel foreground, lower background) straight into the frame from a `renderAfter`
+  hook on one box. A `<text>` per cell would be cols×rows renderables — the Zig core
+  stops handing them out a few thousand in, so a photo would blank the pane the way the
+  unwindowed tree once did. OpenTUI detects `kitty_graphics`/`sixel` but exposes no way
+  to emit them past the cell diff; when it does, that is the upgrade path.
+- **git queries are synchronous, mutations are not.** `core/git.ts` runs `diff`,
+  `status` and `rev-parse`/`rev-list` with `spawnSync` — they sit behind the gutter and
+  tree marks and finish in milliseconds. Everything that writes (commit, push, stash,
+  checkout, merge, branch create/rename/delete) goes through the async `mutate`, because a
+  push talks to the network and would freeze the TUI for its duration. `createGitOp`
+  serialises them, and anything that rewrites the working tree passes `touchesTree` so
+  open buffers are pulled back from disk rather than waiting for the watcher.
 - **git output is not capped at 1 MB.** `spawnSync` truncates there by default and
   reports ENOBUFS, which every caller in `core/git.ts` reads as "no output" — `status` in a
   repository with thousands of changed files would silently become "nothing changed" and
   the tree would show no marks. The helper raises `maxBuffer`.
+- **git waits for the first frame.** Every query is a synchronous subprocess, and
+  effects run inside the initial render pass, so `wireGitEffects` sits behind one
+  deferred tick and `branch` starts null — `statusMap` alone can take hundreds of
+  milliseconds in a large repository, all of it otherwise spent before anything is on
+  screen. The marks and branch appear a beat later; nothing else changes cadence.
+- **The diff page is a snapshot, and something has to refresh it.** `overlays.diff`
+  holds one file's two texts as they read when it opened, so a commit, stash or save
+  leaves it showing changes that are gone — `App` re-runs `actions.refreshDiff` on
+  `git.revision()` and `editor.reloadKey()` for that reason, and closes the page once
+  the path is no longer in the status map.
+- **The source-control panel is the diff's pager, and its only entry point.** The page
+  holds one file because `panes.gitCursor` says which: ↑/↓ in the panel move the cursor
+  and swap the page under it, so nothing else may open a diff without moving that cursor
+  first (`actions.gitDiffFile` shows the panel and selects the row). A page reached any
+  other way would be one the arrows could not move from. Inside the page the arrows scroll
+  and Tab toggles the layout — the panel and the page each own their arrows, so neither
+  needs a chord, and that split only holds while the panel keeps the focus.
 - **Destroyed natives outlive the ref.** Closing the last tab swaps the textarea for the
   placeholder and destroys the native buffer while `editor` still points at it. Both
   pending timers touch it, so they are cleared from the ref's own `onCleanup` — the pane's
@@ -301,6 +364,20 @@ vim mode).
 - **Session restore.** Tabs and their buffers are seeded synchronously in the component
   body, not in an effect — mounting the editor before its buffer exists renders an empty
   document and marks the file modified.
+- **The compiled binary stages its native library, and the entry split is what makes
+  that work.** dlopen cannot read the embedded filesystem, so Bun extracts the library
+  to a *fresh* temp file every launch — and macOS validates the signature of a file it
+  has never seen: ~250ms, against ~3ms for a known one. `core/assets.ts` therefore
+  copies OpenTUI's own embedded library (found via `Bun.embeddedFiles`, keyed by its
+  content-hashed name) to `~/.cache/druk/native/…` and points `OTUI_ASSET_ROOT` there;
+  the first launch on a new build still takes the slow path and stages in the
+  background. Two ordering rules keep it working: the staging is fully synchronous,
+  and the app lives behind the dynamic import in `index.tsx` — bundled statically,
+  Bun's scope hoisting runs `@opentui/core`'s top-level code *before* the entry's own
+  statements, source import order notwithstanding, and the env var would be set after
+  OpenTUI had already looked. `main.tsx` releases the root right after the imports:
+  it holds only the library, and any later lookup under it (tree-sitter's wasm, on
+  the first highlight) would throw and silently kill highlighting.
 - **Focused colors.** Inputs and the editor render focused, and OpenTUI then uses the
   `focused*` colors — setting only `textColor` leaves text in the renderable's default,
   which is invisible on most themes. `ui/TextInput.tsx` exists so no panel forgets.
@@ -311,9 +388,12 @@ vim mode).
   a file that changed underneath prompts instead of clobbering.
 - **LSP servers are the user's, not druk's.** `src/lsp` spawns whatever
   `typescript-language-server`, `gopls`, … is on PATH (`lspServers` in the config
-  overrides or disables per server); a missing one is reported once in the status bar and
-  that is all. Documents sync as full text — simple and impossible to desynchronize — and
-  the didChange debounce in `src/app/lsp.ts` captures `{path, text}` inside the tracked
-  effect run, so a tab switch during the wait can never re-aim an edit at the wrong
-  document. Servers are torn down from App's `onCleanup` (which also covers tests) and a
-  `process.on('exit')` backstop, so no editor exit leaks a child process.
+  overrides or disables per server; the settings page flips the same keys); a missing
+  one is reported once in the status bar and that is all. Documents sync as full text —
+  simple and impossible to desynchronize — and the didChange debounce in `src/app/lsp.ts`
+  captures `{path, text}` inside the tracked effect run, so a tab switch during the wait
+  can never re-aim an edit at the wrong document. Servers are torn down from App's
+  `onCleanup` (which also covers tests) and one shared `process.on('exit')` backstop —
+  shared so a dozen servers never trip Node's max-listeners warning mid-frame — and a
+  server that never answers `initialize` is killed after a bounded wait instead of
+  queueing notifications forever.

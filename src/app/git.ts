@@ -1,6 +1,16 @@
-import { createEffect, createSignal, on } from 'solid-js'
+import { relative } from 'node:path'
 
-import { currentBranch, diffLines, inRepository, statusMap, upstreamOf } from '../core/git'
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js'
+
+import type { Config } from '../core/config'
+import {
+  currentBranch,
+  diffLines,
+  ignoredAmong,
+  inRepository,
+  statusMap,
+  upstreamOf,
+} from '../core/git'
 import type { FileStatus, GitResult, LineChange, Upstream } from '../core/git'
 import type { CommitFile } from '../ui/CommitModal'
 import type { EditorBridge } from './editor'
@@ -14,7 +24,15 @@ export function createGit(rootDir: string) {
   /** Bumped when something may have changed what git would report. */
   const [revision, setRevision] = createSignal(0)
   const [gitStatus, setGitStatus] = createSignal<Map<string, FileStatus>>(new Map())
-  const [branch, setBranch] = createSignal(currentBranch(rootDir))
+  /** Visible tree paths that `.gitignore` excludes — dimmed in the sidebar. */
+  const [gitIgnored, setGitIgnored] = createSignal<Set<string>>(new Set())
+  // Starts null and is filled by `wireGitEffects` after the first frame: reading
+  // the branch here is a synchronous subprocess on the render thread's clock.
+  const [branch, setBranch] = createSignal<string | null>(null)
+  /** Whether `rootDir` is in a repository at all. A signal because `inRepository`
+   * spawns git: the source-control panel reads this on every render, and a
+   * subprocess there would run once per frame. */
+  const [inRepo, setInRepo] = createSignal(inRepository(rootDir))
   const [upstream, setUpstream] = createSignal<Upstream | null>(null)
   /** A git mutation in flight — one at a time, they share a repository. */
   const [gitBusy, setGitBusy] = createSignal(false)
@@ -23,6 +41,13 @@ export function createGit(rootDir: string) {
 
   const bump = () => setRevision(n => n + 1)
 
+  /** The changed files as the source-control panel lists them, in path order. */
+  const changes = createMemo(() =>
+    [...gitStatus()]
+      .map(([path, status]) => ({ path, rel: relative(rootDir, path), status }))
+      .toSorted((a, b) => a.rel.localeCompare(b.rel)),
+  )
+
   return {
     gitLines,
     setGitLines,
@@ -30,14 +55,19 @@ export function createGit(rootDir: string) {
     bump,
     gitStatus,
     setGitStatus,
+    gitIgnored,
+    setGitIgnored,
     branch,
     setBranch,
+    inRepo,
+    setInRepo,
     upstream,
     setUpstream,
     gitBusy,
     setGitBusy,
     commitPick,
     setCommitPick,
+    changes,
   }
 }
 
@@ -87,15 +117,28 @@ export function wireGitEffects(deps: {
   tree: Tree
   editor: EditorBridge
   workspace: Workspace
+  config: Config
 }) {
-  const { rootDir, git, tree, editor, workspace } = deps
+  const { rootDir, git, tree, editor, workspace, config } = deps
+
+  // Every query below is a synchronous subprocess, and effects run inside the
+  // initial render pass — `statusMap` alone can take hundreds of milliseconds in
+  // a large repository, all of it spent before the first frame. Each effect
+  // therefore sits behind one deferred tick: the frame goes out first, then the
+  // effects re-run with their real dependencies.
+  const [ready, setReady] = createSignal(false)
+  onMount(() => {
+    const timer = setTimeout(() => setReady(true), 0)
+    onCleanup(() => clearTimeout(timer))
+  })
 
   createEffect(
     on(
       // Not keyed on content: `git diff` is a subprocess, far too heavy to run
       // on every keystroke. Saving bumps reloadKey, which refreshes the marks.
-      () => [workspace.activePath(), editor.reloadKey(), git.revision()] as const,
-      ([path]) => {
+      () => [ready(), workspace.activePath(), editor.reloadKey(), git.revision()] as const,
+      ([ok, path]) => {
+        if (!ok) return
         git.setGitLines(path ? diffLines(path) : new Map())
       },
     ),
@@ -105,20 +148,47 @@ export function wireGitEffects(deps: {
   // the tree refresh, which fires on every filesystem event.
   createEffect(
     on(
-      () => [git.branch(), git.revision()] as const,
-      () => git.setUpstream(upstreamOf(rootDir)),
+      () => [ready(), git.branch(), git.revision()] as const,
+      ([ok]) => {
+        if (!ok) return
+        git.setUpstream(upstreamOf(rootDir))
+      },
     ),
   )
 
   // Tree marks follow the same cadence, plus any filesystem change. The branch
   // rides along: a checkout in another terminal writes .git, so the watcher fires
-  // here, and nothing else would ever notice HEAD had moved.
+  // here, and nothing else would ever notice HEAD had moved. Ignored paths ride
+  // the same tick: expansion reveals new rows that need a check-ignore pass.
   createEffect(
     on(
-      () => [tree.expanded(), git.revision(), editor.reloadKey()] as const,
-      () => {
+      () =>
+        [
+          ready(),
+          tree.expanded(),
+          git.revision(),
+          editor.reloadKey(),
+          // Not merely read in the body: flipping the setting is the one thing
+          // that changes the answer without touching the tree or the repository.
+          config.respectGitignore,
+        ] as const,
+      ([ok, , , , hidingIgnored]) => {
+        if (!ok) return
         git.setGitStatus(statusMap(rootDir))
+        // With the rows hidden outright there is nothing left to dim, and the
+        // subprocess would answer "none of these" on every filesystem event.
+        git.setGitIgnored(
+          hidingIgnored
+            ? new Set<string>()
+            : ignoredAmong(
+                rootDir,
+                tree.nodes().map(n => n.path),
+              ),
+        )
         git.setBranch(currentBranch(rootDir))
+        // `git init` in another terminal writes .git, so the watcher brings us
+        // here — the only place the panel would ever learn it has a repository.
+        git.setInRepo(inRepository(rootDir))
       },
     ),
   )

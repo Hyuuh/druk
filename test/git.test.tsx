@@ -4,8 +4,18 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { currentBranch, diffLines, statusMap } from '../src/core/git'
-import { launch, press } from './helpers'
+import {
+  currentBranch,
+  diffLines,
+  explain,
+  failureLine,
+  ignoredAmong,
+  KNOWN,
+  statusMap,
+} from '../src/core/git'
+import { THEMES } from '../src/themes'
+import { launch, press, settle } from './helpers'
+import type { Harness } from './helpers'
 
 /** A real repository with one committed file. */
 function repo(committed: string) {
@@ -14,6 +24,8 @@ function repo(committed: string) {
   git('init', '-q', '-b', 'main')
   git('config', 'user.email', 'test@example.com')
   git('config', 'user.name', 'Test')
+  // Local gpgsign=true would fail every fixture commit — no test key is available.
+  git('config', 'commit.gpgsign', 'false')
   writeFileSync(join(dir, 'a.ts'), committed)
   git('add', '.')
   git('commit', '-q', '-m', 'init')
@@ -129,4 +141,235 @@ test('every file inside a brand-new directory is marked, not just the directory'
   expect(frame).toContain('newdir')
   expect(frame).toContain('a.ts')
   expect(frame.split('\n').find(row => row.includes('a.ts'))).toContain('U')
+})
+
+test('a failed git command reports its cause, not its advice', () => {
+  // Verbatim from `git pull` on diverged branches: git prints its advice first
+  // and the reason last, so taking the first line showed a truncated hint.
+  const diverged = [
+    "hint: Diverging branches can't be fast-forwarded, you need to either:",
+    'hint:',
+    'hint: \tgit merge --no-ff',
+    'hint:',
+    'hint: or:',
+    'hint:',
+    'hint: \tgit rebase',
+    'hint:',
+    'hint: Disable this message with "git config set advice.diverging false"',
+    'fatal: Not possible to fast-forward, aborting.',
+  ].join('\n')
+  expect(failureLine(diverged)).toBe('Not possible to fast-forward, aborting.')
+
+  // A rejected push has no `fatal:` at all: the destination header and the
+  // trailing hints are noise, and the rejection itself is what to show.
+  const rejected = [
+    'To https://github.com/user/repo',
+    ' ! [rejected]        main -> main (non-fast-forward)',
+    "error: failed to push some refs to 'https://github.com/user/repo'",
+    'hint: Updates were rejected because the tip of your current branch is behind',
+  ].join('\n')
+  expect(failureLine(rejected)).toBe('! [rejected]        main -> main (non-fast-forward)')
+
+  // Nothing but advice still has to say something rather than go blank.
+  expect(failureLine('hint: only advice here\n')).toBe('hint: only advice here')
+  expect(failureLine('')).toBe('')
+
+  // An `error:` with no rejection line loses its prefix — the bar colours it.
+  expect(failureLine("error: pathspec 'nope' did not match")).toBe("pathspec 'nope' did not match")
+})
+
+/**
+ * Every string below is verbatim git output, captured by provoking the failure
+ * against real repositories — the wording is the whole contract here, and a
+ * paraphrase would pass while the real message sailed past unrecognised.
+ */
+test('known git failures are named in terms of what to do next', () => {
+  const cases: Array<[string, string]> = [
+    [
+      'fatal: Not possible to fast-forward, aborting.',
+      'Branch and origin have both moved on — merge or rebase in a terminal',
+    ],
+    [
+      'fatal: Need to specify how to reconcile divergent branches.',
+      'Branch and origin have both moved on — merge or rebase in a terminal',
+    ],
+    [
+      'To https://github.com/user/repo\n ! [rejected]        main -> main (non-fast-forward)\nerror: failed to push some refs',
+      "origin has commits you don't — pull first, then push",
+    ],
+    [
+      'error: Your local changes to the following files would be overwritten by merge:\n\tf.txt\nPlease commit your changes or stash them before you merge.\nAborting',
+      'Commit or stash your changes first — this would overwrite them',
+    ],
+    [
+      'Auto-merging f.txt\nCONFLICT (content): Merge conflict in f.txt\nThe stash entry is kept in case you need it again.',
+      'Conflicts in the working tree — the stash was kept, resolve them first',
+    ],
+    [
+      'error: Pulling is not possible because you have unmerged files.\nfatal: Exiting because of an unresolved conflict.',
+      'Resolve the merge conflicts in your working tree first',
+    ],
+    ['On branch master\nnothing to commit, working tree clean', 'Nothing to commit'],
+    [
+      "fatal: ambiguous argument 'HEAD~1': unknown revision or path not in the working tree.",
+      'Nothing to undo — this is the only commit',
+    ],
+    ['No stash entries found.', 'No stash to pop'],
+    ['fatal: No configured push destination.', "No remote — add an 'origin' in a terminal"],
+    [
+      "fatal: unable to access 'https://x.invalid/y.git/': Could not resolve host: x.invalid",
+      "Can't reach the remote — check your network",
+    ],
+    [
+      "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+      "No stored credentials for the remote — druk can't prompt for them",
+    ],
+    [
+      'git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.',
+      'The remote rejected your SSH key',
+    ],
+    [
+      "remote: HTTP Basic: Access denied.\nfatal: Authentication failed for 'https://gitlab.com/x/y.git/'",
+      'Authentication failed — check your credentials for the remote',
+    ],
+    [
+      "remote: Repository not found.\nfatal: repository 'https://github.com/x/y.git/' not found",
+      "Remote repository not found — check the 'origin' URL",
+    ],
+    [
+      "fatal: Unable to create '/repo/.git/index.lock': File exists.\n\nAnother git process seems to be running in this repository",
+      'Another git process is running in this repository — let it finish',
+    ],
+  ]
+  for (const [output, message] of cases)
+    expect([output, explain(output)]).toEqual([output, message])
+
+  // Anything unrecognised still falls through to git's own most useful line.
+  expect(explain("error: pathspec 'nope' did not match any file(s)")).toBe(
+    "pathspec 'nope' did not match any file(s)",
+  )
+})
+
+test('a message never outgrows the status bar', () => {
+  // The bar clips with an ellipsis, and these messages exist to be read whole.
+  for (const [, message] of KNOWN) expect(message.length).toBeLessThanOrEqual(70)
+})
+
+test('a failure split across both streams is still recognised', () => {
+  // Verbatim from a second `git stash pop` onto the conflicted tree the first
+  // one left. Reading either stream alone reports "could not write index",
+  // which names the symptom and not one thing the user can act on.
+  const stderr = 'error: could not write index'
+  const stdout = 'f.txt: needs merge\nThe stash entry is kept in case you need it again.'
+  expect(explain(stderr, stdout)).toBe('Resolve the merge conflicts in your working tree first')
+  expect(explain(stderr)).toBe('could not write index')
+})
+
+test('ignoredAmong reports only the gitignored paths asked about', () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n*.log\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+  writeFileSync(join(dir, 'noise.log'), 'log\n')
+  writeFileSync(join(dir, 'keep.ts'), 'ok\n')
+
+  const paths = [
+    join(dir, 'dist'),
+    join(dir, 'dist', 'out.js'),
+    join(dir, 'noise.log'),
+    join(dir, 'keep.ts'),
+    join(dir, 'a.ts'),
+  ]
+  const ignored = ignoredAmong(dir, paths)
+  expect(ignored.has(join(dir, 'dist'))).toBe(true)
+  expect(ignored.has(join(dir, 'dist', 'out.js'))).toBe(true)
+  expect(ignored.has(join(dir, 'noise.log'))).toBe(true)
+  expect(ignored.has(join(dir, 'keep.ts'))).toBe(false)
+  expect(ignored.has(join(dir, 'a.ts'))).toBe(false)
+})
+
+test('ignoredAmong is empty outside a repository', () => {
+  // `check-ignore` exits 128 here rather than reporting nothing, and that has to
+  // read as "nothing is ignored" — the tree still draws these rows.
+  const dir = mkdtempSync(join(tmpdir(), 'druk-'))
+  writeFileSync(join(dir, 'a.ts'), 'x\n')
+  expect(ignoredAmong(dir, [join(dir, 'a.ts')]).size).toBe(0)
+})
+
+test('a tracked file is never ignored, whatever .gitignore says about it', () => {
+  // `git add -f` on a matching path is common enough (a committed lockfile under
+  // a broad rule) that dimming it as ignored would be a plain lie.
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), '*.ts\n')
+  const ignored = ignoredAmong(dir, [join(dir, 'a.ts'), join(dir, '.gitignore')])
+  expect(ignored.has(join(dir, 'a.ts'))).toBe(false)
+})
+
+/**
+ * The colour the tree draws `name` in, as "r,g,b" — dimming is only a colour, so
+ * `captureCharFrame` cannot see it at all.
+ *
+ * Matched on the end of the span, not the whole of it: neighbouring runs that
+ * share a colour are captured as one span, and a dimmed folder is exactly the
+ * case where the arrow ahead of the name already uses `ui.dim`.
+ */
+function nameColor(t: Harness, name: string) {
+  const capture = t.captureSpans() as unknown as {
+    lines: { spans: { text: string; fg?: { buffer: Record<string, number> } }[] }[]
+  }
+  for (const line of capture.lines) {
+    for (const span of line.spans) {
+      if (!span.fg || !span.text.endsWith(name)) continue
+      return `${span.fg.buffer['0']},${span.fg.buffer['1']},${span.fg.buffer['2']}`
+    }
+  }
+  return null
+}
+
+const hexToRgb = (hex: string) => {
+  const h = hex.replace('#', '')
+  return [0, 2, 4].map(i => Number.parseInt(h.slice(i, i + 2), 16)).join(',')
+}
+
+test('a gitignored entry is dimmed, and a tracked one beside it is not', async () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+
+  const t = await launch(dir)
+  await settle(t)
+  const { ui } = THEMES.dark
+  expect(nameColor(t, 'dist')).toBe(hexToRgb(ui.dim))
+  // Not the folder colour it would have had, and not the faint of a cut row.
+  expect(nameColor(t, 'a.ts')).toBe(hexToRgb(ui.text))
+})
+
+test('a status mark outranks dimming, and ignoring never invents one', async () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+  writeFileSync(join(dir, 'a.ts'), 'changed\n')
+
+  const t = await launch(dir)
+  await settle(t)
+  const frame = t.captureCharFrame()
+  // Ignored is drawn, not hidden: hiding is `respectGitignore`, a separate setting.
+  expect(frame).toContain('dist')
+  expect(frame.split('\n').find(row => /\bdist\b/.test(row))!).not.toMatch(/[UMAD]/)
+  expect(frame.split('\n').find(row => row.includes('a.ts'))).toContain('M')
+  expect(nameColor(t, 'a.ts')).toBe(hexToRgb(THEMES.dark.ui.gitModified))
+})
+
+test('with respectGitignore on there is nothing left to dim', async () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'dist\n')
+  mkdirSync(join(dir, 'dist'))
+  writeFileSync(join(dir, 'dist', 'out.js'), 'bundle\n')
+
+  const t = await launch(dir, { respectGitignore: true })
+  await settle(t)
+  expect(t.captureCharFrame()).not.toContain('dist')
+  expect(nameColor(t, 'a.ts')).toBe(hexToRgb(THEMES.dark.ui.text))
 })

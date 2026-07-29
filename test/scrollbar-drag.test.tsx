@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openFile, press, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const long = `${Array.from({ length: 400 }, (_, index) => `line ${index}`).join('\n')}\n`
@@ -26,9 +26,7 @@ function topLine(t: Harness): number {
  */
 async function openAlone(name: string, content: string) {
   const t = await launch(fixture({ [name]: content }))
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText(name))
-  await press(t, input => input.pressEnter())
+  await openFile(t, name)
   await press(t, input => input.pressKey('b', { ctrl: true }))
   await settle(t)
   return t

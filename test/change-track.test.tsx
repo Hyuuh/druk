@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ui } from '../src/themes'
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openFile, press, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const SOURCE = `${Array.from({ length: 400 }, (_, index) => `const value${index} = ${index}`).join(
@@ -45,9 +45,7 @@ async function repoWith(edit: (lines: string[]) => void) {
 
 async function open(dir: string) {
   const t = await launch(dir, {}, { width: 100, height: 24 })
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText('big.ts'))
-  await press(t, input => input.pressEnter())
+  await openFile(t, 'big.ts')
   await settle(t, 300)
   return t
 }

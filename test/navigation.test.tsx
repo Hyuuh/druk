@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openFile, press } from './helpers'
 
 const PROJECT = {
   'src/deeply/nested/target.ts': 'const found = 1\n',
@@ -26,9 +26,7 @@ test('the file picker opens a file by fuzzy path', async () => {
 test('go to line moves the cursor there', async () => {
   const dir = fixture(PROJECT)
   const t = await launch(dir)
-  await press(t, i => i.pressKey('o', { ctrl: true }))
-  await press(t, i => void i.typeText('notes'))
-  await press(t, i => i.pressEnter())
+  await openFile(t, 'notes')
 
   await press(t, i => i.pressKey('g', { ctrl: true }))
   await press(t, i => void i.typeText('4'))

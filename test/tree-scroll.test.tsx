@@ -31,14 +31,19 @@ const rowNames = (t: Harness) =>
     .slice(1, 19)
     .map(row => row.slice(0, 30))
 
+/** Wheel the tree down, flushing once at the end rather than per tick. */
+async function scrollDown(t: Harness, ticks: number) {
+  for (let n = 0; n < ticks; n++) await t.mockMouse.scroll(4, 8, 'down')
+  await settle(t)
+}
+
 describe('the sidebar only scrolls when the selection moves', () => {
   test('changing focus leaves a scrolled tree where it is', async () => {
     const t = await launch(manyFiles(300))
     await press(t, input => input.pressArrow('down')) // select f000
     await press(t, input => input.pressEnter()) // open it, focus the editor
 
-    for (let n = 0; n < 40; n++) await t.mockMouse.scroll(4, 8, 'down')
-    await settle(t)
+    await scrollDown(t, 40)
     const scrolled = topRow(t)
     expect(scrolled).not.toBe('· f000.ts')
 
@@ -58,8 +63,7 @@ describe('the sidebar only scrolls when the selection moves', () => {
     const t = await launch(manyFiles(300))
     await press(t, input => input.pressArrow('down')) // select f000
 
-    for (let n = 0; n < 40; n++) await t.mockMouse.scroll(4, 8, 'down')
-    await settle(t)
+    await scrollDown(t, 40)
     expect(topRow(t)).not.toBe('· f000.ts')
 
     // Navigating changes the selection, which is what earns a scroll.
@@ -73,12 +77,14 @@ describe('the sidebar only scrolls when the selection moves', () => {
     const t = await launch(dir)
     await press(t, input => input.pressArrow('down'))
 
-    for (let n = 0; n < 40; n++) await t.mockMouse.scroll(4, 8, 'down')
-    await settle(t)
+    await scrollDown(t, 40)
     const scrolled = topRow(t)
 
     // The watcher rebuilds the node list; the index of the selection is unchanged.
     writeFileSync(join(dir, 'touched.ts'), 'const touched = 1\n')
+    // A fixed wait, deliberately: the assertion is that nothing moved, so there
+    // is no arrival to poll for — the watcher's 80ms debounce has to be given
+    // its chance to fire and rebuild before the frame is worth reading.
     await settle(t, 400)
     expect(topRow(t)).toBe(scrolled)
   })

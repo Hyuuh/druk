@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { DEFAULTS } from '../src/core/config'
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { fixture, launch, openFile, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
 /** A repo with one committed file, one edit and one untracked file. */
@@ -26,10 +26,7 @@ function repo() {
 const bar = (t: Harness) => t.captureCharFrame().split('\n').at(-2) ?? ''
 
 async function openFirst(t: Harness, name: string) {
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText(name))
-  await press(t, input => input.pressEnter())
-  await settle(t)
+  await openFile(t, name)
 }
 
 describe('the status bar', () => {
@@ -83,14 +80,14 @@ describe('the status bar', () => {
 
     expect(row).not.toContain('⎇')
     expect(row).toContain('ts')
-    expect(row.trimStart().startsWith('Ctrl+P')).toBe(true)
+    expect(row.trimStart().startsWith('F1')).toBe(true)
   })
 })
 
 describe('the footer hints', () => {
   test('the tree advertises the palette and the key peek, nothing else', async () => {
     const row = bar(await launch(fixture({ 'a.ts': 'x\n' })))
-    expect(row).toContain('Ctrl+P commands')
+    expect(row).toContain('F1 commands')
     expect(row).toContain('Ctrl+K keys')
     expect(row).not.toContain('new file')
   })
@@ -100,7 +97,7 @@ describe('the footer hints', () => {
     await openFirst(t, 'a.ts')
     const row = bar(t)
 
-    expect(row).toContain('Ctrl+P commands')
+    expect(row).toContain('F1 commands')
     expect(row).toContain('Ctrl+K keys')
     expect(row).not.toContain('save')
     expect(row).not.toContain('find')
@@ -108,7 +105,7 @@ describe('the footer hints', () => {
 })
 
 describe('the hints are what gives way when space runs out', () => {
-  const countHints = (row: string) => (row.match(/Ctrl\+|Enter |↑↓/g) ?? []).length
+  const countHints = (row: string) => (row.match(/Ctrl\+|Enter |↑↓|F1 /g) ?? []).length
 
   test('a message takes precedence over them', async () => {
     // Narrow on purpose: at a full-width terminal every hint fits beside the
@@ -129,10 +126,10 @@ describe('the hints are what gives way when space runs out', () => {
 
   test('a narrower terminal shows fewer of them', async () => {
     const wide = bar(await launch(fixture({ 'a.ts': 'x\n' })))
-    const narrow = bar(await launch(fixture({ 'a.ts': 'x\n' }), {}, { width: 30 }))
+    const narrow = bar(await launch(fixture({ 'a.ts': 'x\n' }), {}, { width: 24 }))
 
     expect(countHints(narrow)).toBeLessThan(countHints(wide))
-    expect(narrow.length).toBeLessThanOrEqual(30)
+    expect(narrow.length).toBeLessThanOrEqual(24)
   })
 
   test('a very narrow one drops them all and keeps the file facts', async () => {

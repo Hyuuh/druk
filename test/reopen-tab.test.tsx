@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openFile, press } from './helpers'
 import type { Harness } from './helpers'
 
 // Ctrl+Opt+T: Opt sends an ESC prefix ahead of Ctrl+T (0x14).
@@ -13,9 +13,7 @@ const PROJECT = { 'a.ts': 'const a = 1\n', 'b.ts': 'const b = 2\n' }
 async function openBoth() {
   const t = await launch(fixture(PROJECT))
   for (const name of ['a.ts', 'b.ts']) {
-    await press(t, i => i.pressKey('o', { ctrl: true }))
-    await press(t, i => void i.typeText(name))
-    await press(t, i => i.pressEnter())
+    await openFile(t, name)
   }
   return t
 }
@@ -47,9 +45,7 @@ test('reopening twice walks back through the closed tabs', async () => {
 test('a closed tab whose file is gone is skipped with a message', async () => {
   const dir = fixture(PROJECT)
   const t = await launch(dir)
-  await press(t, i => i.pressKey('o', { ctrl: true }))
-  await press(t, i => void i.typeText('b.ts'))
-  await press(t, i => i.pressEnter())
+  await openFile(t, 'b.ts')
   await press(t, i => i.pressKey('w', { ctrl: true }))
 
   rmSync(join(dir, 'b.ts'))

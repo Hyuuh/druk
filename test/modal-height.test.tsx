@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openPalette, press } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = { 'src/alpha.ts': 'const a = 1\n', 'src/beta.ts': 'const b = 2\n' }
@@ -20,7 +20,7 @@ function frame(t: Harness) {
 describe('modal height', () => {
   test('the command palette holds its frame while filtering', async () => {
     const t = await launch(fixture(PROJECT), {}, { width: 100, height: 30 })
-    await press(t, input => input.pressKey('p', { ctrl: true }))
+    await openPalette(t)
 
     const before = frame(t)
     expect(before.top).toBeGreaterThanOrEqual(0)

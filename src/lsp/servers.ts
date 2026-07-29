@@ -5,7 +5,7 @@
  *
  * The `id` is the key the `lspServers` config setting overrides — a user points
  * it at another command (`{ "typescript": ["deno", "lsp"] }`) or disables the
- * server with an empty array.
+ * server with an empty array. The settings page toggles servers the same way.
  */
 export interface ServerSpec {
   id: string

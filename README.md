@@ -69,8 +69,10 @@ status bar with the branch, unsaved state and cursor position.
 - Opening a file from the tree previews it: the tab is *italic* and the next file you
   open takes its place. Double-click it, or start editing, and the tab stays for good.
 - `Ctrl+S` saves. Closing a tab with unsaved edits asks first.
-- `Ctrl+P` opens the command palette — every feature is in there, and typing filters it,
-  so you never have to remember a shortcut. `Ctrl+P` → `Keyboard shortcuts` shows them all.
+- `F1` (or `Ctrl+Shift+P` where the terminal can send it) opens the command palette —
+  every feature is in there, and typing filters it, so you never have to remember a
+  shortcut. `F1` → `Keyboard shortcuts` shows them all.
+- `Ctrl+P` opens any file in the project (fuzzy), as in VS Code.
 - `Ctrl+K` peeks: a strip over the status bar listing every key that works right now,
   gone again on the next keypress.
 
@@ -78,9 +80,9 @@ status bar with the branch, unsaved state and cursor position.
 
 | Key | Does |
 | --- | --- |
-| `Ctrl+P` | Command palette |
+| `F1` or `Ctrl+Opt+P` | Command palette |
+| `Ctrl+P` or `Ctrl+O` | Open any file in the project (fuzzy) |
 | `Ctrl+K` | Peek at every key for the pane you are in |
-| `Ctrl+O` | Open any file in the project (fuzzy) |
 | `Ctrl+T` | Switch between open tabs |
 | `Ctrl+S` | Save |
 | `Ctrl+F` | Find in this file (`Tab` adds replace) |
@@ -97,20 +99,22 @@ status bar with the branch, unsaved state and cursor position.
 | `Opt+Shift+↑` / `↓` | Duplicate line or selection |
 | `Ctrl+Opt+T` | Reopen closed tab |
 | `Ctrl+Opt+←` / `→` | Previous / next tab |
+| `Ctrl+Opt+G` | Source control panel (commit / push) |
 
 In the tree: `a` new file, `A` new folder, `r` rename, `d` delete, `x` cut, `c` copy,
 `p` paste here, `Shift+↑`/`↓` select several rows, `[` / `]` resize the sidebar.
 
 Two things worth knowing: `Ctrl+C` copies when text is selected and quits when nothing is,
-so it never throws away unsaved work. And there are no `Ctrl+Shift` shortcuts — most
-terminals cannot tell them apart from plain `Ctrl` — so a second modifier is always
-`Ctrl+Opt`.
+so it never throws away unsaved work. And most terminals cannot tell `Ctrl+Shift` apart
+from plain `Ctrl`, so a second modifier is spelled `Ctrl+Opt` — terminals with the kitty
+keyboard protocol take `Ctrl+Shift` too (`Ctrl+Shift+P` opens the palette there, as in
+VS Code).
 
 ### The Opt / Alt key
 
 druk names the key for your OS: `Opt` (Option, ⌥) on macOS, `Alt` everywhere else.
 Every shortcut works in a stock terminal — nothing to configure. The line commands are
-also in the palette (`Ctrl+P`). Some terminals (macOS Terminal.app among them) cannot
+also in the palette (`F1`). Some terminals (macOS Terminal.app among them) cannot
 send `Ctrl+/` at all — that is why *Toggle comment* also answers to `Ctrl+L`.
 
 ## Search
@@ -143,17 +147,29 @@ gone.
 
 ## Git
 
-Read-only, on purpose: druk shows what git says and never changes it. Changed lines are
-marked in the gutter and again beside the scrollbar, where the whole file's changes are
-visible at once — a mark there is somewhere to scroll to. Files in the tree carry `M` `A`
-`U` `D` marks, and the status bar shows the branch and how far it is from upstream —
-`⎇ main ↑2 ↓1 ~3` is two commits to push, one to pull, three changed files. Work you do in
-another terminal shows up without a restart.
+Changed lines are marked in the gutter and again beside the scrollbar, where the whole
+file's changes are visible at once — a mark there is somewhere to scroll to. Files in the
+tree carry `M` `A` `U` `D` marks, and the status bar shows the branch and how far it is
+from upstream — `⎇ main ↑2 ↓1 ~3` is two commits to push, one to pull, three changed
+files. Work you do in another terminal shows up without a restart.
+
+`Ctrl+Opt+G` swaps the sidebar for a small source-control panel, as in VS Code: the
+changed files under the branch name. `↑↓` walks the changes and the diff for the one
+under the cursor opens beside the panel — that is the way to read a diff, and the way
+to move between them. `Tab` steps into the page (`Tab` again lays it out side by side,
+`Esc` closes it), `c` commits (pick the files, type the message), `p` pushes, `b`
+switches branch, and `Esc` puts the file tree back. *Git → Diff current file* in the
+palette opens the panel on the file you are editing; commit, pull, fetch, stash,
+undo-commit and the branch commands live beside it.
 
 ## Settings
 
-Change things from the palette (`Ctrl+P`), or edit `~/.config/druk/config.json` directly.
-A bad value falls back to the default instead of breaking startup.
+Open the settings page from the palette (`F1` → `Settings`): one row per option,
+`←→` steps the value and `Enter` opens a filterable list of every value — the way
+to reach one of 26 themes without pressing an arrow 26 times. Every change applies
+immediately and persists. Or edit
+`~/.config/druk/config.json` directly — a bad value falls back to the default
+instead of breaking startup.
 
 | Setting | Default | |
 | --- | --- | --- |
@@ -162,7 +178,10 @@ A bad value falls back to the default instead of breaking startup.
 | `vim` | `false` | normal / insert / visual modes, `hjkl w b 0 $ gg G`, counts, `i a o`, `x dd dw cw`, `v` + `d y c`, `yy p P`, `u` / `Ctrl+R` |
 | `sidebarWidth` | `"auto"` | a quarter of the window, or pin 15–80 columns |
 | `trimOnSave` | `false` | on save: strip trailing spaces and end the file with one newline |
-| `autoSaveOnBlur` | `false` | save unsaved tabs when switching tabs or when the terminal window loses focus |
+| `autoSaveOnBlur` | `true` | save unsaved tabs when switching tabs or when the terminal window loses focus |
+| `showDotfiles` | `true` | set `false` to hide dotfiles in the file tree |
+| `respectGitignore` | `false` | set `true` to hide git-ignored files in the file tree |
+| `diffView` | `"inline"` | `inline` or `split` — how the diff view lays out changes |
 
 druk also remembers each project's open tabs, active file and expanded folders, and
 restores them the next time you open that directory.

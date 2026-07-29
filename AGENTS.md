@@ -10,13 +10,19 @@ A TUI code editor built on [OpenTUI](https://github.com/anomalyco/opentui) (Soli
 reconciler on a native Zig core). Shipped as a standalone binary — npm, Homebrew, a curl
 installer — and run as a CLI.
 
-Features: file tree with bulk file operations, preview/pinned tabs, tree-sitter syntax
+Features: file tree with bulk file operations and opt-in hiding of dotfiles and
+git-ignored files, preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide), command palette, themes, vim mode,
-git marks in tree/gutter/status bar plus palette commands for commit/undo/stash/push/
-fetch/pull, a diff view (inline or side-by-side, one file or every change), file watching
-with conflict prompts, per-project session restore, a startup update check, and LSP
-diagnostics from the user's own language servers (gutter marks, status-bar counts, a
-problems list in the palette).
+git marks in tree/gutter/status bar plus a source-control panel in the sidebar and
+palette commands for commit/undo/stash/push/fetch/pull and for branches
+(switch, create, create-from, merge, rename, delete), a diff view (inline or
+side-by-side) for whichever change the panel's cursor is on — the arrows page
+through them and the panel is the only way in, an image viewer (PNG/JPEG as half-block
+cells), a settings page (palette → Settings) that edits and persists every option
+live, with a filterable value list per option, LSP diagnostics from the user's own
+language servers (gutter marks, status-bar counts, a problems list in the palette;
+the settings page toggles LSP and each server), file watching with conflict prompts,
+per-project session restore, and a startup update check.
 
 ## Runtime and tooling
 
@@ -30,7 +36,7 @@ problems list in the palette).
 - **Say `bun run <script>`, not `bun <script>`.** `build` collides with Bun's own bundler
   subcommand, so `bun build` silently bundles nothing instead of running the script. This
   now includes `test`: bare `bun test` works, but the whole suite runs in one process and
-  takes four times as long — `--parallel` lives in the script and cannot be set from
+  takes twice as long — `--parallel` lives in the script and cannot be set from
   `bunfig.toml` (the key is accepted there and silently ignored).
 
 ```bash
@@ -42,7 +48,7 @@ bun run build            # compile a binary for this machine into dist/<target>/
 bun run build linux-x64  # …or for a named target, if its native package is installed
 bun run release          # package dist/ for npm + release archives (--publish to ship)
 bun run formula          # Homebrew formula for those archives (not published anywhere yet)
-bun run test             # unit + UI, one worker per core (~20s; 87s without --parallel)
+bun run test             # unit + UI, one worker per core (~45s; 107s without --parallel)
 bun test test/foo.tsx    # a single file, where the flag buys nothing
 bun run check-types      # tsc --noEmit
 bun run lint             # oxlint
@@ -60,12 +66,19 @@ writes to your real `~/.config/druk`.
 ## Shipping
 
 `bun run build` produces one executable; `bun run release` turns the executables in
-`dist/` into npm packages and release archives. Five things about that are easy to break:
+`dist/` into npm packages and release archives. Six things about that are easy to break:
 
 - **Assets must be static `with { type: 'file' }` imports.** Bun embeds only what it can
   see at build time, so a computed specifier or an `import.meta.resolve` call leaves the
   binary without that file. Every grammar and query goes through
   `src/languages/grammars.ts` for this reason.
+- **`index.tsx` must keep the app behind its dynamic import.** `core/assets.ts` stages
+  the native library to a per-build cache and points `OTUI_ASSET_ROOT` at it — worth
+  ~250ms of startup on macOS, which otherwise re-validates a freshly extracted dylib on
+  every launch. Bundled statically, Bun's scope hoisting runs `@opentui/core`'s
+  top-level code before the entry's own statements, so the env var would be set too
+  late; the dynamic import in `index.tsx` is what forces the order (and is also why
+  `druk --version` answers in milliseconds). Details in ARCHITECTURE.md.
 - **The binary must not autoload `bunfig.toml`.** druk is opened inside other people's
   projects, and a standalone Bun binary otherwise reads the `bunfig.toml` it finds there —
   whose `preload` fails to resolve and kills startup. `build.ts` turns that off.
@@ -117,12 +130,13 @@ dependency rule, and recipes for the extension points:
 
 | Want to add a… | Edit |
 | --- | --- |
-| language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts` |
-| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts` (users override per-server with the `lspServers` setting) |
+| language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
+| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts` (users override per-server with the `lspServers` setting; the settings page toggles them) |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
-| setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) |
+| setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) + a row in `src/app/settings.ts` (`rows`) so the settings page shows it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
-| keybinding | handler in `src/app/keyboard.ts` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay and Alt+/ peek) |
+| keybinding | handler in `src/app/keyboard.ts` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Alt+/ peek and the welcome screen) |
+| git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 
@@ -188,9 +202,10 @@ expect(t.captureCharFrame()).toContain('const a = 1')
 ```
 
 `test/helpers.tsx` has `fixture()` (temp project), `launch()` (renders `<App/>`, and takes
-a config and a terminal size), `press()`, `settle()`, `pressEscape()` and `runCommand()`.
+a config and a terminal size), `press()`, `pressTimes()`, `openFile()`, `settle()`,
+`until()`/`untilFrame()`/`untilGone()`, `pressEscape()` and `runCommand()`.
 Highlight helpers live in `test/syntax.ts` instead — `parseHighlights()` and
-`allSegments()` — so a unit test can use them without pulling in `<App/>`. Two rules the
+`allSegments()` — so a unit test can use them without pulling in `<App/>`. Four rules the
 harness exists to encode:
 
 - **Yield before capturing.** The reconciler flushes on a macrotask; a frame captured
@@ -198,6 +213,14 @@ harness exists to encode:
 - **Escape needs a gap.** Esc is the prefix of every arrow/function-key sequence, so the
   parser holds it until it knows nothing follows. Use `pressEscape()`, not
   `mockInput.pressEscape()`.
+- **One flush per assertion, not per key.** A flush that repaints the editor costs ~20ms,
+  so a loop of `await press(...)` is where a test's seconds go — and where the 5s budget
+  went when the suite ran loaded. Send the keys, then flush once: `pressTimes()` for a
+  repeated key, `openFile()` for the Ctrl+O dance. Only reach for a `press()` per key
+  when an intermediate frame is what the test asserts on.
+- **Poll for what you are waiting for.** `until()` renders until a condition holds, so a
+  watcher event or an async highlight costs what it actually takes. A fixed
+  `settle(t, 400)` is right only when the assertion is that *nothing* happened.
 
 `captureCharFrame()` returns text only — selection and focus are background colors, so
 assert on something textual (a prompt appearing, the status bar, file contents on disk).

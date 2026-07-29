@@ -18,10 +18,15 @@ import type { Highlighted, Segment } from '../languages/highlight'
 import type { ProblemSeverity } from '../lsp/protocol'
 import { ui } from '../themes'
 import type { ThemeName } from '../themes'
+import { Welcome } from './Welcome'
 
 export interface EditorPaneProps {
   path: string | null
   content: string
+  /** Shown on the welcome screen only, when no file is open. */
+  rootName: string
+  branch: string | null
+  version: string
   filetype?: string
   focused: boolean
   theme: ThemeName
@@ -895,19 +900,7 @@ export function EditorPane(props: EditorPaneProps) {
       <Show
         when={props.path != null}
         fallback={
-          <box
-            flexGrow={1}
-            flexDirection="column"
-            backgroundColor={ui.bg}
-            alignItems="center"
-            justifyContent="center"
-          >
-            <text fg={ui.dim} bg={ui.bg} content="druk" attributes={TextAttributes.BOLD} />
-            <text fg={ui.faint} bg={ui.bg} content="" />
-            <text fg={ui.faint} bg={ui.bg} content="Enter   open file from the tree" />
-            <text fg={ui.faint} bg={ui.bg} content="Ctrl+P  commands" />
-            <text fg={ui.faint} bg={ui.bg} content="Ctrl+F  find" />
-          </box>
+          <Welcome rootName={props.rootName} branch={props.branch} version={props.version} />
         }
       >
         {/* Drag capture lives on the wrapper, not the tracks: the pointer leaves a

@@ -1,6 +1,6 @@
 /**
  * Command registry — the catalogue of everything druk can do. This tree is the
- * command palette (Ctrl+P), so it doubles as the feature index.
+ * command palette (F1 / Ctrl+Shift+P), so it doubles as the feature index.
  *
  * A command either runs (`run`) or opens a submenu (`children`), never both.
  * Typing in the palette searches every leaf across all levels, so nesting keeps
@@ -47,17 +47,18 @@ export interface CommandActions {
   prevTab: () => void
   toggleFocus: () => void
   toggleSidebar: () => void
-  setVim: (enabled: boolean) => void
-  setTabSize: (size: number) => void
+  toggleGitView: () => void
   setTheme: (name: ThemeName) => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
-  toggleTrim: () => void
-  toggleAutoSave: () => void
+  openSettings: () => void
   problemsList: () => void
   problemsNext: () => void
   problemsPrev: () => void
   gitDiffFile: () => void
-  gitDiffAll: () => void
+  /** Not a command: the panel's cursor is what opens a diff, and this is it. */
+  showDiff: (path: string) => void
+  /** Not a command: `App` runs it when git or a buffer moves under an open diff. */
+  refreshDiff: () => void
   gitCommit: () => void
   gitUndoCommit: () => void
   gitPush: () => void
@@ -65,26 +66,27 @@ export interface CommandActions {
   gitPull: () => void
   gitStash: () => void
   gitStashPop: () => void
+  gitSwitchBranch: () => void
+  gitNewBranch: () => void
+  gitNewBranchFrom: () => void
+  gitMergeBranch: () => void
+  gitRenameBranch: () => void
+  gitDeleteBranch: () => void
+  gitDeleteBranchForce: () => void
   showHelp: () => void
   quit: () => void
 }
 
 export interface CommandContext {
-  vimEnabled: boolean
   activeTheme: ThemeName
-  tabSize: number
-  trimOnSave: boolean
-  autoSaveOnBlur: boolean
 }
-
-const TAB_SIZES = [2, 4, 8]
 
 /** Marks the entry matching the current setting, so submenus show state. */
 const check = (on: boolean) => (on ? '* ' : '  ')
 
 export function buildCommands(actions: CommandActions, ctx: CommandContext): Command[] {
   return [
-    { id: 'open', label: 'Open file…', hint: 'Ctrl+O', run: actions.openFile },
+    { id: 'open', label: 'Open file…', hint: 'Ctrl+P', run: actions.openFile },
     { id: 'save', label: 'Save file', hint: 'Ctrl+S', run: actions.save },
     { id: 'goto', label: 'Go to line…', hint: 'Ctrl+G', run: actions.gotoLine },
     { id: 'undo', label: 'Undo', hint: 'Ctrl+Z', run: actions.undo },
@@ -125,8 +127,9 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       id: 'git',
       label: 'Git',
       children: [
+        // The only way in: it opens the source-control panel on this file, which
+        // is where the cursor pages through every other change.
         { id: 'git.diffFile', label: 'Diff current file', run: actions.gitDiffFile },
-        { id: 'git.diffAll', label: 'Diff all changes', run: actions.gitDiffAll },
         { id: 'git.commit', label: 'Commit…', run: actions.gitCommit },
         { id: 'git.undo', label: 'Undo last commit', run: actions.gitUndoCommit },
         { id: 'git.push', label: 'Push', run: actions.gitPush },
@@ -134,6 +137,32 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         { id: 'git.pull', label: 'Pull (fast-forward only)', run: actions.gitPull },
         { id: 'git.stash', label: 'Stash changes', run: actions.gitStash },
         { id: 'git.stashPop', label: 'Stash pop', run: actions.gitStashPop },
+        {
+          id: 'git.branch',
+          label: 'Branch',
+          children: [
+            {
+              id: 'git.branch.switch',
+              label: 'Switch branch…',
+              hint: 'b in source control',
+              run: actions.gitSwitchBranch,
+            },
+            { id: 'git.branch.new', label: 'New branch…', run: actions.gitNewBranch },
+            { id: 'git.branch.newFrom', label: 'New branch from…', run: actions.gitNewBranchFrom },
+            {
+              id: 'git.branch.merge',
+              label: 'Merge branch into current…',
+              run: actions.gitMergeBranch,
+            },
+            { id: 'git.branch.rename', label: 'Rename branch…', run: actions.gitRenameBranch },
+            { id: 'git.branch.delete', label: 'Delete branch…', run: actions.gitDeleteBranch },
+            {
+              id: 'git.branch.deleteForce',
+              label: 'Delete branch (force)…',
+              run: actions.gitDeleteBranchForce,
+            },
+          ],
+        },
       ],
     },
     {
@@ -172,6 +201,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           label: 'Toggle sidebar',
           hint: 'Ctrl+B',
           run: actions.toggleSidebar,
+        },
+        {
+          id: 'view.git',
+          label: 'Source control (commit / push)',
+          hint: `Ctrl+${ALT}+G`,
+          run: actions.toggleGitView,
         },
         {
           id: 'view.focus',
@@ -220,37 +255,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           hint: `${ALT}+Shift+↓`,
           run: () => actions.lineOp('duplicate'),
         },
-        {
-          id: 'editor.vimOn',
-          label: `${check(ctx.vimEnabled)}Vim mode on`,
-          run: () => actions.setVim(true),
-        },
-        {
-          id: 'editor.vimOff',
-          label: `${check(!ctx.vimEnabled)}Vim mode off`,
-          run: () => actions.setVim(false),
-        },
-        {
-          id: 'editor.tabSize',
-          label: 'Tab size',
-          children: TAB_SIZES.map(size => ({
-            id: `editor.tabSize.${size}`,
-            label: `${check(ctx.tabSize === size)}${size} spaces`,
-            run: () => actions.setTabSize(size),
-          })),
-        },
-        {
-          id: 'editor.trim',
-          label: `${check(ctx.trimOnSave)}Trim trailing whitespace on save`,
-          run: actions.toggleTrim,
-        },
-        {
-          id: 'editor.autoSave',
-          label: `${check(ctx.autoSaveOnBlur)}Auto-save on tab switch and terminal blur`,
-          run: actions.toggleAutoSave,
-        },
       ],
     },
+    // Vim, tab size, trim, auto-save and the rest live on the settings page —
+    // the palette carries features, not configuration. Themes stay above for
+    // the arrow-through live preview.
+    { id: 'settings', label: 'Settings', run: actions.openSettings },
     { id: 'help', label: 'Keyboard shortcuts', run: actions.showHelp },
     { id: 'quit', label: 'Quit', hint: 'Ctrl+Q', run: actions.quit },
   ]

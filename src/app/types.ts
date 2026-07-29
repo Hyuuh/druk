@@ -32,6 +32,11 @@ export type Prompt =
   | { kind: 'quitDirty'; names: string[] }
   | { kind: 'commit'; paths: string[] }
   | { kind: 'undoCommit'; subject: string }
+  /** `from` is the branch to start at, or null for HEAD. */
+  | { kind: 'newBranch'; from: string | null }
+  | { kind: 'renameBranch'; from: string }
+  | { kind: 'deleteBranch'; name: string; force: boolean }
+  | { kind: 'mergeBranch'; name: string }
   | null
 
 export type PromptKind = NonNullable<Prompt>['kind']

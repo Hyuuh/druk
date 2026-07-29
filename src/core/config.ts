@@ -63,6 +63,10 @@ export interface Config {
   autoSaveOnBlur: boolean
   /** How the diff view renders: one column of +/- rows, or two side by side. */
   diffView: 'inline' | 'split'
+  /** Whether the tree lists dotfiles. The default tells the filesystem's truth. */
+  showDotfiles: boolean
+  /** Hide git-ignored files from the tree. Off by default for the same reason. */
+  respectGitignore: boolean
   /** Language servers: spawn one per language as matching files open. */
   lsp: boolean
   /**
@@ -79,8 +83,10 @@ export const DEFAULTS: Config = {
   sidebarWidth: 'auto',
   skipUpdate: '',
   trimOnSave: false,
-  autoSaveOnBlur: false,
+  autoSaveOnBlur: true,
   diffView: 'inline',
+  showDotfiles: true,
+  respectGitignore: false,
   lsp: true,
   lspServers: {},
 }
@@ -100,6 +106,9 @@ function parse(raw: unknown): Config {
       typeof obj.autoSaveOnBlur === 'boolean' ? obj.autoSaveOnBlur : DEFAULTS.autoSaveOnBlur,
     diffView:
       obj.diffView === 'split' || obj.diffView === 'inline' ? obj.diffView : DEFAULTS.diffView,
+    showDotfiles: typeof obj.showDotfiles === 'boolean' ? obj.showDotfiles : DEFAULTS.showDotfiles,
+    respectGitignore:
+      typeof obj.respectGitignore === 'boolean' ? obj.respectGitignore : DEFAULTS.respectGitignore,
     lsp: typeof obj.lsp === 'boolean' ? obj.lsp : DEFAULTS.lsp,
     lspServers: parseServers(obj.lspServers),
     sidebarWidth:

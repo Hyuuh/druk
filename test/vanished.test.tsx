@@ -2,16 +2,14 @@ import { describe, expect, test } from 'bun:test'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openFile, press, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = { 'a.ts': 'const a = 1\n', 'b.ts': 'const b = 2\n' }
 
 /** Open a file by name through the picker, so it becomes a permanent tab. */
 async function open(t: Harness, name: string) {
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText(name))
-  await press(t, input => input.pressEnter())
+  await openFile(t, name)
 }
 
 /** Let the watcher's 80ms debounce fire. */

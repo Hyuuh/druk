@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openPalette, press } from './helpers'
 
 async function openedFile(dir: string) {
   const t = await launch(dir)
@@ -46,7 +46,7 @@ describe('undo and redo', () => {
     await press(t, input => void input.typeText('typed'))
     expect(t.captureCharFrame()).toContain('typedstart')
 
-    await press(t, input => input.pressKey('p', { ctrl: true }))
+    await openPalette(t)
     await press(t, input => void input.typeText('Undo'))
     await press(t, input => input.pressEnter())
 

@@ -107,9 +107,11 @@ export function watchTree(root: string, onChange: (changed: Changed) => void): (
 /**
  * Directory entries, folders first then files, each alphabetical.
  *
- * Everything the directory holds, bar the VCS store: there is no show/hide setting,
- * because hiding a file the user can see in their shell is a worse answer than
- * showing it and refusing to open what cannot be displayed.
+ * Everything the directory holds, bar the VCS store: hiding a file the user can
+ * see in their shell is a worse answer than showing it and refusing to open what
+ * cannot be displayed. The opt-in dotfile/gitignore filters live in
+ * `flattenVisible`, so every direct caller (project search, the fuzzy picker)
+ * still sees the filesystem's truth.
  */
 export function listDir(dir: string, depth = 0): TreeNode[] {
   let entries: fs.Dirent[]
@@ -148,7 +150,12 @@ function realPath(path: string): string {
   }
 }
 
-export function flattenVisible(root: string, expanded: Set<string>): TreeNode[] {
+export function flattenVisible(
+  root: string,
+  expanded: Set<string>,
+  /** Rows to leave out. A hidden directory is also never descended into. */
+  hidden?: (node: TreeNode) => boolean,
+): TreeNode[] {
   const out: TreeNode[] = []
   // Real paths of the branch being walked. A symlink pointing at one of its own
   // ancestors is a cycle, and expanding into it would never come back.
@@ -158,6 +165,7 @@ export function flattenVisible(root: string, expanded: Set<string>): TreeNode[] 
     if (branch.has(real)) return
     branch.add(real)
     for (const node of listDir(dir, depth)) {
+      if (hidden?.(node)) continue
       out.push(node)
       if (node.isDir && expanded.has(node.path)) walk(node.path, depth + 1)
     }

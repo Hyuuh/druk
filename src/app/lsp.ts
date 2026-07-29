@@ -60,6 +60,10 @@ export function createLsp(deps: { rootDir: string; settings: Settings; status: S
     )
   }
 
+  const clearProblems = (path: string) => {
+    if (problems[path]?.length) setProblems(path, [])
+  }
+
   /** The running client for `path`'s language — spawned on first use. */
   const clientFor = (path: string): LspClient | null => {
     if (!settings.config.lsp) return null
@@ -80,12 +84,18 @@ export function createLsp(deps: { rootDir: string; settings: Settings; status: S
     return client
   }
 
+  /**
+   * Kill every server and forget the failure marks, so the next `clientFor`
+   * starts fresh. Serves both App teardown and the settings toggle: turning LSP
+   * back on respawns servers as files re-sync.
+   */
   const dispose = () => {
     for (const client of clients.values()) client?.dispose()
     clients.clear()
+    for (const path of Object.keys(problems)) clearProblems(path)
   }
 
-  return { problems, clientFor, dispose }
+  return { problems, clearProblems, clientFor, dispose }
 }
 
 export type Lsp = ReturnType<typeof createLsp>
@@ -96,8 +106,8 @@ export type Lsp = ReturnType<typeof createLsp>
  * the tracked run — only the didChange *send* is deferred, so a tab switch
  * during the debounce can never re-aim an edit at the wrong document.
  */
-export function wireLspEffects(deps: { lsp: Lsp; workspace: Workspace }) {
-  const { lsp, workspace } = deps
+export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: Workspace }) {
+  const { lsp, settings, workspace } = deps
 
   interface Synced {
     client: LspClient
@@ -124,6 +134,15 @@ export function wireLspEffects(deps: { lsp: Lsp; workspace: Workspace }) {
   }
 
   createEffect(() => {
+    if (!settings.config.lsp) {
+      // The toggle is a teardown, not a pause: servers die, marks clear, and the
+      // sync state empties so turning it back on re-opens every document.
+      pendingEdits.clear()
+      synced.clear()
+      lsp.dispose()
+      return
+    }
+
     const open = workspace.tabs()
     const openSet = new Set(open)
 
@@ -132,6 +151,9 @@ export function wireLspEffects(deps: { lsp: Lsp; workspace: Workspace }) {
       pendingEdits.delete(path)
       entry.client.closeDocument(path)
       synced.delete(path)
+      // Not every server publishes an empty set on didClose; without this a
+      // reopened file would show diagnostics from a buffer long gone.
+      lsp.clearProblems(path)
     }
 
     for (const path of open) {

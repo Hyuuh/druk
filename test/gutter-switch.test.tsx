@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openFile, settle } from './helpers'
 import type { Harness } from './helpers'
 
 /**
@@ -30,10 +30,7 @@ function expectNumbersMatchLines(t: Harness) {
 }
 
 async function open(t: Harness, name: string) {
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText(name))
-  await press(t, input => input.pressEnter())
-  await settle(t)
+  await openFile(t, name)
 }
 
 /** Every fifth line wraps, so the gutter has continuation rows to get wrong. */

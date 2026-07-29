@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openFile, press, until } from './helpers'
 import type { Harness } from './helpers'
 
 /**
@@ -35,12 +35,13 @@ function colors(t: Harness) {
   return seen
 }
 
+/** The highlight pass is async — wait for color to arrive, not for a duration. */
+const painted = (t: Harness) => until(t, () => colors(t).size > 2)
+
 async function openLock() {
   const t = await launch(fixture({ 'bun.lock': LOCKFILE }), {}, { width: 100, height: 24 })
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText('bun.lock'))
-  await press(t, input => input.pressEnter())
-  await settle(t, 400)
+  await openFile(t, 'bun.lock')
+  await painted(t)
   return t
 }
 
@@ -48,7 +49,7 @@ const gotoLine = async (t: Harness, line: number) => {
   await press(t, input => input.pressKey('g', { ctrl: true }))
   await press(t, input => void input.typeText(String(line)))
   await press(t, input => input.pressEnter())
-  await settle(t, 400)
+  await painted(t)
 }
 
 /**

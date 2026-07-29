@@ -3,14 +3,15 @@ import { dirname } from 'node:path'
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard } from '@opentui/solid'
 
+import type { CommandActions } from './commands'
 import type { AppContext } from './context'
 
 /** True for Ctrl+Opt+<key>, however this terminal spells the second modifier. */
 const chord = (key: KeyEvent) => key.shift || key.option || key.meta
 
 /** The global keymap: everything that fires before the focused pane sees the key. */
-export function installKeyboard(ctx: AppContext) {
-  const { settings, tree, panes, editor, workspace, fileOps, prompts, overlays } = ctx
+export function installKeyboard(ctx: AppContext, actions: CommandActions) {
+  const { settings, tree, panes, editor, workspace, fileOps, prompts, overlays, git } = ctx
   const { config } = settings
 
   useKeyboard((key: KeyEvent) => {
@@ -48,11 +49,19 @@ export function installKeyboard(ctx: AppContext) {
     // renderer's own selection covers mouse drags only. Either way it
     // routes through `quit()`, so a dirty buffer still gets its prompt.
     if (key.ctrl && k === 'c' && panes.focus() !== 'editor') return claim(prompts.quit)
-    if (key.ctrl && k === 'p') return claim(() => overlays.setPalette(true))
+    // VS Code's layout: Ctrl+P is the file picker, the palette sits on the
+    // Ctrl+Shift+P chord — which most terminals cannot send (see the chord note
+    // below), so F1, VS Code's other palette key, carries it everywhere.
+    if (key.ctrl && chord(key) && k === 'p') return claim(() => overlays.setPalette(true))
+    if (k === 'f1') return claim(() => overlays.setPalette(true))
+    if (key.ctrl && k === 'p') return claim(() => overlays.setPicker('files'))
     if (key.ctrl && k === 'o') return claim(() => overlays.setPicker('files'))
     if (key.ctrl && chord(key) && k === 't') return claim(workspace.reopenTab)
     // Ctrl+E is line-end in every terminal; keep the tab family on the arrows.
     if (key.ctrl && (k === 't' || k === 'up')) return claim(() => overlays.setPicker('tabs'))
+    // VS Code's Ctrl+Shift+G, in the spelling every terminal can send (see the
+    // project-search note below): show or hide the source-control panel.
+    if (key.ctrl && chord(key) && k === 'g') return claim(panes.toggleGitView)
     if (key.ctrl && k === 'g') return claim(() => prompts.setPrompt({ kind: 'gotoLine' }))
     if (key.ctrl && k === 's') return claim(workspace.saveActive)
     // Ctrl+Shift+<letter> is byte-identical to Ctrl+<letter> outside the kitty
@@ -71,7 +80,8 @@ export function installKeyboard(ctx: AppContext) {
     if (key.ctrl && k === 'f') return claim(() => overlays.setSearch({ scope: 'file' }))
     if (key.ctrl && k === 'w') {
       return claim(() => {
-        // The diff page is the frontmost "tab": close it before any file tab.
+        // A page is the frontmost "tab": close it before any file tab.
+        if (overlays.settingsPage()) return overlays.setSettingsPage(false)
         if (overlays.diff()) return overlays.setDiff(null)
         if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
       })
@@ -94,9 +104,10 @@ export function installKeyboard(ctx: AppContext) {
       // leaving now would mean EditorPane's vim handler is already unfocused when
       // it runs and never sees the key.
       const vimOwnsEscape = config.vim && editor.vimMode() !== 'normal'
-      // With the diff page up, Esc belongs to it (it closes the page) — moving
+      // With a page up, Esc belongs to it (it closes the page) — moving
       // focus to the tree here would take the key away before it ever arrives.
-      if (k === 'escape' && panes.sidebar() && !vimOwnsEscape && !overlays.diff()) {
+      const pageUp = overlays.diff() !== null || overlays.settingsPage()
+      if (k === 'escape' && panes.sidebar() && !vimOwnsEscape && !pageUp) {
         panes.focusTree()
       }
       return // everything else belongs to the textarea
@@ -109,12 +120,67 @@ export function installKeyboard(ctx: AppContext) {
     // Solid applies focus synchronously, so without this the key that opens a
     // file also reaches the freshly focused textarea.
     key.preventDefault()
-    const node = tree.selectedNode()
     const vimNav: Record<string, string> = { h: 'left', j: 'down', k: 'up', l: 'right' }
+
+    // The source-control panel borrows the tree's focus slot, so its keys replace
+    // the tree's while it shows — or `d` would still offer to delete files.
+    if (panes.view() === 'git') {
+      const files = git.changes()
+      const clamp = (row: number) => Math.max(0, Math.min(row, files.length - 1))
+      /** The cursor is the diff's pager: the page follows it, so moving here is
+       * the only way through the changes. */
+      const goTo = (row: number) => {
+        panes.setGitCursor(row)
+        const file = files[row]
+        if (file) actions.showDiff(file.path)
+      }
+      switch (config.vim ? (vimNav[k] ?? k) : k) {
+        case 'tab':
+          if (workspace.activePath() || overlays.diff()) panes.setFocus('editor')
+          break
+        case 'up':
+          goTo(clamp(panes.gitCursor() - 1))
+          break
+        case 'down':
+          goTo(clamp(panes.gitCursor() + 1))
+          break
+        case 'return':
+        case 'enter':
+          goTo(clamp(panes.gitCursor()))
+          break
+        case 'c':
+          actions.gitCommit()
+          break
+        case 'p':
+          actions.gitPush()
+          break
+        case 'b':
+          actions.gitSwitchBranch()
+          break
+        case '[':
+          settings.nudgeSidebar(-2)
+          break
+        case ']':
+          settings.nudgeSidebar(2)
+          break
+        case 'escape':
+          // A diff opened from this panel sits on top of it: Esc dismisses that
+          // first, or the panel would close and leave the page it opened behind,
+          // with no key here that closes it.
+          if (overlays.diff()) overlays.setDiff(null)
+          else panes.toggleGitView()
+          break
+      }
+      return
+    }
+
+    const node = tree.selectedNode()
     switch (config.vim ? (vimNav[k] ?? k) : k) {
       case 'tab':
-        // The diff page counts as an editor to hand focus to, file open or not.
-        if (workspace.activePath() || overlays.diff()) panes.setFocus('editor')
+        // A page counts as an editor to hand focus to, file open or not.
+        if (workspace.activePath() || overlays.diff() || overlays.settingsPage()) {
+          panes.setFocus('editor')
+        }
         break
       case 'up':
         if (key.shift) tree.extendSelection(-1)

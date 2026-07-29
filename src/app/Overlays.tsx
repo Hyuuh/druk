@@ -3,9 +3,11 @@ import { basename } from 'node:path'
 import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 
+import type { Branch } from '../core/git'
 import { replaceAll, replaceMatch } from '../core/search'
 import type { Match } from '../core/search'
 import type { UpdateInfo } from '../core/update'
+import { BranchPicker } from '../ui/BranchPicker'
 import { ChoiceModal } from '../ui/ChoiceModal'
 import { CommandPalette } from '../ui/CommandPalette'
 import { CommitModal } from '../ui/CommitModal'
@@ -19,6 +21,7 @@ import { PromptModal } from '../ui/PromptModal'
 import { SearchPanel } from '../ui/SearchPanel'
 import type { SearchScope } from '../ui/SearchPanel'
 import { UpdateBanner } from '../ui/UpdateBanner'
+import type { Branches } from './branches'
 import type { Command } from './commands'
 import type { AppContext } from './context'
 import type { EditorBridge } from './editor'
@@ -34,10 +37,11 @@ export function createOverlays(deps: {
   promptState: PromptState
   workspace: Workspace
   git: Git
+  branches: Branches
   panes: Panes
   editor: EditorBridge
 }) {
-  const { renderer, promptState, workspace, git, panes, editor } = deps
+  const { renderer, promptState, workspace, git, branches, panes, editor } = deps
 
   const [help, setHelp] = createSignal(false)
   /** The Opt+/ strip of every key alive in this pane; any next key closes it. */
@@ -47,8 +51,14 @@ export function createOverlays(deps: {
   /** Open search: its scope, and whether the replacement field starts showing. */
   const [search, setSearch] = createSignal<{ scope: SearchScope; replacing?: boolean } | null>(null)
   const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
-  /** Open diff view: the changed files it pages through and which one shows. */
-  const [diff, setDiff] = createSignal<{ files: DiffFile[]; index: number } | null>(null)
+  /**
+   * The file whose diff covers the editor slot, as its two texts read when the
+   * page was built. The source-control panel is the only thing that opens one:
+   * its cursor is the pager, so the page never holds more than the row it is on.
+   */
+  const [diff, setDiff] = createSignal<DiffFile | null>(null)
+  /** The settings page — covers the editor slot like the diff, not a modal. */
+  const [settingsPage, setSettingsPage] = createSignal(false)
   /** The problems list, jumping to a diagnostic on Enter. */
   const [problemsOpen, setProblemsOpen] = createSignal(false)
 
@@ -64,6 +74,7 @@ export function createOverlays(deps: {
         update() ||
         picker() ||
         git.commitPick() ||
+        branches.pick() ||
         problemsOpen()
       ),
   )
@@ -79,8 +90,9 @@ export function createOverlays(deps: {
 
   const jumpTo = (match: Match) => {
     setSearch(null)
-    // The diff page gives way to anything that lands in a file.
+    // A page gives way to anything that lands in a file.
     setDiff(null)
+    setSettingsPage(false)
     if (match.path && match.path !== workspace.activePath()) workspace.openFile(match.path)
     editor.requestGoto(match.line, match.col)
     panes.setFocus('editor')
@@ -101,6 +113,8 @@ export function createOverlays(deps: {
     setUpdate,
     diff,
     setDiff,
+    settingsPage,
+    setSettingsPage,
     problemsOpen,
     setProblemsOpen,
     overlay,
@@ -118,6 +132,9 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
   const { status, settings, panes, git, workspace, prompts, overlays, editor, lsp } = app
   const { say } = status
 
+  /** Rows before the cap; the last is capped so ChoiceModal never overflows. */
+  const PROBLEM_ROWS_MAX = 50
+
   /** Every open file's problems flattened for the list, in tab order. */
   const problemRows = createMemo(() => {
     const glyph = { error: '●', warning: '▲', info: '○', hint: '○' }
@@ -134,9 +151,20 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
         })
       }
     }
-    // ChoiceModal draws every row it is given; a pathological file could hold
-    // thousands, and the ones past the screen would push the modal apart.
-    return rows.slice(0, 50)
+    return rows
+  })
+
+  /** ChoiceModal draws every row it is given, so a pathological file is capped. */
+  const problemChoices = createMemo(() => {
+    const rows = problemRows()
+    const shown = rows.slice(0, PROBLEM_ROWS_MAX).map((row, at) => ({
+      id: String(at),
+      label: row.label,
+    }))
+    if (rows.length > PROBLEM_ROWS_MAX) {
+      shown.push({ id: 'more', label: `…and ${rows.length - PROBLEM_ROWS_MAX} more` })
+    }
+    return shown
   })
 
   // The list closes itself when the last problem is fixed while it is up —
@@ -220,6 +248,7 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             onPick={path => {
               overlays.setPicker(null)
               overlays.setDiff(null)
+              overlays.setSettingsPage(false)
               workspace.openFile(path)
             }}
             onClose={() => overlays.setPicker(null)}
@@ -241,16 +270,28 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
           />
         )}
       </Show>
+      <Show when={app.branches.pick()}>
+        {(open: () => { branches: Branch[] }) => (
+          <BranchPicker
+            title={app.branches.pickTitle()}
+            branches={open().branches}
+            onPick={app.branches.choose}
+            onClose={() => app.branches.setPick(null)}
+          />
+        )}
+      </Show>
       <Show when={overlays.problemsOpen()}>
         <ChoiceModal
           title="Problems"
           message="Enter jumps to the diagnostic."
-          choices={problemRows().map((row, at) => ({ id: String(at), label: row.label }))}
+          choices={problemChoices()}
           onPick={id => {
             const row = problemRows()[Number(id)]
             overlays.setProblemsOpen(false)
-            if (!row) return
+            // The "…and N more" row is a notice, not a destination.
+            if (!row || id === 'more') return
             overlays.setDiff(null)
+            overlays.setSettingsPage(false)
             if (row.path !== workspace.activePath()) workspace.openFile(row.path)
             editor.requestGoto(row.line, row.col)
             panes.setFocus('editor')
@@ -297,7 +338,7 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
         )}
       </Show>
       <Show when={overlays.peek()}>
-        <KeyPeek pane={panes.focus()} />
+        <KeyPeek pane={panes.keyPane()} />
       </Show>
       <Show when={overlays.help()}>
         <HelpOverlay />

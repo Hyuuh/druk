@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 import { DEFAULTS, SIDEBAR_MIN } from '../src/core/config'
 import { ui } from '../src/themes'
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openFile, press, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = { 'alpha.ts': 'const a = 1\n', 'beta.ts': 'const b = 2\n' }
@@ -131,9 +131,7 @@ describe('what must not move when the sidebar does', () => {
     for (let i = 0; i < 8; i++) files[`file-number-${i}.ts`] = `const a${i} = 1\n`
     const t = await launch(fixture(files))
     for (let i = 0; i < 5; i++) {
-      await press(t, input => input.pressKey('o', { ctrl: true }))
-      await press(t, input => void input.typeText(`file-number-${i}.ts`))
-      await press(t, input => input.pressEnter())
+      await openFile(t, `file-number-${i}.ts`)
     }
     await settle(t)
     const before = t.captureCharFrame().split('\n')[0]

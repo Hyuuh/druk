@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test'
 import { DEFAULTS } from '../src/core/config'
 import { getSyntaxStyle } from '../src/languages/highlight'
 import { THEMES } from '../src/themes'
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, press, pressTimes, runCommand } from './helpers'
 import { allSegments } from './syntax'
 
 const NESTED = 'function f() {\n  if (x) {\n    return 1\n  }\n}\n'
@@ -39,13 +39,23 @@ test('a tab indent is tinted by the renderer alone', async () => {
   expect(segs.filter(s => s.styleId === guide)).toEqual([])
 })
 
-test('tab size is configurable and shown in the palette', async () => {
+test('tab size is configurable and shown on the settings page', async () => {
   const t = await launch(fixture({ 'a.ts': NESTED }), { ...DEFAULTS, tabSize: 4 })
-  await press(t, i => i.pressKey('p', { ctrl: true }))
-  await press(t, i => void i.typeText('spaces'))
-  const frame = t.captureCharFrame()
-  expect(frame).toContain('2 spaces')
-  expect(frame).toContain('* 4 spaces') // marked as active
+  await runCommand(t, 'Settings')
+  const row = () =>
+    t
+      .captureCharFrame()
+      .split('\n')
+      .find(line => line.includes('Tab size'))!
+  expect(row().trimEnd().endsWith('4')).toBe(true)
+
+  for (let i = 0; i < 16 && !row().includes('▌'); i++) {
+    await press(t, input => input.pressArrow('down'))
+  }
+  await press(t, input => input.pressArrow('right'))
+  expect(row().trimEnd().endsWith('8')).toBe(true)
+  await press(t, input => input.pressArrow('left'))
+  expect(row().trimEnd().endsWith('4')).toBe(true)
 })
 
 test('tab indents keep drawing guides after the view scrolls', async () => {
@@ -58,7 +68,7 @@ test('tab indents keep drawing guides after the view scrolls', async () => {
   const dir = fixture({ 'a.tsx': content })
   const t = await launch(dir, {}, {}, { openFile: `${dir}/a.tsx` })
 
-  for (let i = 0; i < 45; i++) await press(t, input => input.pressArrow('down'))
+  await pressTimes(t, 45, input => input.pressArrow('down'))
 
   const frame = t.captureCharFrame()
   expect(frame).toContain('█ █ <marker/>')

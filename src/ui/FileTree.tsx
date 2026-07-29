@@ -16,6 +16,8 @@ export interface FileTreeProps {
   width: number
   /** Working-tree status per absolute path. */
   gitStatus: Map<string, FileStatus>
+  /** Paths `.gitignore` excludes — drawn dim when they have no status mark. */
+  gitIgnored: Set<string>
   /** Taken with `x` and waiting for a destination; drawn as in flight. */
   cutPaths: string[]
   /** Picked out with Shift+↑/↓, and what delete and move act on. */
@@ -186,6 +188,11 @@ export function FileTree(props: FileTreeProps) {
       flexDirection="column"
       backgroundColor={ui.panelBg}
       flexShrink={0}
+      flexGrow={1}
+      // The tree fills what the sidebar's tab strip leaves. `flexBasis` must be 0:
+      // with the default `auto` the box starts at its content's height, the
+      // scrollbox below grows past the screen and its scrollbar never appears.
+      flexBasis={0}
       onMouseDown={() => props.onFocus()}
     >
       <box height={2} flexDirection="column" backgroundColor={ui.panelBg} paddingLeft={2}>
@@ -221,14 +228,20 @@ export function FileTree(props: FileTreeProps) {
             const leaving = () => props.cutPaths.includes(node.path)
             const arrow = () => (node.isDir ? (props.expanded.has(node.path) ? '▾' : '▸') : '·')
             const status = () => statusOf(node)
+            const ignored = () => props.gitIgnored.has(node.path)
+            // Cut → status → ignored → ordinary. A status mark is more useful than
+            // "this is ignored", and ignored still beats the default folder/text so
+            // node_modules does not shout next to source.
             const nameColor = () =>
               leaving()
                 ? ui.faint
                 : status()
                   ? statusColor(status()!)
-                  : node.isDir
-                    ? ui.folder
-                    : ui.text
+                  : ignored()
+                    ? ui.dim
+                    : node.isDir
+                      ? ui.folder
+                      : ui.text
             return (
               <box
                 height={1}
@@ -260,7 +273,7 @@ export function FileTree(props: FileTreeProps) {
                     fg={nameColor()}
                     bg={bg()}
                     content={node.name}
-                    attributes={node.isDir ? TextAttributes.BOLD : undefined}
+                    attributes={node.isDir && !ignored() ? TextAttributes.BOLD : undefined}
                   />
                   {/* Beside the name, not in the mark column: a symlink is a
                       property of the entry, and the marks there are git's. */}

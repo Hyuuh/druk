@@ -10,6 +10,7 @@ const SAMPLES: Record<string, string> = {
   rust: 'fn main() {\n    let x: i32 = 1; // c\n}\n',
   go: 'package main\n// c\nfunc main() { return }\n',
   typescriptreact: '// c\nconst A = () => <div className="a">{1}</div>\n',
+  tsrx: '// c\nexport function A() @{\n\t@if (ok) {\n\t\t<p>{x as string}</p>\n\t}\n}\n',
   vue: '<template>\n  <!-- c -->\n  <div class="a">x</div>\n</template>\n',
   css: '.a { color: #fff; }\n/* c */\n',
   scss: '/* c */\n$brand: #f00;\n.a { color: $brand; &:hover { top: 1px } }\n',
@@ -98,6 +99,25 @@ describe('abandoning a highlight that arrived too late', () => {
 
   test('a caller that asks nothing can never be handed STALE', async () => {
     expect(await computeHighlights(SOURCE, 'typescript', 2)).not.toBe(STALE)
+  })
+})
+
+describe('reusing a parse across tab switches', () => {
+  test('the same text comes back as the same parse, not a new one', async () => {
+    const source = 'const beta = 2 // note\n'
+    const first = await computeHighlights(source, 'typescript', 2)
+    const again = await computeHighlights(source, 'typescript', 2)
+    expect(first).not.toBe(STALE)
+    // Identity, not equality: a re-parse would produce an equal object and
+    // still mean the worker round-trip was paid again.
+    expect(again).toBe(first)
+  })
+
+  test('a different tab size is not the same parse', async () => {
+    const source = 'if (a) {\n    b()\n}\n'
+    const two = await computeHighlights(source, 'typescript', 2)
+    const four = await computeHighlights(source, 'typescript', 4)
+    expect(four).not.toBe(two)
   })
 })
 

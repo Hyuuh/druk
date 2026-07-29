@@ -16,8 +16,14 @@ export type FileStatus = 'untracked' | 'added' | 'modified' | 'deleted'
  */
 const MAX_OUTPUT = 128 * 1024 * 1024
 
-function git(cwd: string, args: string[], timeout = 5000) {
-  return spawnSync('git', args, { cwd, encoding: 'utf8', timeout, maxBuffer: MAX_OUTPUT })
+function git(cwd: string, args: string[], timeout = 5000, input?: string) {
+  return spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    timeout,
+    maxBuffer: MAX_OUTPUT,
+    input,
+  })
 }
 
 /**
@@ -60,6 +66,58 @@ export function currentBranch(cwd: string): string | null {
   if (run.status !== 0) return null
   const branch = run.stdout.trim()
   return branch.length > 0 && branch !== 'HEAD' ? branch : null
+}
+
+export interface Branch {
+  /** `main` for a local branch, `origin/main` for a remote-tracking one. */
+  name: string
+  remote: boolean
+  current: boolean
+  /** Where this local branch pushes and pulls, e.g. `origin/main`. */
+  upstream: string | null
+}
+
+/**
+ * The local name a remote-tracking branch checks out as: `origin/feat` → `feat`.
+ * Both the checkout and the message that reports it derive it the same way, so a
+ * remote whose name contains a slash cannot make the two disagree.
+ */
+export function localBranchName(name: string): string {
+  return name.slice(name.indexOf('/') + 1)
+}
+
+/**
+ * Every branch, most recently committed to first — the order a picker wants,
+ * since the branch you are looking for is nearly always one you touched today.
+ * Empty outside a repository.
+ */
+export function listBranches(cwd: string): Branch[] {
+  // Tab-separated: every field is a ref name or a single character, none of
+  // which can contain a tab.
+  const format = ['%(refname)', '%(refname:short)', '%(HEAD)', '%(upstream:short)']
+  const run = git(cwd, [
+    'for-each-ref',
+    '--sort=-committerdate',
+    `--format=${format.join('\t')}`,
+    'refs/heads',
+    'refs/remotes',
+  ])
+  if (run.status !== 0 || !run.stdout) return []
+
+  const branches: Branch[] = []
+  for (const line of run.stdout.split('\n')) {
+    const [ref, name, head, upstream] = line.split('\t')
+    if (!ref || !name) continue
+    // `origin/HEAD` is the remote's default-branch pointer, not a branch of its own.
+    if (name.endsWith('/HEAD')) continue
+    branches.push({
+      name,
+      remote: ref.startsWith('refs/remotes/'),
+      current: head === '*',
+      upstream: upstream || null,
+    })
+  }
+  return branches
 }
 
 const STATUS_BY_CODE: Record<string, FileStatus> = {
@@ -118,6 +176,36 @@ export function statusMap(cwd: string): Map<string, FileStatus> {
     if (status) statuses.set(join(base, entry.slice(3)), status)
   }
   return statuses
+}
+
+/**
+ * Which of `paths` gitignore would skip. Empty outside a repository.
+ *
+ * The companion to `ignoredPaths`, and not a duplicate of it: that one answers
+ * "what may the tree hide", which needs no key for anything inside a collapsed
+ * directory. This one answers "what does the tree draw dim", which is asked about
+ * rows that are on screen *because* nothing is hidden — including the children of
+ * an expanded `node_modules`, which `--directory` deliberately never enumerates.
+ * Asking per visible path bounds the work by the sidebar's height either way.
+ *
+ * Paths come back in the same spelling they went in: we feed absolute tree paths
+ * on stdin and get those absolutes out, so there is no `keyBase` remapping the
+ * way `statusMap` needs for porcelain's repo-relative names — and no `keyBase`
+ * call either, which would double the subprocesses this costs per refresh.
+ */
+export function ignoredAmong(cwd: string, paths: string[]): Set<string> {
+  const ignored = new Set<string>()
+  if (paths.length === 0) return ignored
+
+  // `-z` + `--stdin`: one NUL-terminated path each way. Exit 1 means none of the
+  // paths are ignored, and 128 means there is no repository here — both are an
+  // empty set rather than a failure, so only 0 has output worth reading.
+  const run = git(cwd, ['check-ignore', '--stdin', '-z'], 5000, `${paths.join('\0')}\0`)
+  if (run.status !== 0) return ignored
+  for (const path of run.stdout.split('\0')) {
+    if (path.length > 0) ignored.add(path)
+  }
+  return ignored
 }
 
 /**
@@ -180,6 +268,39 @@ export function stagedPaths(cwd: string): Set<string> {
   return staged
 }
 
+/**
+ * Absolute paths of git-ignored entries, keyed like `statusMap`. Empty outside a
+ * repository — with no `.gitignore` semantics to apply, nothing is ignored.
+ *
+ * `--directory` collapses a fully-ignored directory to one entry instead of
+ * enumerating everything inside it — the difference between one line for
+ * `node_modules` and a hundred thousand. The tree matches these keys exactly:
+ * it hides an ignored directory at its top and never descends, so the collapsed
+ * entry is the only key it ever asks about. Dimming cannot use these keys for
+ * exactly that reason — see `ignoredAmong`.
+ */
+export function ignoredPaths(cwd: string): Set<string> {
+  const ignored = new Set<string>()
+  const base = keyBase(cwd)
+  if (base === null) return ignored
+  // `-z` for the same reason as `statusMap`: quoted paths would never match its keys.
+  const run = git(cwd, [
+    'ls-files',
+    '--others',
+    '--ignored',
+    '--exclude-standard',
+    '--directory',
+    '-z',
+  ])
+  if (run.status !== 0) return ignored
+  for (const rel of run.stdout.split('\0')) {
+    if (rel.length === 0) continue
+    // A collapsed directory keeps git's trailing separator; the tree's paths have none.
+    ignored.add(join(base, rel.endsWith('/') ? rel.slice(0, -1) : rel))
+  }
+  return ignored
+}
+
 /** Subject of HEAD, or null with no commits yet — what "undo last commit" names. */
 export function lastCommitSubject(cwd: string): string | null {
   const run = git(cwd, ['log', '-1', '--format=%s'], 3000)
@@ -197,13 +318,129 @@ export interface GitResult {
 /** Long enough for a slow push; nothing druk runs should legitimately outlast it. */
 const MUTATE_TIMEOUT = 60_000
 
+function lines(text: string): string[] {
+  return text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+}
+
 function firstLine(text: string): string {
-  return (
-    text
-      .split('\n')
-      .map(line => line.trim())
-      .find(line => line.length > 0) ?? ''
-  )
+  return lines(text)[0] ?? ''
+}
+
+/** Advice and progress chatter git emits around the one line that says what broke. */
+const NOISE = /^(?:hint|warning|note):|^To\s|^remote:\s*$/i
+
+/**
+ * What the status bar shows when git fails. Git puts its advice *before* the
+ * cause, so the first line is usually the wrong one: a rejected pull opens with
+ * a dozen `hint:` lines and only ends with the `fatal:` that names the problem.
+ * Prefer that line, fall back to whatever survives the noise filter, and strip
+ * the severity prefix — the bar already colours the message as an error.
+ */
+export function failureLine(text: string): string {
+  const all = lines(text)
+  const signal = all.filter(line => !NOISE.test(line))
+  const chosen = signal.find(line => line.startsWith('fatal:')) ?? signal[0] ?? all[0] ?? ''
+  return chosen.replace(/^(?:fatal|error):\s*/, '')
+}
+
+/**
+ * Failures worth naming, in the terms of what to do next. Git's own wording
+ * assumes a shell where the fix is one command away, and druk runs a fixed set
+ * of commands with no shell to offer — so each of these says what happened and
+ * where the fix lives, pointing at druk's own commands where it has one.
+ *
+ * Matched against git's whole output, not the chosen line: the reason and the
+ * command that failed routinely sit on different lines. First match wins, so
+ * the specific patterns have to stay above the general ones — "Authentication
+ * failed" would otherwise swallow the missing-credentials case below it.
+ */
+export const KNOWN: ReadonlyArray<readonly [RegExp, string]> = [
+  // druk pulls with --ff-only; a real merge needs an editor and a conflict UI.
+  [
+    /Not possible to fast-forward|Need to specify how to reconcile/i,
+    'Branch and origin have both moved on — merge or rebase in a terminal',
+  ],
+  [
+    /\[rejected\].*(?:non-fast-forward|fetch first)/i,
+    "origin has commits you don't — pull first, then push",
+  ],
+  [
+    /local changes to the following files would be overwritten/i,
+    'Commit or stash your changes first — this would overwrite them',
+  ],
+  // Above the general conflict row, and matching both halves of the output: a
+  // stash pop that conflicts keeps the entry, and saying so is the difference
+  // between a scare and a fact. A conflict with no stash line is a merge.
+  [
+    /(?:^CONFLICT|Merge conflict in)[\s\S]*stash entry is kept/im,
+    'Conflicts in the working tree — the stash was kept, resolve them first',
+  ],
+  [
+    /^CONFLICT|Merge conflict in/im,
+    'Conflicts in the working tree — resolve them, then commit the merge',
+  ],
+  [
+    /unmerged files|needs merge|unresolved conflict/i,
+    'Resolve the merge conflicts in your working tree first',
+  ],
+  [/nothing to commit|no changes added to commit/i, 'Nothing to commit'],
+  [/branch named '.*' already exists/i, 'A branch of that name already exists'],
+  // Short on purpose: the status bar is one line wide, and a longer sentence is
+  // cut off exactly where it would have said what to do instead.
+  [/is not fully merged/i, 'Branch has unmerged commits — a force delete discards them'],
+  [
+    /Cannot delete branch .* checked out/i,
+    'That is the branch you are on — switch to another one first',
+  ],
+  [/is not a valid branch name/i, 'Not a valid branch name'],
+  // Undo is `reset --soft HEAD~1`, so a root commit has nothing to reset to.
+  [/ambiguous argument 'HEAD~1'/i, 'Nothing to undo — this is the only commit'],
+  [/No stash entries found/i, 'No stash to pop'],
+  [
+    /No configured push destination|does not appear to be a git repository/i,
+    "No remote — add an 'origin' in a terminal",
+  ],
+  [
+    /Could not resolve host|unable to access.*(?:Couldn't connect|Connection refused|Operation timed out)/i,
+    "Can't reach the remote — check your network",
+  ],
+  // Ours: GIT_TERMINAL_PROMPT=0 turns git's credential prompt into this.
+  [
+    /terminal prompts disabled|could not read (?:Username|Password)/i,
+    "No stored credentials for the remote — druk can't prompt for them",
+  ],
+  [/Permission denied \(publickey\)/i, 'The remote rejected your SSH key'],
+  [
+    /Authentication failed|Invalid username or password|Access denied/i,
+    'Authentication failed — check your credentials for the remote',
+  ],
+  [
+    /(?:repository|Repository) .*not found|remote: Not Found/i,
+    "Remote repository not found — check the 'origin' URL",
+  ],
+  [
+    /index\.lock.*File exists|Another git process seems to be running/i,
+    'Another git process is running in this repository — let it finish',
+  ],
+]
+
+/**
+ * A known failure named in druk's terms, or git's own most useful line.
+ *
+ * Both streams are matched, because git routinely splits one failure across the
+ * two: a stash pop onto an unmerged index puts `error: could not write index` on
+ * stderr and the `f.txt: needs merge` that actually explains it on stdout. Only
+ * the fallback keeps to one stream, where stderr is the better guess.
+ */
+export function explain(stderr: string, stdout = ''): string {
+  const both = `${stderr}\n${stdout}`
+  for (const [pattern, message] of KNOWN) {
+    if (pattern.test(both)) return message
+  }
+  return failureLine(stderr || stdout)
 }
 
 function mutate(cwd: string, args: string[]): Promise<GitResult> {
@@ -220,7 +457,11 @@ function mutate(cwd: string, args: string[]): Promise<GitResult> {
     let stderr = ''
     child.stdout.on('data', chunk => (stdout += chunk))
     child.stderr.on('data', chunk => (stderr += chunk))
-    const timer = setTimeout(() => child.kill('SIGKILL'), MUTATE_TIMEOUT)
+    let killed = false
+    const timer = setTimeout(() => {
+      killed = true
+      child.kill('SIGKILL')
+    }, MUTATE_TIMEOUT)
     // 'error' (spawn failure) and 'close' can both fire; the first one answers.
     let settled = false
     const finish = (result: GitResult) => {
@@ -229,12 +470,27 @@ function mutate(cwd: string, args: string[]): Promise<GitResult> {
       clearTimeout(timer)
       resolve(result)
     }
-    child.on('error', err => finish({ ok: false, detail: err.message }))
+    child.on('error', err =>
+      finish({
+        ok: false,
+        detail:
+          // The one failure with no git output to explain: there is no git.
+          'code' in err && err.code === 'ENOENT'
+            ? 'git is not installed, or not on PATH'
+            : err.message,
+      }),
+    )
     child.on('close', code => {
       // Success chatter (push progress, fetch summaries) arrives on stderr too,
       // so on failure stderr is the answer and on success either will do.
       const ok = code === 0
-      finish({ ok, detail: firstLine(ok ? stdout || stderr : stderr || stdout) })
+      if (ok) return finish({ ok, detail: firstLine(stdout || stderr) })
+      // A killed process leaves whatever it had already written, which for a
+      // hung fetch is nothing at all — say why it stopped instead of going blank.
+      const detail = killed
+        ? `Timed out after ${MUTATE_TIMEOUT / 1000}s and was stopped`
+        : explain(stderr, stdout)
+      finish({ ok, detail })
     })
   })
 }
@@ -276,4 +532,37 @@ export function fetchRemote(cwd: string): Promise<GitResult> {
 export function pull(cwd: string): Promise<GitResult> {
   // --ff-only: a real merge wants an editor and a conflict UI druk does not have.
   return mutate(cwd, ['pull', '--ff-only'])
+}
+
+/** Create `name` off `from` (HEAD when null) and switch to it. */
+export function createBranch(cwd: string, name: string, from: string | null): Promise<GitResult> {
+  return mutate(cwd, from ? ['checkout', '-b', name, from] : ['checkout', '-b', name])
+}
+
+/**
+ * Switch to `name`. A remote-tracking ref is not something to be on — checking
+ * one out directly only detaches HEAD — so the first switch to `origin/x`
+ * creates the local `x` that tracks it, and later ones move to that branch.
+ */
+export function switchBranch(cwd: string, name: string, remote: boolean): Promise<GitResult> {
+  if (!remote) return mutate(cwd, ['checkout', name])
+  const local = localBranchName(name)
+  const exists = git(cwd, ['rev-parse', '--verify', '--quiet', `refs/heads/${local}`], 3000)
+  return exists.status === 0
+    ? mutate(cwd, ['checkout', local])
+    : mutate(cwd, ['checkout', '-b', local, '--track', name])
+}
+
+export function renameBranch(cwd: string, from: string, to: string): Promise<GitResult> {
+  return mutate(cwd, ['branch', '-m', from, to])
+}
+
+/** Delete a local branch. Without `force`, git refuses one that is not merged. */
+export function deleteBranch(cwd: string, name: string, force: boolean): Promise<GitResult> {
+  return mutate(cwd, ['branch', force ? '-D' : '-d', name])
+}
+
+export function mergeBranch(cwd: string, name: string): Promise<GitResult> {
+  // --no-edit: a merge commit otherwise opens an editor druk cannot show.
+  return mutate(cwd, ['merge', '--no-edit', name])
 }

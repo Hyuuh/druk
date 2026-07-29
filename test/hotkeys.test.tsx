@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { ROWS } from '../src/ui/keys'
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { F1, fixture, launch, openFile, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const ESC = String.fromCharCode(27)
@@ -14,9 +14,7 @@ async function tree() {
 }
 async function opened() {
   const t = await tree()
-  await press(t, i => i.pressKey('o', { ctrl: true }))
-  await press(t, i => void i.typeText('a.ts'))
-  await press(t, i => i.pressEnter())
+  await openFile(t, 'a.ts')
   return t
 }
 const frame = (t: Harness) => t.captureCharFrame()
@@ -31,8 +29,17 @@ test('every advertised hotkey does something', async () => {
   const check = (name: string, ok: boolean) => report.push(`${ok ? 'ok  ' : 'DEAD'}  ${name}`)
 
   let t = await tree()
+  await press(t, i => void i.pressKeys([F1]))
+  check('F1 palette', frame(t).includes('Commands'))
+
+  // Ctrl+Opt+P: Opt sends an ESC prefix ahead of Ctrl+P (0x10).
+  t = await tree()
+  await press(t, i => void i.pressKeys([`${ESC}${String.fromCharCode(16)}`]))
+  check('Ctrl+Opt+P palette', frame(t).includes('Commands'))
+
+  t = await tree()
   await press(t, i => i.pressKey('p', { ctrl: true }))
-  check('Ctrl+P palette', frame(t).includes('Commands'))
+  check('Ctrl+P file picker', frame(t).includes('Open file'))
 
   t = await tree()
   await press(t, i => i.pressKey('o', { ctrl: true }))
@@ -62,6 +69,11 @@ test('every advertised hotkey does something', async () => {
   t = await opened()
   await press(t, i => i.pressKey('t', { ctrl: true }))
   check('Ctrl+T switch tab', frame(t).includes('Switch tab'))
+
+  // Ctrl+Opt+G: ESC prefix ahead of Ctrl+G (0x07).
+  t = await tree()
+  await press(t, i => void i.pressKeys([`${ESC}${String.fromCharCode(7)}`]))
+  check('Ctrl+Opt+G source control', frame(t).includes('source control'))
 
   t = await tree()
   await press(t, i => i.pressKey('b', { ctrl: true }))
@@ -120,10 +132,7 @@ test('every advertised hotkey does something', async () => {
   // Ctrl+X should remove it.
   const dirCut = fixture(PROJECT)
   t = await launch(dirCut)
-  await press(t, i => i.pressKey('o', { ctrl: true }))
-  await press(t, i => void i.typeText('a.ts'))
-  await press(t, i => i.pressEnter())
-  await settle(t)
+  await openFile(t, 'a.ts')
   const alphaAt = frame(t).split('\n')[1]!.indexOf('alpha')
   await t.mockMouse.drag(alphaAt, 1, alphaAt + 5, 1)
   await t.mockMouse.release(alphaAt + 5, 1)
