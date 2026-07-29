@@ -16,6 +16,8 @@ function rowOf(label: string): number {
     tabSize: 2,
     trimOnSave: false,
     autoSaveOnBlur: false,
+    showDotfiles: true,
+    respectGitignore: false,
   })
   return tree.findIndex(command => command.label === label)
 }

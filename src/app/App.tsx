@@ -27,7 +27,7 @@ import { createPanes } from './panes'
 import { createPromptHandlers, createPromptState } from './prompts'
 import { createSettings } from './settings'
 import { createStatus, READY } from './status'
-import { createTree } from './tree'
+import { createTree, hiddenNodes } from './tree'
 import { CLASH_CHANGED, CLASH_DELETED, createWorkspace, restoreWorkspace } from './workspace'
 
 /** Rows the divider's grip occupies — long enough to aim at, short enough to be a grip. */
@@ -61,7 +61,11 @@ export function App(props: {
   const status = createStatus()
   const editor = createEditorBridge(props.initialConfig.vim)
   const settings = createSettings({ initial: props.initialConfig, status, editor, dimensions })
-  const tree = createTree(rootDir, { expanded: restored.expanded, selected: restored.activePath })
+  const tree = createTree(
+    rootDir,
+    { expanded: restored.expanded, selected: restored.activePath },
+    () => hiddenNodes(rootDir, settings.config),
+  )
   const panes = createPanes(tree, restored.sidebar)
   const git = createGit(rootDir)
   const promptState = createPromptState()

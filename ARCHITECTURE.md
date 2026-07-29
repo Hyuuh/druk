@@ -288,7 +288,12 @@ vim mode).
   "never written back" structural rather than a check someone has to remember. The single
   exception to listing everything is `VCS_DIRS`: a `.git` store is not project content and
   would swamp the tree, the fuzzy picker and project search. Ordinary dotfiles are not in
-  that class and must stay visible.
+  that class and stay visible by default. The opt-in `showDotfiles`/`respectGitignore`
+  settings filter *tree rows only*, as a predicate `App` hands to `createTree` — the
+  filter lives in `flattenVisible`, above `listDir`, so the picker, project search and
+  the watcher still see every file, and an ignored directory is pruned at its top row
+  (never descended into), which is why `ignoredPaths` can match git's collapsed
+  `--directory` output by exact path.
 - **git is read-only.** `core/git.ts` runs queries and nothing else: `diff` for the gutter
   marks, `status` for the tree marks, `rev-parse`/`rev-list` for the branch and
   ahead/behind. There is no commit, push, stash, checkout or discard, and adding one would

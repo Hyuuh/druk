@@ -101,6 +101,8 @@ export function createCommands(ctx: AppContext) {
     lineOp: editor.requestLineOp,
     toggleTrim: settings.toggleTrim,
     toggleAutoSave: settings.toggleAutoSave,
+    toggleDotfiles: settings.toggleDotfiles,
+    toggleGitignored: settings.toggleGitignored,
     gitDiffFile: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
       const path = workspace.activePath()
@@ -171,6 +173,8 @@ export function createCommands(ctx: AppContext) {
       tabSize: config.tabSize,
       trimOnSave: config.trimOnSave,
       autoSaveOnBlur: config.autoSaveOnBlur,
+      showDotfiles: config.showDotfiles,
+      respectGitignore: config.respectGitignore,
     }),
   )
 }

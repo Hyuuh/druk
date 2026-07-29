@@ -163,6 +163,8 @@ A bad value falls back to the default instead of breaking startup.
 | `sidebarWidth` | `"auto"` | a quarter of the window, or pin 15–80 columns |
 | `trimOnSave` | `false` | on save: strip trailing spaces and end the file with one newline |
 | `autoSaveOnBlur` | `false` | save unsaved tabs when switching tabs or when the terminal window loses focus |
+| `showDotfiles` | `true` | set `false` to hide dotfiles in the file tree |
+| `respectGitignore` | `false` | set `true` to hide git-ignored files in the file tree |
 
 druk also remembers each project's open tabs, active file and expanded folders, and
 restores them the next time you open that directory.

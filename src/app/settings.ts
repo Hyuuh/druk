@@ -59,6 +59,16 @@ export function createSettings(deps: {
     status.say(`Auto-save ${config.autoSaveOnBlur ? 'on' : 'off'}`)
   }
 
+  const toggleDotfiles = () => {
+    patchConfig({ showDotfiles: !config.showDotfiles })
+    status.say(`Dotfiles ${config.showDotfiles ? 'shown' : 'hidden'}`)
+  }
+
+  const toggleGitignored = () => {
+    patchConfig({ respectGitignore: !config.respectGitignore })
+    status.say(`Git-ignored files ${config.respectGitignore ? 'hidden' : 'shown'}`)
+  }
+
   /**
    * `'auto'` resolved against the terminal, then clamped against it again: a width
    * saved on a wide screen must not swallow the editor when the window is smaller
@@ -96,6 +106,8 @@ export function createSettings(deps: {
     toggleTrim,
     toggleAutoSave,
     toggleDiffView,
+    toggleDotfiles,
+    toggleGitignored,
     treeWidth,
     resizeSidebar,
     nudgeSidebar,

@@ -180,6 +180,38 @@ export function stagedPaths(cwd: string): Set<string> {
   return staged
 }
 
+/**
+ * Absolute paths of git-ignored entries, keyed like `statusMap`. Empty outside a
+ * repository — with no `.gitignore` semantics to apply, nothing is ignored.
+ *
+ * `--directory` collapses a fully-ignored directory to one entry instead of
+ * enumerating everything inside it — the difference between one line for
+ * `node_modules` and a hundred thousand. The tree matches these keys exactly:
+ * it hides an ignored directory at its top and never descends, so the collapsed
+ * entry is the only key it ever asks about.
+ */
+export function ignoredPaths(cwd: string): Set<string> {
+  const ignored = new Set<string>()
+  const base = keyBase(cwd)
+  if (base === null) return ignored
+  // `-z` for the same reason as `statusMap`: quoted paths would never match its keys.
+  const run = git(cwd, [
+    'ls-files',
+    '--others',
+    '--ignored',
+    '--exclude-standard',
+    '--directory',
+    '-z',
+  ])
+  if (run.status !== 0) return ignored
+  for (const rel of run.stdout.split('\0')) {
+    if (rel.length === 0) continue
+    // A collapsed directory keeps git's trailing separator; the tree's paths have none.
+    ignored.add(join(base, rel.endsWith('/') ? rel.slice(0, -1) : rel))
+  }
+  return ignored
+}
+
 /** Subject of HEAD, or null with no commits yet — what "undo last commit" names. */
 export function lastCommitSubject(cwd: string): string | null {
   const run = git(cwd, ['log', '-1', '--format=%s'], 3000)
