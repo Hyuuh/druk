@@ -95,6 +95,7 @@ export function createCommands(ctx: AppContext) {
     prevTab: () => workspace.switchTab(-1),
     toggleFocus: () => (panes.focus() === 'tree' ? panes.setFocus('editor') : panes.focusTree()),
     toggleSidebar: panes.toggleSidebar,
+    toggleGitView: panes.toggleGitView,
     setVim: settings.applyVim,
     setTabSize: settings.applyTabSize,
     setTheme: settings.applyTheme,
@@ -112,14 +113,15 @@ export function createCommands(ctx: AppContext) {
       ctx.overlays.setDiff({ files: [file], index: 0 })
       panes.setFocus('editor')
     },
-    gitDiffAll: () => {
+    gitDiffAll: (focusPath?: string) => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
       const files = [...statusMap(rootDir)]
         .map(([path, fileStatus]) => diffFileFor(path, fileStatus))
         .filter((file): file is DiffFile => file !== null)
         .toSorted((a, b) => a.rel.localeCompare(b.rel))
       if (files.length === 0) return say('Nothing to diff — working tree clean')
-      const active = files.findIndex(file => file.path === workspace.activePath())
+      const target = focusPath ?? workspace.activePath()
+      const active = files.findIndex(file => file.path === target)
       ctx.overlays.setDiff({ files, index: Math.max(0, active) })
       panes.setFocus('editor')
     },
@@ -164,7 +166,7 @@ export function createCommands(ctx: AppContext) {
     quit: ctx.prompts.quit,
   }
 
-  return createMemo<Command[]>(() =>
+  const commands = createMemo<Command[]>(() =>
     buildCommands(actions, {
       vimEnabled: config.vim,
       activeTheme: config.theme,
@@ -173,4 +175,6 @@ export function createCommands(ctx: AppContext) {
       autoSaveOnBlur: config.autoSaveOnBlur,
     }),
   )
+
+  return { commands, actions }
 }

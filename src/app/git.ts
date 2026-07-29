@@ -1,4 +1,6 @@
-import { createEffect, createSignal, on } from 'solid-js'
+import { relative } from 'node:path'
+
+import { createEffect, createMemo, createSignal, on } from 'solid-js'
 
 import { currentBranch, diffLines, inRepository, statusMap, upstreamOf } from '../core/git'
 import type { FileStatus, GitResult, LineChange, Upstream } from '../core/git'
@@ -23,6 +25,13 @@ export function createGit(rootDir: string) {
 
   const bump = () => setRevision(n => n + 1)
 
+  /** The changed files as the source-control panel lists them, in path order. */
+  const changes = createMemo(() =>
+    [...gitStatus()]
+      .map(([path, status]) => ({ path, rel: relative(rootDir, path), status }))
+      .toSorted((a, b) => a.rel.localeCompare(b.rel)),
+  )
+
   return {
     gitLines,
     setGitLines,
@@ -38,6 +47,7 @@ export function createGit(rootDir: string) {
     setGitBusy,
     commitPick,
     setCommitPick,
+    changes,
   }
 }
 

@@ -108,6 +108,19 @@ export const KEYS: KeyInfo[] = [
   { key: '[ / ]', label: 'Narrow / widen sidebar (in tree)', section: 'File tree', where: 'tree' },
 
   {
+    key: `Ctrl+${ALT}+G`,
+    label: 'Source control panel (git)',
+    section: 'Source control',
+    where: 'all',
+  },
+  {
+    key: 'Enter · c · p',
+    label: 'Diff / commit… / push (in git panel)',
+    section: 'Source control',
+    where: 'help',
+  },
+
+  {
     key: 'Ctrl+B',
     label: 'Show / hide sidebar',
     section: 'View',

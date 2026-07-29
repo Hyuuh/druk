@@ -6,6 +6,7 @@ import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 
 import type { Config } from '../core/config'
 import { watchTree } from '../core/fs'
+import { inRepository } from '../core/git'
 import { checkForUpdate } from '../core/update'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
@@ -14,6 +15,7 @@ import { DiffView } from '../ui/DiffView'
 import type { DiffFile } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
 import { FileTree } from '../ui/FileTree'
+import { GitPanel } from '../ui/GitPanel'
 import { StatusBar } from '../ui/StatusBar'
 import { Tabs } from '../ui/Tabs'
 import { createCommands } from './actions'
@@ -109,8 +111,8 @@ export function App(props: {
   }
 
   wireGitEffects({ rootDir, git, tree, editor, workspace })
-  const commands = createCommands(ctx)
-  installKeyboard(ctx)
+  const { commands, actions } = createCommands(ctx)
+  installKeyboard(ctx, actions)
 
   const { config } = settings
   const { say } = status
@@ -219,25 +221,47 @@ export function App(props: {
         onMouseUp={() => setResizing(false)}
       >
         <Show when={panes.sidebar()}>
-          <FileTree
-            rootName={basename(rootDir) || rootDir}
-            nodes={tree.nodes()}
-            selectedPath={tree.selectedPath()}
-            expanded={tree.expanded()}
-            focused={panes.focus() === 'tree'}
-            width={settings.treeWidth()}
-            gitStatus={git.gitStatus()}
-            cutPaths={fileOps.cut()}
-            markedPaths={tree.marked()}
-            onActivate={node => {
-              // Landing in a file is how the diff page closes — the tree stays
-              // interactive while it is up, like any other editor page.
-              overlays.setDiff(null)
-              workspace.activateNode(node)
-            }}
-            onPin={node => workspace.pinTab(node.path)}
-            onFocus={() => panes.setFocus('tree')}
-          />
+          <Show
+            when={panes.view() === 'git'}
+            fallback={
+              <FileTree
+                rootName={basename(rootDir) || rootDir}
+                nodes={tree.nodes()}
+                selectedPath={tree.selectedPath()}
+                expanded={tree.expanded()}
+                focused={panes.focus() === 'tree'}
+                width={settings.treeWidth()}
+                gitStatus={git.gitStatus()}
+                cutPaths={fileOps.cut()}
+                markedPaths={tree.marked()}
+                onActivate={node => {
+                  // Landing in a file is how the diff page closes — the tree stays
+                  // interactive while it is up, like any other editor page.
+                  overlays.setDiff(null)
+                  workspace.activateNode(node)
+                }}
+                onPin={node => workspace.pinTab(node.path)}
+                onFocus={() => panes.setFocus('tree')}
+              />
+            }
+          >
+            <GitPanel
+              branch={git.branch()}
+              ahead={git.upstream()?.ahead ?? 0}
+              behind={git.upstream()?.behind ?? 0}
+              changes={git.changes()}
+              cursor={panes.gitCursor()}
+              focused={panes.focus() === 'tree'}
+              width={settings.treeWidth()}
+              inRepo={inRepository(rootDir)}
+              onFocus={() => panes.setFocus('tree')}
+              onActivate={index => {
+                panes.setGitCursor(index)
+                const file = git.changes()[index]
+                if (file) actions.gitDiffAll(file.path)
+              }}
+            />
+          </Show>
           {/* Drag handle: the whole column is the grab target, but only a short
               grip is drawn at its middle — a full-height rule is a heavy line
               down the screen for something you touch once. The spacers centre it
