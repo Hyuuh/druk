@@ -2,6 +2,8 @@ import type { KeyEvent, TextareaRenderable } from '@opentui/core'
 
 export type VimMode = 'normal' | 'insert' | 'visual'
 
+type VisualKind = 'char' | 'line'
+
 export const MODE_LABELS: Record<VimMode, string> = {
   normal: 'NORMAL',
   insert: 'INSERT',
@@ -17,6 +19,10 @@ export interface VimState {
   registerLinewise: boolean
   /** Offset the visual selection grows from; meaningless outside visual mode. */
   anchor: number
+  visualKind: VisualKind
+  pendingTobj: 'i' | 'a' | null // text object prefix (i = inner, a = a/an)
+  /** Operator to apply after the text object is resolved. */
+  textObjOp: string
 }
 
 export function initialVimState(): VimState {
@@ -27,6 +33,9 @@ export function initialVimState(): VimState {
     register: '',
     registerLinewise: false,
     anchor: 0,
+    visualKind: 'char',
+    pendingTobj: null,
+    textObjOp: '',
   }
 }
 
@@ -51,7 +60,15 @@ type Editor = TextareaRenderable
  */
 function markVisual(editor: Editor, state: VimState): void {
   const cursor = editor.cursorOffset
-  editor.setSelectionInclusive(Math.min(state.anchor, cursor), Math.max(state.anchor, cursor))
+  if (state.visualKind === 'line') {
+    const text = editor.plainText
+    const start = lineStart(text, Math.min(state.anchor, cursor))
+    let end = lineEnd(text, Math.max(state.anchor, cursor))
+    if (end < start) end = start
+    editor.setSelectionInclusive(start, end)
+  } else {
+    editor.setSelectionInclusive(Math.min(state.anchor, cursor), Math.max(state.anchor, cursor))
+  }
 }
 
 const MOTION_KEYS = new Set([
@@ -68,6 +85,8 @@ const MOTION_KEYS = new Set([
   '0',
   '$',
   'G',
+  '{',
+  '}',
 ])
 
 /** Motions shared by normal and visual mode. Returns true if `k` was a motion. */
@@ -115,6 +134,12 @@ function motion(editor: Editor, k: string, state: VimState, count: number, count
       if (counted) editor.gotoLine(count - 1)
       else editor.gotoBufferEnd()
       return true
+    case '{':
+      moveParagraphUp(editor, count)
+      return true
+    case '}':
+      moveParagraphDown(editor, count)
+      return true
     default:
       return false
   }
@@ -156,6 +181,120 @@ const OPERATOR_TARGETS: Record<string, (editor: Editor, count: number) => void> 
   },
   $: e => e.deleteToLineEnd(),
   0: e => e.deleteToLineStart(),
+}
+
+/** First character offset of the line containing `offset`. */
+function lineStart(text: string, offset: number): number {
+  const idx = text.lastIndexOf('\n', offset - 1)
+  return idx + 1
+}
+
+/** Last character offset of the line containing `offset` (before the newline). */
+function lineEnd(text: string, offset: number): number {
+  const idx = text.indexOf('\n', offset)
+  return idx >= 0 ? Math.max(0, idx - 1) : text.length - 1
+}
+
+function moveParagraphUp(editor: Editor, count: number): void {
+  const lines = editor.plainText.split('\n')
+  let row = editor.logicalCursor.row
+
+  for (let c = 0; c < count; c++) {
+    if (row <= 0) break
+    row--
+    while (row > 0 && lines[row]!.trim() !== '') row--
+  }
+
+  editor.gotoLine(row)
+}
+
+function moveParagraphDown(editor: Editor, count: number): void {
+  const lines = editor.plainText.split('\n')
+  let row = editor.logicalCursor.row
+  const maxRow = lines.length - 1
+
+  for (let c = 0; c < count; c++) {
+    if (row >= maxRow) break
+    row++
+    while (row < maxRow && lines[row]!.trim() !== '') row++
+  }
+
+  editor.gotoLine(Math.min(row, maxRow))
+}
+
+const PAIR_OPEN: Record<string, string> = { '{': '}', '(': ')', '[': ']' }
+const PAIR_CLOSE: Record<string, string> = { '}': '{', ')': '(', ']': '[' }
+const TEXT_OBJ_TARGETS = new Set(['{', '}', '(', ')', '[', ']'])
+
+/**
+ * Find the enclosing bracket pair around the cursor.
+ * Returns `{ open, close }` offsets, or null if none found.
+ */
+function findEnclosingPair(
+  text: string,
+  cursor: number,
+  open: string,
+  close: string,
+): { open: number; close: number } | null {
+  let depth = 1
+  let openIdx = -1
+  // When the cursor is ON the close bracket we are standing at the boundary, so
+  // searching *from* it treats it as a nested close and never finds the matching
+  // open.  Skip it and start from the character before.
+  const start = cursor > 0 && text[cursor] === close ? cursor - 1 : cursor
+  for (let i = start; i >= 0; i--) {
+    if (text[i] === close) depth++
+    else if (text[i] === open) {
+      depth--
+      if (depth === 0) {
+        openIdx = i
+        break
+      }
+    }
+  }
+  if (openIdx === -1) return null
+
+  depth = 1
+  let closeIdx = -1
+  for (let i = openIdx + 1; i < text.length; i++) {
+    if (text[i] === open) depth++
+    else if (text[i] === close) {
+      depth--
+      if (depth === 0) {
+        closeIdx = i
+        break
+      }
+    }
+  }
+  if (closeIdx === -1) return null
+
+  return { open: openIdx, close: closeIdx }
+}
+
+function handleTextObject(editor: Editor, k: string, state: VimState): boolean {
+  if (!TEXT_OBJ_TARGETS.has(k)) return false
+  const open = k in PAIR_OPEN ? k : PAIR_CLOSE[k]!
+  const close = PAIR_OPEN[open]!
+  const text = editor.plainText
+  const cursor = editor.cursorOffset
+  const pair = findEnclosingPair(text, cursor, open, close)
+  if (!pair) {
+    state.textObjOp = '' // no pair found — don't apply the pending operator
+    return true
+  }
+
+  if (state.pendingTobj === 'i') {
+    if (pair.open + 1 >= pair.close) {
+      state.textObjOp = '' // empty pair — nothing to select
+      return true
+    }
+    state.anchor = pair.open + 1
+    editor.cursorOffset = pair.close - 1
+  } else {
+    state.anchor = pair.open
+    editor.cursorOffset = pair.close
+  }
+  return true
 }
 
 /** True when the caret sits past the last character of its line. */
@@ -265,6 +404,15 @@ function dispatch(editor: Editor, key: KeyEvent, state: VimState, actions: VimAc
   if (state.pending) {
     const op = state.pending
     state.pending = ''
+
+    // i / a as text object prefix
+    if ((k === 'i' || k === 'a') && !state.pendingTobj) {
+      state.textObjOp = op
+      state.pendingTobj = k
+      state.count = digits // the text object target still needs it
+      return true
+    }
+
     if (op === 'g') {
       if (k === 'g') {
         if (digits) editor.gotoLine(count - 1)
@@ -294,6 +442,41 @@ function dispatch(editor: Editor, key: KeyEvent, state: VimState, actions: VimAc
     return true // an unknown operator target is swallowed, never passed on
   }
 
+  // Text object target (handled before motions so {/(/[ is not a paragraph motion here)
+  if (state.pendingTobj) {
+    if (TEXT_OBJ_TARGETS.has(k)) {
+      handleTextObject(editor, k, state)
+      state.pendingTobj = null
+      const saved = state.textObjOp
+      state.textObjOp = ''
+      if (saved) {
+        const start = Math.min(state.anchor, editor.cursorOffset)
+        const end = Math.max(state.anchor, editor.cursorOffset)
+        editor.setSelectionInclusive(start, end)
+        if (saved === 'd' || saved === 'x') {
+          yankSelection(editor, state)
+          editor.deleteSelection()
+          state.mode = 'normal'
+        } else if (saved === 'y') {
+          yankSelection(editor, state)
+          editor.clearSelection()
+          state.mode = 'normal'
+        } else if (saved === 'c') {
+          yankSelection(editor, state)
+          editor.deleteSelection()
+          state.mode = 'insert'
+        }
+      } else if (state.mode === 'visual') {
+        editor.clearSelection()
+        const cursor = editor.cursorOffset
+        editor.setSelectionInclusive(Math.min(state.anchor, cursor), Math.max(state.anchor, cursor))
+      }
+      return true
+    }
+    // Non-target key after text object prefix: cancel and let key fall through
+    state.textObjOp = ''
+  }
+
   // Motions run before the mode switches below so visual mode extends the selection.
   if (motion(editor, k, state, count, digits !== '')) {
     if (state.mode === 'visual') markVisual(editor, state)
@@ -301,8 +484,47 @@ function dispatch(editor: Editor, key: KeyEvent, state: VimState, actions: VimAc
   }
 
   if (state.mode === 'visual') {
+    // i / a as text object prefix
+    if (k === 'i' || k === 'a') {
+      state.pendingTobj = k
+      return true
+    }
+
     // Where the selection began, which is where vim leaves the cursor once it ends.
     const start = Math.min(state.anchor, editor.cursorOffset)
+
+    if (state.visualKind === 'line') {
+      const text = editor.plainText
+      const lines = text.split('\n')
+      const cursorRow = editor.logicalCursor.row
+      const anchorRow = text.slice(0, state.anchor).split('\n').length - 1
+      const rowStart = Math.min(anchorRow, cursorRow)
+      const rowCount = Math.abs(anchorRow - cursorRow) + 1
+
+      editor.clearSelection()
+
+      switch (k) {
+        case 'escape':
+          state.mode = 'normal'
+          break
+        case 'd':
+        case 'x':
+        case 'c':
+          editor.gotoLine(rowStart)
+          deleteLine(editor, state, rowCount)
+          if (k === 'c') state.mode = 'insert'
+          else state.mode = 'normal'
+          break
+        case 'y':
+          state.register = `${lines.slice(rowStart, rowStart + rowCount).join('\n')}\n`
+          state.registerLinewise = true
+          editor.cursorOffset = start
+          state.mode = 'normal'
+          break
+      }
+      return true
+    }
+
     switch (k) {
       case 'escape':
         editor.clearSelection()
@@ -357,8 +579,15 @@ function dispatch(editor: Editor, key: KeyEvent, state: VimState, actions: VimAc
       state.mode = 'insert'
       break
     case 'v':
+      state.visualKind = 'char'
       state.mode = 'visual'
       state.anchor = editor.cursorOffset
+      markVisual(editor, state)
+      break
+    case 'V':
+      state.visualKind = 'line'
+      state.mode = 'visual'
+      state.anchor = lineStart(editor.plainText, editor.cursorOffset)
       markVisual(editor, state)
       break
     case 'x':
