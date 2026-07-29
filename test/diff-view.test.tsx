@@ -106,8 +106,8 @@ test('F opens a file picker with per-file counts, filters, and jumps', async () 
 
   await press(t, i => void i.typeText('bet'))
   frame = t.captureCharFrame()
-  // Filtered out of the list — the one hit left is the pane header behind it.
-  expect(frame.match(/alpha\.ts/g)).toHaveLength(1)
+  // Filtered out of the list — the hits left are the tree row and the header.
+  expect(frame.match(/alpha\.ts/g)).toHaveLength(2)
   await press(t, i => i.pressEnter())
 
   frame = t.captureCharFrame()
@@ -198,25 +198,43 @@ test('the mouse wheel scrolls the diff', async () => {
   expect(t.captureCharFrame()).toContain('- line0')
 })
 
-test('the diff keeps tabs and status bar but takes the sidebar width', async () => {
+test('the diff is a page: tree, tabs and status bar all stay around it', async () => {
   const dir = repo({ 'a.ts': 'one\n' })
   writeFileSync(join(dir, 'a.ts'), 'ONE\n')
 
   const t = await launch(dir)
-  expect(t.captureCharFrame()).toContain('explorer')
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
   await runCommand(t, 'Diff current file')
 
   const frame = t.captureCharFrame()
   expect(frame).toContain('+1 −1') // the diff itself
-  expect(frame).not.toContain('explorer') // sidebar makes way for the pane
+  expect(frame).toContain('explorer') // the tree does not make way
   const lines = frame.split('\n')
   expect(lines[0]).toContain('a.ts') // tab row still up top
   expect(lines.at(-2)).toContain('⎇ main') // status bar still below
+})
 
+test('the palette opens over the diff, and Ctrl+W closes the page', async () => {
+  const dir = repo({ 'a.ts': 'one\n' })
+  writeFileSync(join(dir, 'a.ts'), 'ONE\n')
+
+  const t = await launch(dir)
+  await press(t, i => i.pressArrow('down'))
+  await press(t, i => i.pressEnter())
+  await runCommand(t, 'Diff current file')
+
+  // Not a modal: global chords still work on top of the page.
+  await press(t, i => i.pressKey('p', { ctrl: true }))
+  expect(t.captureCharFrame()).toContain('Commands')
   await pressEscape(t)
-  expect(t.captureCharFrame()).toContain('explorer') // and it comes back
+  expect(t.captureCharFrame()).toContain('+1 −1') // still on the page
+
+  await press(t, i => i.pressKey('w', { ctrl: true }))
+  const frame = t.captureCharFrame()
+  expect(frame).not.toContain('+1 −1') // page closed…
+  expect(frame).toContain('ONE') // …back to the file, tab intact
+  expect(frame.split('\n')[0]).toContain('a.ts')
 })
 
 test('a long path is cut from the left so the hints stay on screen', async () => {
@@ -236,9 +254,9 @@ test('a long path is cut from the left so the hints stay on screen', async () =>
   await runCommand(t, 'Diff all changes')
 
   const headerRow = t.captureCharFrame().split('\n')[1]!
-  expect(headerRow).toContain('Esc close') // hints survived
+  expect(headerRow).toContain('Esc') // hints survived
   expect(headerRow).toContain('…') // the path gave way instead
-  expect(headerRow).toContain('long-file-name.test.tsx') // and kept its tail
+  expect(headerRow).toContain('name.test.tsx') // and kept its tail
 })
 
 test('removed lines highlight like added ones in split view', async () => {

@@ -70,9 +70,11 @@ export function installKeyboard(ctx: AppContext) {
     }
     if (key.ctrl && k === 'f') return claim(() => overlays.setSearch({ scope: 'file' }))
     if (key.ctrl && k === 'w') {
-      return claim(
-        () => void (workspace.activePath() && workspace.closeTab(workspace.activePath()!)),
-      )
+      return claim(() => {
+        // The diff page is the frontmost "tab": close it before any file tab.
+        if (overlays.diff()) return overlays.setDiff(null)
+        if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
+      })
     }
     if (key.ctrl && chord(key) && k === 'n') {
       return claim(() => prompts.setPrompt({ kind: 'newFolder', dir: tree.targetDir() }))
@@ -92,7 +94,11 @@ export function installKeyboard(ctx: AppContext) {
       // leaving now would mean EditorPane's vim handler is already unfocused when
       // it runs and never sees the key.
       const vimOwnsEscape = config.vim && editor.vimMode() !== 'normal'
-      if (k === 'escape' && panes.sidebar() && !vimOwnsEscape) panes.focusTree()
+      // With the diff page up, Esc belongs to it (it closes the page) — moving
+      // focus to the tree here would take the key away before it ever arrives.
+      if (k === 'escape' && panes.sidebar() && !vimOwnsEscape && !overlays.diff()) {
+        panes.focusTree()
+      }
       return // everything else belongs to the textarea
     }
 
@@ -107,7 +113,8 @@ export function installKeyboard(ctx: AppContext) {
     const vimNav: Record<string, string> = { h: 'left', j: 'down', k: 'up', l: 'right' }
     switch (config.vim ? (vimNav[k] ?? k) : k) {
       case 'tab':
-        if (workspace.activePath()) panes.setFocus('editor')
+        // The diff page counts as an editor to hand focus to, file open or not.
+        if (workspace.activePath() || overlays.diff()) panes.setFocus('editor')
         break
       case 'up':
         if (key.shift) tree.extendSelection(-1)

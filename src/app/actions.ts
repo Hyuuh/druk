@@ -110,6 +110,7 @@ export function createCommands(ctx: AppContext) {
       const file = diffFileFor(path, git.gitStatus().get(path) ?? 'modified')
       if (!file) return say('Cannot diff this file', 'warn')
       ctx.overlays.setDiff({ files: [file], index: 0 })
+      panes.setFocus('editor')
     },
     gitDiffAll: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
@@ -120,6 +121,7 @@ export function createCommands(ctx: AppContext) {
       if (files.length === 0) return say('Nothing to diff — working tree clean')
       const active = files.findIndex(file => file.path === workspace.activePath())
       ctx.overlays.setDiff({ files, index: Math.max(0, active) })
+      panes.setFocus('editor')
     },
     gitCommit: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')

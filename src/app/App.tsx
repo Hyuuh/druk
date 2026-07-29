@@ -218,10 +218,7 @@ export function App(props: {
         onMouseDragEnd={() => setResizing(false)}
         onMouseUp={() => setResizing(false)}
       >
-        {/* The tree hides while the diff is open — the pane wants the width, and
-            the sidebar state itself is untouched, so closing the diff brings it
-            back exactly as it was. */}
-        <Show when={panes.sidebar() && !overlays.diff()}>
+        <Show when={panes.sidebar()}>
           <FileTree
             rootName={basename(rootDir) || rootDir}
             nodes={tree.nodes()}
@@ -232,7 +229,12 @@ export function App(props: {
             gitStatus={git.gitStatus()}
             cutPaths={fileOps.cut()}
             markedPaths={tree.marked()}
-            onActivate={workspace.activateNode}
+            onActivate={node => {
+              // Landing in a file is how the diff page closes — the tree stays
+              // interactive while it is up, like any other editor page.
+              overlays.setDiff(null)
+              workspace.activateNode(node)
+            }}
             onPin={node => workspace.pinTab(node.path)}
             onFocus={() => panes.setFocus('tree')}
           />
@@ -281,7 +283,9 @@ export function App(props: {
             tabSize={config.tabSize}
             gitLines={git.gitLines()}
             notice={workspace.notice()}
-            blocked={overlays.overlay()}
+            // The diff is a page over this pane, not an overlay — but the hidden
+            // textarea must still not eat keys meant for it.
+            blocked={overlays.overlay() || overlays.diff() !== null}
             onChange={workspace.onEditorChange}
             onCursor={editor.setCursor}
             onFocus={() => panes.setFocus('editor')}
@@ -295,6 +299,10 @@ export function App(props: {
                   files={open().files}
                   index={open().index}
                   mode={config.diffView}
+                  width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                  focused={panes.focus() === 'editor'}
+                  blocked={overlays.overlay()}
+                  onFocus={() => panes.setFocus('editor')}
                   onIndex={index => overlays.setDiff({ files: open().files, index })}
                   onToggleMode={settings.toggleDiffView}
                   onClose={() => overlays.setDiff(null)}

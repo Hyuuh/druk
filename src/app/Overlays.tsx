@@ -61,7 +61,6 @@ export function createOverlays(deps: {
         search() ||
         update() ||
         picker() ||
-        diff() ||
         git.commitPick()
       ),
   )
@@ -77,6 +76,8 @@ export function createOverlays(deps: {
 
   const jumpTo = (match: Match) => {
     setSearch(null)
+    // The diff page gives way to anything that lands in a file.
+    setDiff(null)
     if (match.path && match.path !== workspace.activePath()) workspace.openFile(match.path)
     editor.requestGoto(match.line, match.col)
     panes.setFocus('editor')
@@ -186,6 +187,7 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             title={kind() === 'tabs' ? 'Switch tab' : 'Open file'}
             onPick={path => {
               overlays.setPicker(null)
+              overlays.setDiff(null)
               workspace.openFile(path)
             }}
             onClose={() => overlays.setPicker(null)}

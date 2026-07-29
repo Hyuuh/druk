@@ -34,6 +34,13 @@ export interface DiffViewProps {
   files: DiffFile[]
   index: number
   mode: DiffMode
+  /** Columns the pane owns — the editor slot, not the terminal. */
+  width: number
+  /** The page shares the editor's focus slot; unfocused, its keys stay dead. */
+  focused: boolean
+  /** A modal above the page owns the keys — this pane's handler runs first. */
+  blocked: boolean
+  onFocus: () => void
   onIndex: (index: number) => void
   onToggleMode: () => void
   onClose: () => void
@@ -320,9 +327,11 @@ export function DiffView(props: DiffViewProps) {
   }
 
   useKeyboard((key: KeyEvent) => {
-    // The picker owns the keyboard while open — its own handler runs too, and
-    // letting j/k scroll the diff under the search field would be chaos.
-    if (picking()) return
+    // A page, not a modal: keys count only when this pane holds the focus, and
+    // a chord the global keymap already claimed is not ours to reuse. The
+    // picker owns the keyboard while open — letting j/k scroll the diff under
+    // its search field would be chaos.
+    if (props.blocked || !props.focused || key.defaultPrevented || picking()) return
     const k = key.name
     if (k === 'f' && props.files.length > 1) setPicking(true)
     else if (k === 'up' || k === 'k') scroll(-1)
@@ -339,10 +348,14 @@ export function DiffView(props: DiffViewProps) {
     key.preventDefault()
   })
 
-  const hints = () =>
-    ` ${props.mode === 'inline' ? 'inline' : 'side-by-side'} · Tab layout${
-      props.files.length > 1 ? ' · ←→ file · F find' : ''
-    } · Esc close `
+  /** Long spelling when the pane can afford it, initials beside a sidebar. */
+  const hints = () => {
+    const mode = props.mode === 'inline' ? 'inline' : 'side-by-side'
+    const multi = props.files.length > 1
+    const full = ` ${mode} · Tab layout${multi ? ' · ←→ file · F find' : ''} · Esc close `
+    if (full.length + 28 <= props.width) return full
+    return ` ${mode} · Tab${multi ? ' · ←→ · F' : ''} · Esc `
+  }
 
   /**
    * Path cut from the left to what the row can spare: neither header span may
@@ -353,14 +366,20 @@ export function DiffView(props: DiffViewProps) {
     const d = diff()
     const which = props.files.length > 1 ? ` · file ${props.index + 1}/${props.files.length}` : ''
     const tail = ` · +${d.adds} −${d.dels}${which}`
-    const room = Math.max(8, dimensions().width - hints().length - tail.length - 3)
+    const room = Math.max(8, props.width - hints().length - tail.length - 3)
     let rel = file().rel
     if (rel.length > room) rel = `…${rel.slice(rel.length - room + 1)}`
     return ` ${MARKS[file().status]} ${rel}${tail}`
   }
 
   return (
-    <box width="100%" height="100%" flexDirection="column" backgroundColor={ui.bg}>
+    <box
+      width="100%"
+      height="100%"
+      flexDirection="column"
+      backgroundColor={ui.bg}
+      onMouseDown={() => props.onFocus()}
+    >
       <box flexDirection="row" backgroundColor={ui.barBg}>
         <text fg={statusColor(file().status)} bg={ui.barBg} flexShrink={0} content={header()} />
         <box flexGrow={1} backgroundColor={ui.barBg} />
@@ -406,6 +425,7 @@ export function DiffView(props: DiffViewProps) {
         <DiffFilePicker
           files={props.files}
           activeIndex={props.index}
+          paneWidth={props.width}
           diffFor={diffFor}
           onPick={index => {
             setPicking(false)
@@ -426,6 +446,8 @@ export function DiffView(props: DiffViewProps) {
 function DiffFilePicker(props: {
   files: DiffFile[]
   activeIndex: number
+  /** The overlay is confined to the diff pane, so the modal sizes to it. */
+  paneWidth: number
   diffFor: (file: DiffFile) => { adds: number; dels: number }
   onPick: (index: number) => void
   onClose: () => void
@@ -434,7 +456,7 @@ function DiffFilePicker(props: {
   const [query, setQuery] = createSignal('')
   const [index, setIndex] = createSignal(0)
 
-  const width = () => modalWidth(dimensions().width, 0.62, 72, 110)
+  const width = () => modalWidth(props.paneWidth, 0.85, 40, 110)
   const visibleRows = () => listRows(dimensions().height, 8, 18)
 
   const matches = createMemo(() => {
