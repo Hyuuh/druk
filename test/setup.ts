@@ -1,6 +1,9 @@
+import { afterEach } from 'bun:test'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+import { liveHarnesses } from './helpers'
 
 /**
  * Give every test process its own config home, before anything reads it.
@@ -15,3 +18,17 @@ import { join } from 'node:path'
  * imported, which happens before any hook runs.
  */
 process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), 'druk-test-config-'))
+
+/**
+ * Destroy every harness a test `launch()`ed and didn't clean up itself.
+ *
+ * `renderer.destroy()` is what runs Solid's `onCleanup` — closing `App`'s fs
+ * watchers and stopping its git-polling timers. Without this sweep those stay
+ * open for the rest of the worker process's life, so a file with many `launch()`
+ * calls compounds watchers/timers test over test until the process stalls or
+ * gets OOM-killed.
+ */
+afterEach(() => {
+  for (const t of liveHarnesses) t.renderer.destroy()
+  liveHarnesses.clear()
+})

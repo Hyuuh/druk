@@ -33,9 +33,14 @@ per-project session restore, and a startup update check.
   lockfile is `bun.lock`.
 - **Say `bun run <script>`, not `bun <script>`.** `build` collides with Bun's own bundler
   subcommand, so `bun build` silently bundles nothing instead of running the script. This
-  now includes `test`: bare `bun test` works, but the whole suite runs in one process and
-  takes twice as long — `--parallel` lives in the script and cannot be set from
-  `bunfig.toml` (the key is accepted there and silently ignored).
+  now includes `test`: bare `bun test` runs the whole suite in one process, where the
+  files interfere — ~140 tests fail on leaked stdin/signal state that separate processes
+  would isolate (`--isolate`'s fresh global is not enough). `bun run test` goes through
+  `scripts/test.ts`, which runs each file in its own process, sequentially. Not
+  `--parallel`: its concurrent workers can busy-spin at 100% CPU forever on macOS ARM
+  (oven-sh/bun#27766, still present in 1.3.14) — the spin is synchronous, so bun's own
+  per-test timeout never fires and only SIGKILL ends the worker. One bun process at a
+  time has never triggered it; the script's per-file cap is a backstop.
 
 ```bash
 bun install
@@ -46,20 +51,19 @@ bun run build            # compile a binary for this machine into dist/<target>/
 bun run build linux-x64  # …or for a named target, if its native package is installed
 bun run release          # package dist/ for npm + release archives (--publish to ship)
 bun run formula          # Homebrew formula for those archives (not published anywhere yet)
-bun run test             # unit + UI, one worker per core (~45s; 107s without --parallel)
+bun run test             # unit + UI, one file per process, sequential (~4 min)
 bun test test/foo.tsx    # a single file, where the flag buys nothing
-bun run check-types      # tsc --noEmit
-bun run lint             # oxlint
-bun run format           # oxfmt (writes); format:check to verify
+bun run check            # check-types + lint + format + test — the one to run
 ```
 
-Always run `bun run check-types`, `bun run lint`, `bun run format` and `bun run test`
-before considering a change done — `bun run check` is all four.
+**Verify with `bun run check`, not its parts.** It is `check-types`, `lint`, `format` and
+`test` in one, so running them separately only costs turns and invites a change called
+done on three of the four. A single test file (`bun test test/foo.tsx`) while iterating is
+fine — `bun run check` is still what says the change is finished.
 
-`--parallel` runs each *file* in its own worker process, so nothing may depend on state
-shared between files. `test/setup.ts` is preloaded to give every worker its own
-`XDG_CONFIG_HOME`; without it the workers fight over one `sessions.json` — and the suite
-writes to your real `~/.config/druk`.
+Each file runs in its own process, so nothing may depend on state shared between files.
+`test/setup.ts` is preloaded to give every process its own `XDG_CONFIG_HOME`; without it
+the suite writes to your real `~/.config/druk`.
 
 ## Shipping
 

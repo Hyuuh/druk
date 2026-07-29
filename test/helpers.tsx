@@ -11,6 +11,17 @@ import type { Config } from '../src/core/config'
 
 export type Harness = Awaited<ReturnType<typeof launch>>
 
+/**
+ * Every harness `launch()` has handed out and not yet destroyed. `App` opens fs
+ * watchers and git-polling timers in `onMount`, which only close via Solid's
+ * `onCleanup` — itself only wired to run on `renderer.destroy()`. Without this,
+ * an undisposed harness keeps watching and polling for the rest of the worker
+ * process's life: `test/setup.ts` sweeps this list in a global `afterEach` so a
+ * file with many `launch()` calls (some run into the teens) doesn't pile up
+ * dozens of live watchers and stall every test after it.
+ */
+export const liveHarnesses = new Set<Harness>()
+
 /** Temp project used by a test. `files` maps relative paths to contents. */
 export function fixture(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'druk-'))
@@ -50,6 +61,7 @@ export async function launch(
     },
   )
   await settle(t)
+  liveHarnesses.add(t)
   return t
 }
 
