@@ -1,4 +1,6 @@
-import { createEffect, createSignal, on, onCleanup, onMount } from 'solid-js'
+import { relative } from 'node:path'
+
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js'
 
 import { currentBranch, diffLines, inRepository, statusMap, upstreamOf } from '../core/git'
 import type { FileStatus, GitResult, LineChange, Upstream } from '../core/git'
@@ -17,6 +19,10 @@ export function createGit(rootDir: string) {
   // Starts null and is filled by `wireGitEffects` after the first frame: reading
   // the branch here is a synchronous subprocess on the render thread's clock.
   const [branch, setBranch] = createSignal<string | null>(null)
+  /** Whether `rootDir` is in a repository at all. A signal because `inRepository`
+   * spawns git: the source-control panel reads this on every render, and a
+   * subprocess there would run once per frame. */
+  const [inRepo, setInRepo] = createSignal(inRepository(rootDir))
   const [upstream, setUpstream] = createSignal<Upstream | null>(null)
   /** A git mutation in flight — one at a time, they share a repository. */
   const [gitBusy, setGitBusy] = createSignal(false)
@@ -24,6 +30,13 @@ export function createGit(rootDir: string) {
   const [commitPick, setCommitPick] = createSignal<CommitFile[] | null>(null)
 
   const bump = () => setRevision(n => n + 1)
+
+  /** The changed files as the source-control panel lists them, in path order. */
+  const changes = createMemo(() =>
+    [...gitStatus()]
+      .map(([path, status]) => ({ path, rel: relative(rootDir, path), status }))
+      .toSorted((a, b) => a.rel.localeCompare(b.rel)),
+  )
 
   return {
     gitLines,
@@ -34,12 +47,15 @@ export function createGit(rootDir: string) {
     setGitStatus,
     branch,
     setBranch,
+    inRepo,
+    setInRepo,
     upstream,
     setUpstream,
     gitBusy,
     setGitBusy,
     commitPick,
     setCommitPick,
+    changes,
   }
 }
 
@@ -137,6 +153,9 @@ export function wireGitEffects(deps: {
         if (!ok) return
         git.setGitStatus(statusMap(rootDir))
         git.setBranch(currentBranch(rootDir))
+        // `git init` in another terminal writes .git, so the watcher brings us
+        // here — the only place the panel would ever learn it has a repository.
+        git.setInRepo(inRepository(rootDir))
       },
     ),
   )

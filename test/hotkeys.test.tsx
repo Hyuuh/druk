@@ -72,6 +72,11 @@ test('every advertised hotkey does something', async () => {
   await press(t, i => i.pressKey('t', { ctrl: true }))
   check('Ctrl+T switch tab', frame(t).includes('Switch tab'))
 
+  // Ctrl+Opt+G: ESC prefix ahead of Ctrl+G (0x07).
+  t = await tree()
+  await press(t, i => void i.pressKeys([`${ESC}${String.fromCharCode(7)}`]))
+  check('Ctrl+Opt+G source control', frame(t).includes('source control'))
+
   t = await tree()
   await press(t, i => i.pressKey('b', { ctrl: true }))
   check('Ctrl+B sidebar', !frame(t).includes('explorer'))

@@ -99,6 +99,7 @@ status bar with the branch, unsaved state and cursor position.
 | `Opt+Shift+↑` / `↓` | Duplicate line or selection |
 | `Ctrl+Opt+T` | Reopen closed tab |
 | `Ctrl+Opt+←` / `→` | Previous / next tab |
+| `Ctrl+Opt+G` | Source control panel (commit / push) |
 
 In the tree: `a` new file, `A` new folder, `r` rename, `d` delete, `x` cut, `c` copy,
 `p` paste here, `Shift+↑`/`↓` select several rows, `[` / `]` resize the sidebar.
@@ -146,12 +147,17 @@ gone.
 
 ## Git
 
-Read-only, on purpose: druk shows what git says and never changes it. Changed lines are
-marked in the gutter and again beside the scrollbar, where the whole file's changes are
-visible at once — a mark there is somewhere to scroll to. Files in the tree carry `M` `A`
-`U` `D` marks, and the status bar shows the branch and how far it is from upstream —
-`⎇ main ↑2 ↓1 ~3` is two commits to push, one to pull, three changed files. Work you do in
-another terminal shows up without a restart.
+Changed lines are marked in the gutter and again beside the scrollbar, where the whole
+file's changes are visible at once — a mark there is somewhere to scroll to. Files in the
+tree carry `M` `A` `U` `D` marks, and the status bar shows the branch and how far it is
+from upstream — `⎇ main ↑2 ↓1 ~3` is two commits to push, one to pull, three changed
+files. Work you do in another terminal shows up without a restart.
+
+`Ctrl+Opt+G` swaps the sidebar for a small source-control panel, as in VS Code: the
+changed files under the branch name. `Enter` shows a file's diff, `c` commits (pick the
+files, type the message), `p` pushes, and `Esc` puts the file tree back. The same
+commands — with diff, pull, fetch, stash and undo-commit beside them — live in the
+palette under *Git*.
 
 ## Settings
 

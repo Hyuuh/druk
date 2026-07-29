@@ -254,7 +254,7 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
         )}
       </Show>
       <Show when={overlays.peek()}>
-        <KeyPeek pane={panes.focus()} />
+        <KeyPeek pane={panes.keyPane()} />
       </Show>
       <Show when={overlays.help()}>
         <HelpOverlay />

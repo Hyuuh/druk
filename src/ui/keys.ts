@@ -10,6 +10,10 @@
 
 type Pane = 'tree' | 'editor'
 
+/** The panes plus the sidebar's other view: the source-control panel replaces the
+ * tree's keys while it shows, so the peek strip has to tell the two apart. */
+export type KeyScope = Pane | 'git'
+
 /** What the key next to the space bar is called on this machine's keyboard. */
 export const ALT = process.platform === 'darwin' ? 'Opt' : 'Alt'
 
@@ -19,7 +23,7 @@ export interface KeyInfo {
   /** Heading the help overlay files this under. */
   section: string
   /** Pane(s) the key is alive in; 'help' rows show in the help table only. */
-  where: Pane | 'all' | 'help'
+  where: KeyScope | 'all' | 'help'
   /** Footer advertisement: which pane shows it, as what, in what order.
    * `key` overrides the display key where the full spelling is too wide. */
   hint?: { pane: Pane | 'all'; label: string; rank: number; key?: string }
@@ -110,6 +114,28 @@ export const KEYS: KeyInfo[] = [
   { key: '[ / ]', label: 'Narrow / widen sidebar (in tree)', section: 'File tree', where: 'tree' },
 
   {
+    key: `Ctrl+${ALT}+G`,
+    label: 'Source control panel (git)',
+    section: 'Source control',
+    where: 'all',
+  },
+  // Short labels on purpose: a label that wraps costs the help table a second row,
+  // and the table only just fits a 60-row terminal — `test/help-scroll.test.tsx`
+  // measures exactly that.
+  {
+    key: 'Enter · c · p',
+    label: 'Diff / commit… / push',
+    section: 'Source control',
+    where: 'git',
+  },
+  {
+    key: '↑↓ · Esc',
+    label: 'Move / back to the file tree',
+    section: 'Source control',
+    where: 'git',
+  },
+
+  {
     key: 'Ctrl+B',
     label: 'Show / hide sidebar',
     section: 'View',
@@ -147,6 +173,6 @@ export function hintsFor(pane: Pane): ReadonlyArray<readonly [string, string]> {
 }
 
 /** Everything alive in `pane`, for the peek strip. */
-export function keysFor(pane: Pane): KeyInfo[] {
+export function keysFor(pane: KeyScope): KeyInfo[] {
   return KEYS.filter(info => info.where === pane || info.where === 'all')
 }

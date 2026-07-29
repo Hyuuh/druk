@@ -47,11 +47,12 @@ export interface CommandActions {
   prevTab: () => void
   toggleFocus: () => void
   toggleSidebar: () => void
+  toggleGitView: () => void
   setTheme: (name: ThemeName) => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   openSettings: () => void
   gitDiffFile: () => void
-  gitDiffAll: () => void
+  gitDiffAll: (focusPath?: string) => void
   gitCommit: () => void
   gitUndoCommit: () => void
   gitPush: () => void
@@ -151,6 +152,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           label: 'Toggle sidebar',
           hint: 'Ctrl+B',
           run: actions.toggleSidebar,
+        },
+        {
+          id: 'view.git',
+          label: 'Source control (commit / push)',
+          hint: `Ctrl+${ALT}+G`,
+          run: actions.toggleGitView,
         },
         {
           id: 'view.focus',
