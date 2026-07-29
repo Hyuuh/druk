@@ -17,6 +17,10 @@ export function createGit(rootDir: string) {
   const [revision, setRevision] = createSignal(0)
   const [gitStatus, setGitStatus] = createSignal<Map<string, FileStatus>>(new Map())
   const [branch, setBranch] = createSignal(currentBranch(rootDir))
+  /** Whether `rootDir` is in a repository at all. A signal because `inRepository`
+   * spawns git: the source-control panel reads this on every render, and a
+   * subprocess there would run once per frame. */
+  const [inRepo, setInRepo] = createSignal(inRepository(rootDir))
   const [upstream, setUpstream] = createSignal<Upstream | null>(null)
   /** A git mutation in flight — one at a time, they share a repository. */
   const [gitBusy, setGitBusy] = createSignal(false)
@@ -41,6 +45,8 @@ export function createGit(rootDir: string) {
     setGitStatus,
     branch,
     setBranch,
+    inRepo,
+    setInRepo,
     upstream,
     setUpstream,
     gitBusy,
@@ -129,6 +135,9 @@ export function wireGitEffects(deps: {
       () => {
         git.setGitStatus(statusMap(rootDir))
         git.setBranch(currentBranch(rootDir))
+        // `git init` in another terminal writes .git, so the watcher brings us
+        // here — the only place the panel would ever learn it has a repository.
+        git.setInRepo(inRepository(rootDir))
       },
     ),
   )

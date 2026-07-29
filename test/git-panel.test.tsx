@@ -83,6 +83,17 @@ test('c commits the change from the panel, p reports on push', async () => {
   expect(frame(t)).not.toContain('explorer') // still in the panel, no paste happened
 })
 
+test('the peek strip advertises the panel keys, not the tree ones', async () => {
+  const t = await launch(repo())
+  await press(t, i => void i.pressKeys([TOGGLE]))
+  await press(t, i => i.pressKey('k', { ctrl: true }))
+
+  const peek = frame(t)
+  expect(peek).toContain('Keys · source control')
+  expect(peek).toContain('Enter · c · p')
+  expect(peek).not.toContain('a / A')
+})
+
 test('the palette opens the panel too', async () => {
   const t = await launch(repo())
   await press(t, i => i.pressKey('p', { ctrl: true }))

@@ -12,9 +12,10 @@ installer — and run as a CLI.
 
 Features: file tree with bulk file operations, preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide), command palette, themes, vim mode,
-git marks in tree/gutter/status bar plus palette commands for commit/undo/stash/push/
-fetch/pull, a diff view (inline or side-by-side, one file or every change), file watching
-with conflict prompts, per-project session restore, and a startup update check.
+git marks in tree/gutter/status bar plus a source-control panel in the sidebar and
+palette commands for commit/undo/stash/push/fetch/pull, a diff view (inline or
+side-by-side, one file or every change), file watching with conflict prompts,
+per-project session restore, and a startup update check.
 
 ## Runtime and tooling
 

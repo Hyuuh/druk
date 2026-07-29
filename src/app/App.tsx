@@ -6,7 +6,6 @@ import { createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 
 import type { Config } from '../core/config'
 import { watchTree } from '../core/fs'
-import { inRepository } from '../core/git'
 import { checkForUpdate } from '../core/update'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
@@ -253,7 +252,7 @@ export function App(props: {
               cursor={panes.gitCursor()}
               focused={panes.focus() === 'tree'}
               width={settings.treeWidth()}
-              inRepo={inRepository(rootDir)}
+              inRepo={git.inRepo()}
               onFocus={() => panes.setFocus('tree')}
               onActivate={index => {
                 panes.setGitCursor(index)

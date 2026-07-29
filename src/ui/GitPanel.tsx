@@ -1,6 +1,6 @@
 import { TextAttributes } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
-import { createMemo, For, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 
 import type { FileStatus } from '../core/git'
 import { ui } from '../themes'
@@ -40,17 +40,32 @@ export function GitPanel(props: GitPanelProps) {
 
   const cursor = () => Math.max(0, Math.min(props.cursor, props.changes.length - 1))
 
+  // Header (2) + hint line (1) + tabs/status chrome (3).
+  const pageRows = () => Math.max(3, dimensions().height - 6)
+
   /**
-   * A window over the rows, following the cursor. Change lists are usually
-   * shorter than the screen, but `git status` after a big refactor is not —
-   * and a cursor below the fold reads as no cursor at all.
+   * First row on screen. Change lists are usually shorter than the panel, but
+   * `git status` after a big refactor is not, and a cursor below the fold reads
+   * as no cursor at all.
    */
-  const window = createMemo(() => {
-    // Header (2) + hint line (1) + tabs/status chrome (3).
-    const rows = Math.max(3, dimensions().height - 6)
-    const start = Math.max(0, Math.min(cursor() - rows + 1, props.changes.length - rows))
-    return { start, rows: props.changes.slice(start, start + rows) }
+  const [top, setTop] = createSignal(0)
+
+  // The window moves only when the cursor leaves it, as the tree's scrollbox does.
+  // Deriving the start from the cursor alone instead scrolls on every keypress,
+  // pinning the selected row to the bottom of the panel.
+  createEffect(() => {
+    const rows = pageRows()
+    const at = cursor()
+    const total = props.changes.length
+    setTop(previous => {
+      const start = Math.max(0, Math.min(previous, total - rows))
+      if (at < start) return at
+      if (at >= start + rows) return at - rows + 1
+      return start
+    })
   })
+
+  const visible = createMemo(() => props.changes.slice(top(), top() + pageRows()))
 
   const headline = () => {
     if (!props.inRepo) return 'not a git repository'
@@ -89,9 +104,9 @@ export function GitPanel(props: GitPanelProps) {
         }
       >
         <box flexGrow={1} flexDirection="column" backgroundColor={ui.panelBg}>
-          <For each={window().rows}>
+          <For each={visible()}>
             {(change, row) => {
-              const index = () => window().start + row()
+              const index = () => top() + row()
               const selected = () => index() === cursor()
               const bg = () =>
                 selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.panelBg

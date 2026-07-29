@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js'
 
+import type { KeyScope } from '../ui/keys'
 import type { Tree } from './tree'
 import type { Focus } from './types'
 
@@ -16,6 +17,10 @@ export function createPanes(tree: Tree, initialSidebar: boolean) {
   // Focus is useless without a visible cursor: a file opened from the picker or a
   // tab may sit in a collapsed folder, leaving no row to highlight.
   const focusTree = () => {
+    // The source-control panel borrows this focus slot. Revealing here would
+    // expand folders in a tree that is not on screen, and the expansion would
+    // still be there when it comes back.
+    if (view() === 'git') return setFocus('tree')
     const path = tree.selectedPath()
     if (path) tree.reveal(path)
     if (!tree.nodes().some(n => n.path === tree.selectedPath())) {
@@ -31,8 +36,7 @@ export function createPanes(tree: Tree, initialSidebar: boolean) {
       return
     }
     setSidebar(true)
-    if (view() === 'files') focusTree()
-    else setFocus('tree')
+    focusTree()
   }
 
   /** Ctrl+Opt+G, as VS Code's Ctrl+Shift+G: show the panel, or put the tree back. */
@@ -44,8 +48,12 @@ export function createPanes(tree: Tree, initialSidebar: boolean) {
     }
     setView('git')
     setSidebar(true)
-    setFocus('tree')
+    focusTree()
   }
+
+  /** Which keymap is live, for the peek strip: the panel has its own keys and
+   * shows under the tree's focus. */
+  const keyPane = (): KeyScope => (focus() === 'tree' && view() === 'git' ? 'git' : focus())
 
   return {
     sidebar,
@@ -54,8 +62,8 @@ export function createPanes(tree: Tree, initialSidebar: boolean) {
     focusTree,
     toggleSidebar,
     view,
-    setView,
     toggleGitView,
+    keyPane,
     gitCursor,
     setGitCursor,
   }
