@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { ui } from '../src/themes'
-import { fixture, launch, press, pressEscape } from './helpers'
+import { fixture, launch, openFile, press, pressEscape } from './helpers'
 
 interface Span {
   text: string
@@ -40,9 +40,7 @@ describe('focusing the tree', () => {
     }
     const t = await launch(fixture(files))
 
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText('f21.ts'))
-    await press(t, input => input.pressEnter())
+    await openFile(t, 'f21.ts')
     await pressEscape(t)
 
     expect(selectedRow(t.captureSpans() as unknown as Frame)).toContain('f21.ts')
@@ -58,9 +56,7 @@ describe('focusing the tree', () => {
     const t = await launch(fixture(files))
 
     const open = async (name: string) => {
-      await press(t, input => input.pressKey('o', { ctrl: true }))
-      await press(t, input => void input.typeText(name))
-      await press(t, input => input.pressEnter())
+      await openFile(t, name)
     }
     await open('aaa.ts')
     await open('zzz.ts') // 40 rows further down the tree

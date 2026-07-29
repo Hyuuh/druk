@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 
 import { invalidateSyntaxStyle, segmentsIn } from '../src/languages/highlight'
 import { setTheme, THEMES } from '../src/themes'
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, press, pressTimes } from './helpers'
 import { parseHighlights, WHOLE } from './syntax'
 
 /**
@@ -19,17 +19,41 @@ const BIG = `settings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: fa
 const rgb = (hex: string) =>
   [0, 2, 4].map(i => Number.parseInt(hex.replace('#', '').slice(i, i + 2), 16)).join(',')
 
-test('a large file opens quickly and is highlighted', async () => {
+/** One line of the same shape as BIG's, so the two differ only in length. */
+const SMALL = `settings:\n  /package-0@1.0.0:\n    engines: {node: '>=18'}\n    dev: false\n`
+
+/** Time the open itself — the launch before it is the same work either way. */
+async function timeOpen(body: string) {
+  const t = await launch(fixture({ 'lock.yaml': body }))
   const started = performance.now()
-  const t = await launch(fixture({ 'lock.yaml': BIG }))
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
-  const elapsed = performance.now() - started
+  return { elapsed: performance.now() - started, frame: t.captureCharFrame() }
+}
 
-  expect(t.captureCharFrame()).toContain('settings:')
-  // Budget is generous; it exists to catch a return to per-segment full applies.
-  expect(elapsed).toBeLessThan(3000)
-})
+/**
+ * Asserted as a ratio against a three-line file, not a duration: a wall-clock budget
+ * has to hold on the slowest machine that ever runs it, and under `--parallel` this
+ * suite is exactly that machine. Opening 6000 lines costs barely more than opening
+ * three; a return to per-segment full applies puts the cost back on the file's size,
+ * which is orders past the bar rather than near it.
+ */
+test('opening a large file costs about what opening a small one costs', async () => {
+  const ratios: number[] = []
+  let frame = ''
+  for (let n = 0; n < 3; n++) {
+    const small = await timeOpen(SMALL)
+    const big = await timeOpen(BIG)
+    frame = big.frame
+    ratios.push(big.elapsed / small.elapsed)
+  }
+  const median = ratios.sort((a, b) => a - b)[1]!
+
+  expect(frame).toContain('settings:')
+  expect(`${median.toFixed(1)}x the small file, under 5x: ${median < 5}`).toBe(
+    `${median.toFixed(1)}x the small file, under 5x: true`,
+  )
+}, 30000)
 
 test('scrolling deep into a large file keeps highlights', async () => {
   // The theme is module state shared across test files, so pin it rather than
@@ -40,7 +64,7 @@ test('scrolling deep into a large file keeps highlights', async () => {
   const t = await launch(fixture({ 'lock.yaml': BIG }))
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
-  for (let n = 0; n < 300; n++) await press(t, i => i.pressArrow('down'))
+  await pressTimes(t, 300, i => i.pressArrow('down'))
 
   const spans = t.captureSpans() as unknown as {
     lines: { spans: { text: string; fg?: { buffer: Record<string, number> } }[] }[]

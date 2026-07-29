@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { freePath } from '../src/core/fs'
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { fixture, launch, openFile, press, pressEscape, pressTimes, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = {
@@ -14,17 +14,13 @@ const PROJECT = {
 
 /** Open a file, then hand the keyboard back to the tree, where `c` and `p` are commands. */
 async function open(t: Harness, name: string) {
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText(name))
-  await press(t, input => input.pressEnter())
-  await settle(t)
+  await openFile(t, name)
   await pressEscape(t)
   await settle(t, 80)
 }
 
 async function selectNth(t: Harness, steps: number) {
-  for (let n = 0; n < steps; n++) await press(t, input => input.pressArrow('down'))
-  await settle(t)
+  await pressTimes(t, steps, input => input.pressArrow('down'))
 }
 
 describe('freePath', () => {

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { fixture, launch, press, pressEscape, settle, until } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = {
@@ -55,10 +55,11 @@ describe('Shift+↑/↓ in the tree', () => {
     expect(t.captureCharFrame()).toContain('Delete these 3 items')
 
     await press(t, input => input.pressEnter())
-    await settle(t)
+    // The delete walks the entries and yields between them, so the last one is
+    // gone some renders after the key — a single flush catches only the first.
+    await until(t, () => !existsSync(join(dir, 'c.ts')))
     expect(existsSync(join(dir, 'a.ts'))).toBe(false)
     expect(existsSync(join(dir, 'b.ts'))).toBe(false)
-    expect(existsSync(join(dir, 'c.ts'))).toBe(false)
     // Outside the range, untouched.
     expect(existsSync(join(dir, 'd.ts'))).toBe(true)
     expect(existsSync(join(dir, 'keep/inside.ts'))).toBe(true)
@@ -80,10 +81,9 @@ describe('Shift+↑/↓ in the tree', () => {
     await press(t, input => input.pressArrow('up'))
     await press(t, input => input.pressArrow('up'))
     await press(t, input => void input.typeText('p'))
-    await settle(t)
+    await until(t, () => existsSync(join(dir, 'keep/b.ts')))
 
     expect(existsSync(join(dir, 'keep/a.ts'))).toBe(true)
-    expect(existsSync(join(dir, 'keep/b.ts'))).toBe(true)
     expect(existsSync(join(dir, 'a.ts'))).toBe(false)
   })
 

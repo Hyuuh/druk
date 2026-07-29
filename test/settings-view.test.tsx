@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
 import { CONFIG_FILE } from '../src/core/config'
-import { fixture, launch, press, pressEscape, runCommand, toggleSetting } from './helpers'
+import { fixture, launch, openFile, press, pressEscape, runCommand } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = { 'a.ts': 'const a = 1\n' }
@@ -93,18 +93,10 @@ test('Ctrl+W closes the page before any file tab', async () => {
 test('opening a file from the fuzzy picker closes the page', async () => {
   const t = await launch(fixture(PROJECT))
   await runCommand(t, 'Settings')
-  await press(t, i => i.pressKey('o', { ctrl: true }))
-  await press(t, i => void i.typeText('a.ts'))
-  await press(t, i => i.pressEnter())
+  await openFile(t, 'a.ts')
   const frame = t.captureCharFrame()
   expect(frame).not.toContain('Vim mode')
   expect(frame).toContain('const a = 1')
-})
-
-test('the toggleSetting helper reaches a row by label', async () => {
-  const t = await launch(fixture(PROJECT))
-  await toggleSetting(t, 'Trim trailing whitespace on save')
-  expect(JSON.parse(readFileSync(CONFIG_FILE, 'utf8')).trimOnSave).toBe(true)
 })
 
 test('Enter on the theme row opens a filterable list and picks by search', async () => {

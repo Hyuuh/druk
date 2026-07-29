@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { fixture, launch, openFile, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
 /** Every fifth line is long enough to wrap, so the gutter has continuation rows. */
@@ -26,10 +26,7 @@ function numbered(t: Harness): Array<[number, number]> {
 
 async function open() {
   const t = await launch(fixture({ 'a.ts': content }))
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText('a.ts'))
-  await press(t, input => input.pressEnter())
-  await settle(t)
+  await openFile(t, 'a.ts')
   return t
 }
 

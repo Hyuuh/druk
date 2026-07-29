@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { launch, settle } from './helpers'
+import { launch, until } from './helpers'
 import type { Harness } from './helpers'
 
 /**
@@ -77,12 +77,10 @@ describe('the footer', () => {
     writeFileSync(join(mine, 'a.ts'), 'const a = 2\n')
 
     const t = await launch(mine)
-    await settle(t, 400)
-    expect(footer(t)).toContain('~1')
+    await until(t, () => footer(t).includes('~1'))
 
     git(mine, 'commit', '-aqm', 'done')
-    await settle(t, 400)
-    expect(footer(t)).toContain('↑1')
+    await until(t, () => footer(t).includes('↑1'))
     expect(footer(t)).not.toMatch(/~\d/)
   })
 })

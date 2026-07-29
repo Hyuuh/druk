@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { ROWS } from '../src/ui/keys'
-import { F1, fixture, launch, press, pressEscape, settle } from './helpers'
+import { F1, fixture, launch, openFile, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const ESC = String.fromCharCode(27)
@@ -14,9 +14,7 @@ async function tree() {
 }
 async function opened() {
   const t = await tree()
-  await press(t, i => i.pressKey('o', { ctrl: true }))
-  await press(t, i => void i.typeText('a.ts'))
-  await press(t, i => i.pressEnter())
+  await openFile(t, 'a.ts')
   return t
 }
 const frame = (t: Harness) => t.captureCharFrame()
@@ -134,10 +132,7 @@ test('every advertised hotkey does something', async () => {
   // Ctrl+X should remove it.
   const dirCut = fixture(PROJECT)
   t = await launch(dirCut)
-  await press(t, i => i.pressKey('o', { ctrl: true }))
-  await press(t, i => void i.typeText('a.ts'))
-  await press(t, i => i.pressEnter())
-  await settle(t)
+  await openFile(t, 'a.ts')
   const alphaAt = frame(t).split('\n')[1]!.indexOf('alpha')
   await t.mockMouse.drag(alphaAt, 1, alphaAt + 5, 1)
   await t.mockMouse.release(alphaAt + 5, 1)

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { buildCommands } from '../src/app/commands'
 import type { CommandActions } from '../src/app/commands'
-import { fixture, launch, openPalette, press } from './helpers'
+import { fixture, launch, openPalette, press, pressTimes } from './helpers'
 import type { Harness } from './helpers'
 
 /** Row index of a top-level command, so tests survive new commands. */
@@ -65,7 +65,7 @@ describe('command palette', () => {
     // `›`, the same glyph the title trail and the README use for nesting.
     expect(t.captureCharFrame()).toContain('Themes ›')
 
-    for (let i = 0; i < rowOf('Themes'); i++) await press(t, input => input.pressArrow('down'))
+    await pressTimes(t, rowOf('Themes'), input => input.pressArrow('down'))
     await press(t, i => i.pressEnter())
     const frame = t.captureCharFrame()
     expect(frame).toContain('GitHub Dark')

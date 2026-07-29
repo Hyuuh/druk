@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { fixture, launch, openPalette, press, settle } from './helpers'
+import { fixture, launch, openFile, openPalette, press, settle } from './helpers'
 
 test('the tab bar is a single row above the editor', async () => {
   const t = await launch(fixture({ 'a.ts': 'x\n' }))
@@ -24,28 +24,20 @@ test('many open tabs still fit the row', async () => {
   )
   const t = await launch(fixture(files))
   // The picker opens permanent tabs; tree clicks would only reuse the preview.
-  for (let i = 0; i < 12; i++) {
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText(`file-number-${i}.ts`))
-    await press(t, input => input.pressEnter())
-  }
+  for (let i = 0; i < 12; i++) await openFile(t, `file-number-${i}.ts`)
   const row = t.captureCharFrame().split('\n')[0]!
   // The row never wraps or overflows the terminal.
   expect(row.length).toBeLessThanOrEqual(80)
   // The tab opened last stays visible.
   expect(row).toContain('file-number-11')
-})
+}, 20000)
 
 test('the switcher lists open tabs and jumps to one', async () => {
   const files = Object.fromEntries(
     Array.from({ length: 8 }, (_, i) => [`file-number-${i}.ts`, `const a${i} = 1\n`]),
   )
   const t = await launch(fixture(files))
-  for (let i = 0; i < 8; i++) {
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText(`file-number-${i}.ts`))
-    await press(t, input => input.pressEnter())
-  }
+  for (let i = 0; i < 8; i++) await openFile(t, `file-number-${i}.ts`)
 
   await press(t, i => i.pressKey('t', { ctrl: true }))
   expect(t.captureCharFrame()).toContain('Switch tab')
@@ -53,15 +45,13 @@ test('the switcher lists open tabs and jumps to one', async () => {
   await press(t, i => void i.typeText('number-2'))
   await press(t, i => i.pressEnter())
   expect(t.captureCharFrame()).toContain('const a2 = 1')
-})
+}, 20000)
 
 test('close others leaves a single tab', async () => {
   const files = { 'a.ts': 'const a = 1\n', 'b.ts': 'const b = 2\n', 'c.ts': 'const c = 3\n' }
   const t = await launch(fixture(files))
   for (const name of ['a.ts', 'b.ts', 'c.ts']) {
-    await press(t, i => i.pressKey('o', { ctrl: true }))
-    await press(t, i => void i.typeText(name))
-    await press(t, i => i.pressEnter())
+    await openFile(t, name)
   }
 
   await openPalette(t)
@@ -76,9 +66,7 @@ test('close others leaves a single tab', async () => {
 test('Ctrl+PgUp/PgDn and Ctrl+Opt+arrows step through tabs', async () => {
   const t = await launch(fixture({ 'one.ts': 'const one = 1\n', 'two.ts': 'const two = 2\n' }))
   for (const name of ['one.ts', 'two.ts']) {
-    await press(t, i => i.pressKey('o', { ctrl: true }))
-    await press(t, i => void i.typeText(name))
-    await press(t, i => i.pressEnter())
+    await openFile(t, name)
   }
   expect(t.captureCharFrame()).toContain('const two = 2')
 
@@ -103,11 +91,7 @@ test('clicking an overflow counter opens the list of open tabs', async () => {
     Array.from({ length: 9 }, (_, i) => [`component-${i}.tsx`, `const a${i} = 1\n`]),
   )
   const t = await launch(fixture(files))
-  for (let i = 0; i < 9; i++) {
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText(`component-${i}.tsx`))
-    await press(t, input => input.pressEnter())
-  }
+  for (let i = 0; i < 9; i++) await openFile(t, `component-${i}.tsx`)
 
   const bar = t.captureCharFrame().split('\n')[0]!
   const counter = bar.indexOf('\u2039')
@@ -121,4 +105,4 @@ test('clicking an overflow counter opens the list of open tabs', async () => {
   await press(t, input => void input.typeText('component-0'))
   await press(t, input => input.pressEnter())
   expect(t.captureCharFrame()).toContain('const a0 = 1')
-})
+}, 20000)

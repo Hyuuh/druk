@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openFile, settle } from './helpers'
 import type { Harness } from './helpers'
 
 interface SelectionHost {
@@ -12,9 +12,7 @@ const selected = (t: Harness) =>
 
 async function withOpenFile() {
   const t = await launch(fixture({ 'a.ts': 'const alpha = 1\nconst beta = 2\n' }))
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText('a.ts'))
-  await press(t, input => input.pressEnter())
+  await openFile(t, 'a.ts')
   return t
 }
 

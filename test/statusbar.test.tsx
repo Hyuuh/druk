@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { DEFAULTS } from '../src/core/config'
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { fixture, launch, openFile, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
 /** A repo with one committed file, one edit and one untracked file. */
@@ -26,10 +26,7 @@ function repo() {
 const bar = (t: Harness) => t.captureCharFrame().split('\n').at(-2) ?? ''
 
 async function openFirst(t: Harness, name: string) {
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText(name))
-  await press(t, input => input.pressEnter())
-  await settle(t)
+  await openFile(t, name)
 }
 
 describe('the status bar', () => {

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { fixture, launch, openFile, press, pressEscape, pressTimes, settle, until } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = {
@@ -16,10 +16,7 @@ const PROJECT = {
  * editor, where `x` and `p` are just letters to type.
  */
 async function open(t: Harness, name: string) {
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText(name))
-  await press(t, input => input.pressEnter())
-  await settle(t)
+  await openFile(t, name)
   await pressEscape(t)
   await settle(t, 80)
 }
@@ -29,8 +26,7 @@ async function open(t: Harness, name: string) {
  * the first ↓ lands on row 0 — `steps` is therefore a 1-based row number.
  */
 async function selectNth(t: Harness, steps: number) {
-  for (let n = 0; n < steps; n++) await press(t, input => input.pressArrow('down'))
-  await settle(t)
+  await pressTimes(t, steps, input => input.pressArrow('down'))
 }
 
 describe('moving a file with x and p', () => {
@@ -226,9 +222,7 @@ test('a batch move takes the open tabs with it', async () => {
   const t = await launch(dir)
 
   for (const name of ['one.ts', 'two.ts']) {
-    await press(t, i => i.pressKey('o', { ctrl: true }))
-    await press(t, i => void i.typeText(name))
-    await press(t, i => i.pressEnter())
+    await openFile(t, name)
   }
 
   // Back to the tree: opening a file selects its row, so the cursor is on
@@ -240,7 +234,9 @@ test('a batch move takes the open tabs with it', async () => {
   await press(t, i => i.pressArrow('up'))
   await press(t, i => i.pressArrow('up')) // lib
   await press(t, i => void i.typeText('p'))
-  await settle(t, 300)
+  // A batch move lands one entry at a time, so wait for the last of them rather
+  // than for a duration.
+  await until(t, () => existsSync(join(dir, 'lib/two.ts')))
 
   expect(readFileSync(join(dir, 'lib/one.ts'), 'utf8')).toBe('const one = 1\n')
 

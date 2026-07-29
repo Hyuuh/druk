@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { flattenVisible, listDir } from '../src/core/fs'
-import { launch, press } from './helpers'
+import { launch, openFile, press } from './helpers'
 
 /** A project holding a real directory and file, plus symlinks to each. */
 function linked() {
@@ -89,9 +89,7 @@ describe('opening symlinks', () => {
     const { project } = linked()
     const t = await launch(project)
 
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText('linked.ts'))
-    await press(t, input => input.pressEnter())
+    await openFile(t, 'linked.ts')
 
     expect(t.captureCharFrame()).toContain('const real = 2')
   })

@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test'
 import { DEFAULTS } from '../src/core/config'
 import { getSyntaxStyle } from '../src/languages/highlight'
 import { THEMES } from '../src/themes'
-import { fixture, launch, press, runCommand } from './helpers'
+import { fixture, launch, press, pressTimes, runCommand } from './helpers'
 import { allSegments } from './syntax'
 
 const NESTED = 'function f() {\n  if (x) {\n    return 1\n  }\n}\n'
@@ -68,7 +68,7 @@ test('tab indents keep drawing guides after the view scrolls', async () => {
   const dir = fixture({ 'a.tsx': content })
   const t = await launch(dir, {}, {}, { openFile: `${dir}/a.tsx` })
 
-  for (let i = 0; i < 45; i++) await press(t, input => input.pressArrow('down'))
+  await pressTimes(t, 45, input => input.pressArrow('down'))
 
   const frame = t.captureCharFrame()
   expect(frame).toContain('█ █ <marker/>')

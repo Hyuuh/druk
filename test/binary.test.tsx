@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { launch, press, settle } from './helpers'
+import { launch, openFile, press, settle } from './helpers'
 
 /** A project with a real binary file next to a text one. */
 function project() {
@@ -31,16 +31,10 @@ test('a binary file is listed but does not open', async () => {
 
 test('the refusal covers the file that was open, and leaves when a key is pressed', async () => {
   const t = await launch(project())
-  await press(t, i => i.pressKey('o', { ctrl: true }))
-  await press(t, i => void i.typeText('main.ts'))
-  await press(t, i => i.pressEnter())
-  await settle(t)
+  await openFile(t, 'main.ts')
   expect(t.captureCharFrame()).toContain('const a = 1')
 
-  await press(t, i => i.pressKey('o', { ctrl: true }))
-  await press(t, i => void i.typeText('.DS_Store'))
-  await press(t, i => i.pressEnter())
-  await settle(t)
+  await openFile(t, '.DS_Store')
 
   // The point of drawing it here: the open file is not still sitting there looking
   // like the thing that was asked for.

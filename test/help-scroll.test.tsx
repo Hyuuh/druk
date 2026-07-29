@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { fixture, launch, openPalette, press } from './helpers'
+import { fixture, launch, openPalette, press, pressTimes } from './helpers'
 
 const PROJECT = { 'a.ts': 'const a = 1\n' }
 
@@ -22,7 +22,7 @@ test('on a short terminal the table windows instead of clipping the footer', asy
   // The last section is off-screen until scrolled to.
   expect(frame).not.toContain('Editor → tree')
 
-  for (let n = 0; n < 60; n++) await press(t, i => i.pressArrow('down'))
+  await pressTimes(t, 60, i => i.pressArrow('down'))
   expect(t.captureCharFrame()).toContain('Editor → tree')
 })
 

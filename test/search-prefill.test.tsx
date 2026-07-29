@@ -1,16 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openFile, press, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = { 'a.ts': 'const alpha = 1\nconst beta = alpha + 1\n' }
 
 async function withOpenFile() {
   const t = await launch(fixture(PROJECT))
-  await press(t, input => input.pressKey('o', { ctrl: true }))
-  await press(t, input => void input.typeText('a.ts'))
-  await press(t, input => input.pressEnter())
-  await settle(t)
+  await openFile(t, 'a.ts')
   return t
 }
 

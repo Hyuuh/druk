@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { encode } from 'fast-png'
 
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openFile, press, settle } from './helpers'
 
 /** A project holding one text file and one small red/blue PNG. */
 function project(): { dir: string; png: string } {
@@ -29,10 +29,7 @@ describe('image viewer', () => {
   test('opening an image from the picker shows the viewer and closes like a tab', async () => {
     const { dir } = project()
     const t = await launch(dir, {}, { width: 80, height: 24 })
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText('logo'))
-    await press(t, input => input.pressEnter())
-    await settle(t)
+    await openFile(t, 'logo')
 
     const frame = t.captureCharFrame()
     expect(frame).toContain('logo.png — 4×8 · 1 KB')
@@ -50,10 +47,7 @@ describe('image viewer', () => {
   test('an image tab survives a session restore', async () => {
     const { dir } = project()
     const first = await launch(dir, {}, { width: 80, height: 24 })
-    await press(first, input => input.pressKey('o', { ctrl: true }))
-    await press(first, input => void input.typeText('logo'))
-    await press(first, input => input.pressEnter())
-    await settle(first)
+    await openFile(first, 'logo')
     expect(first.captureCharFrame()).toContain('logo.png — 4×8')
 
     const second = await launch(dir, {}, { width: 80, height: 24 })
@@ -63,10 +57,7 @@ describe('image viewer', () => {
   test('an image tab never becomes a buffer, so nothing can write it back', async () => {
     const { dir, png } = project()
     const t = await launch(dir, {}, { width: 80, height: 24 })
-    await press(t, input => input.pressKey('o', { ctrl: true }))
-    await press(t, input => void input.typeText('logo'))
-    await press(t, input => input.pressEnter())
-    await settle(t)
+    await openFile(t, 'logo')
     expect(t.captureCharFrame()).toContain('logo.png — 4×8')
 
     // Ctrl+S on the viewer must not create or save anything: the PNG stays intact.
