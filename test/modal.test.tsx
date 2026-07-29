@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { listRows, modalWidth, wrapText } from '../src/ui/modal'
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openPalette, press, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = { 'src/alpha.ts': 'const capture = 1\n', 'src/beta.ts': '// capture\n' }
@@ -78,7 +78,7 @@ describe('an open modal', () => {
     const before = fgOf(t, 'explorer')
     expect(before).not.toBe('')
 
-    await press(t, input => input.pressKey('p', { ctrl: true }))
+    await openPalette(t)
     await settle(t)
     const behind = fgOf(t, 'explorer')
 
@@ -104,11 +104,11 @@ describe('an open modal', () => {
 
   test('grows with the terminal', async () => {
     const narrow = await launch(fixture(PROJECT), {}, { width: 80, height: 30 })
-    await press(narrow, input => input.pressKey('p', { ctrl: true }))
+    await openPalette(narrow)
     await settle(narrow)
 
     const wide = await launch(fixture(PROJECT), {}, { width: 160, height: 30 })
-    await press(wide, input => input.pressKey('p', { ctrl: true }))
+    await openPalette(wide)
     await settle(wide)
 
     const width = (t: Harness) => bordered(t)[0]!.trim().length

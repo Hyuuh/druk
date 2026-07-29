@@ -1,6 +1,6 @@
 import { relative } from 'node:path'
 
-import { createEffect, createMemo, createSignal, on } from 'solid-js'
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js'
 
 import { currentBranch, diffLines, inRepository, statusMap, upstreamOf } from '../core/git'
 import type { FileStatus, GitResult, LineChange, Upstream } from '../core/git'
@@ -16,7 +16,9 @@ export function createGit(rootDir: string) {
   /** Bumped when something may have changed what git would report. */
   const [revision, setRevision] = createSignal(0)
   const [gitStatus, setGitStatus] = createSignal<Map<string, FileStatus>>(new Map())
-  const [branch, setBranch] = createSignal(currentBranch(rootDir))
+  // Starts null and is filled by `wireGitEffects` after the first frame: reading
+  // the branch here is a synchronous subprocess on the render thread's clock.
+  const [branch, setBranch] = createSignal<string | null>(null)
   /** Whether `rootDir` is in a repository at all. A signal because `inRepository`
    * spawns git: the source-control panel reads this on every render, and a
    * subprocess there would run once per frame. */
@@ -106,12 +108,24 @@ export function wireGitEffects(deps: {
 }) {
   const { rootDir, git, tree, editor, workspace } = deps
 
+  // Every query below is a synchronous subprocess, and effects run inside the
+  // initial render pass — `statusMap` alone can take hundreds of milliseconds in
+  // a large repository, all of it spent before the first frame. Each effect
+  // therefore sits behind one deferred tick: the frame goes out first, then the
+  // effects re-run with their real dependencies.
+  const [ready, setReady] = createSignal(false)
+  onMount(() => {
+    const timer = setTimeout(() => setReady(true), 0)
+    onCleanup(() => clearTimeout(timer))
+  })
+
   createEffect(
     on(
       // Not keyed on content: `git diff` is a subprocess, far too heavy to run
       // on every keystroke. Saving bumps reloadKey, which refreshes the marks.
-      () => [workspace.activePath(), editor.reloadKey(), git.revision()] as const,
-      ([path]) => {
+      () => [ready(), workspace.activePath(), editor.reloadKey(), git.revision()] as const,
+      ([ok, path]) => {
+        if (!ok) return
         git.setGitLines(path ? diffLines(path) : new Map())
       },
     ),
@@ -121,8 +135,11 @@ export function wireGitEffects(deps: {
   // the tree refresh, which fires on every filesystem event.
   createEffect(
     on(
-      () => [git.branch(), git.revision()] as const,
-      () => git.setUpstream(upstreamOf(rootDir)),
+      () => [ready(), git.branch(), git.revision()] as const,
+      ([ok]) => {
+        if (!ok) return
+        git.setUpstream(upstreamOf(rootDir))
+      },
     ),
   )
 
@@ -131,8 +148,9 @@ export function wireGitEffects(deps: {
   // here, and nothing else would ever notice HEAD had moved.
   createEffect(
     on(
-      () => [tree.expanded(), git.revision(), editor.reloadKey()] as const,
-      () => {
+      () => [ready(), tree.expanded(), git.revision(), editor.reloadKey()] as const,
+      ([ok]) => {
+        if (!ok) return
         git.setGitStatus(statusMap(rootDir))
         git.setBranch(currentBranch(rootDir))
         // `git init` in another terminal writes .git, so the watcher brings us

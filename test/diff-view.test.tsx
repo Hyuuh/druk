@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { launch, press, pressEscape, runCommand, settle } from './helpers'
+import { launch, openPalette, press, pressEscape, runCommand, settle } from './helpers'
 
 interface Span {
   text: string
@@ -225,7 +225,7 @@ test('the palette opens over the diff, and Ctrl+W closes the page', async () => 
   await runCommand(t, 'Diff current file')
 
   // Not a modal: global chords still work on top of the page.
-  await press(t, i => i.pressKey('p', { ctrl: true }))
+  await openPalette(t)
   expect(t.captureCharFrame()).toContain('Commands')
   await pressEscape(t)
   expect(t.captureCharFrame()).toContain('+1 −1') // still on the page

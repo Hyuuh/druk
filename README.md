@@ -69,8 +69,10 @@ status bar with the branch, unsaved state and cursor position.
 - Opening a file from the tree previews it: the tab is *italic* and the next file you
   open takes its place. Double-click it, or start editing, and the tab stays for good.
 - `Ctrl+S` saves. Closing a tab with unsaved edits asks first.
-- `Ctrl+P` opens the command palette — every feature is in there, and typing filters it,
-  so you never have to remember a shortcut. `Ctrl+P` → `Keyboard shortcuts` shows them all.
+- `F1` (or `Ctrl+Shift+P` where the terminal can send it) opens the command palette —
+  every feature is in there, and typing filters it, so you never have to remember a
+  shortcut. `F1` → `Keyboard shortcuts` shows them all.
+- `Ctrl+P` opens any file in the project (fuzzy), as in VS Code.
 - `Ctrl+K` peeks: a strip over the status bar listing every key that works right now,
   gone again on the next keypress.
 
@@ -78,9 +80,9 @@ status bar with the branch, unsaved state and cursor position.
 
 | Key | Does |
 | --- | --- |
-| `Ctrl+P` | Command palette |
+| `F1` or `Ctrl+Opt+P` | Command palette |
+| `Ctrl+P` or `Ctrl+O` | Open any file in the project (fuzzy) |
 | `Ctrl+K` | Peek at every key for the pane you are in |
-| `Ctrl+O` | Open any file in the project (fuzzy) |
 | `Ctrl+T` | Switch between open tabs |
 | `Ctrl+S` | Save |
 | `Ctrl+F` | Find in this file (`Tab` adds replace) |
@@ -103,15 +105,16 @@ In the tree: `a` new file, `A` new folder, `r` rename, `d` delete, `x` cut, `c` 
 `p` paste here, `Shift+↑`/`↓` select several rows, `[` / `]` resize the sidebar.
 
 Two things worth knowing: `Ctrl+C` copies when text is selected and quits when nothing is,
-so it never throws away unsaved work. And there are no `Ctrl+Shift` shortcuts — most
-terminals cannot tell them apart from plain `Ctrl` — so a second modifier is always
-`Ctrl+Opt`.
+so it never throws away unsaved work. And most terminals cannot tell `Ctrl+Shift` apart
+from plain `Ctrl`, so a second modifier is spelled `Ctrl+Opt` — terminals with the kitty
+keyboard protocol take `Ctrl+Shift` too (`Ctrl+Shift+P` opens the palette there, as in
+VS Code).
 
 ### The Opt / Alt key
 
 druk names the key for your OS: `Opt` (Option, ⌥) on macOS, `Alt` everywhere else.
 Every shortcut works in a stock terminal — nothing to configure. The line commands are
-also in the palette (`Ctrl+P`). Some terminals (macOS Terminal.app among them) cannot
+also in the palette (`F1`). Some terminals (macOS Terminal.app among them) cannot
 send `Ctrl+/` at all — that is why *Toggle comment* also answers to `Ctrl+L`.
 
 ## Search
@@ -158,8 +161,12 @@ palette under *Git*.
 
 ## Settings
 
-Change things from the palette (`Ctrl+P`), or edit `~/.config/druk/config.json` directly.
-A bad value falls back to the default instead of breaking startup.
+Open the settings page from the palette (`F1` → `Settings`): one row per option,
+`←→` steps the value and `Enter` opens a filterable list of every value — the way
+to reach one of 26 themes without pressing an arrow 26 times. Every change applies
+immediately and persists. Or edit
+`~/.config/druk/config.json` directly — a bad value falls back to the default
+instead of breaking startup.
 
 | Setting | Default | |
 | --- | --- | --- |
@@ -169,6 +176,9 @@ A bad value falls back to the default instead of breaking startup.
 | `sidebarWidth` | `"auto"` | a quarter of the window, or pin 15–80 columns |
 | `trimOnSave` | `false` | on save: strip trailing spaces and end the file with one newline |
 | `autoSaveOnBlur` | `false` | save unsaved tabs when switching tabs or when the terminal window loses focus |
+| `showDotfiles` | `true` | set `false` to hide dotfiles in the file tree |
+| `respectGitignore` | `false` | set `true` to hide git-ignored files in the file tree |
+| `diffView` | `"inline"` | `inline` or `split` — how the diff view lays out changes |
 
 druk also remembers each project's open tabs, active file and expanded folders, and
 restores them the next time you open that directory.

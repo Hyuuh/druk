@@ -63,6 +63,10 @@ export interface Config {
   autoSaveOnBlur: boolean
   /** How the diff view renders: one column of +/- rows, or two side by side. */
   diffView: 'inline' | 'split'
+  /** Whether the tree lists dotfiles. The default tells the filesystem's truth. */
+  showDotfiles: boolean
+  /** Hide git-ignored files from the tree. Off by default for the same reason. */
+  respectGitignore: boolean
 }
 
 export const DEFAULTS: Config = {
@@ -74,6 +78,8 @@ export const DEFAULTS: Config = {
   trimOnSave: false,
   autoSaveOnBlur: false,
   diffView: 'inline',
+  showDotfiles: true,
+  respectGitignore: false,
 }
 
 function parse(raw: unknown): Config {
@@ -91,6 +97,9 @@ function parse(raw: unknown): Config {
       typeof obj.autoSaveOnBlur === 'boolean' ? obj.autoSaveOnBlur : DEFAULTS.autoSaveOnBlur,
     diffView:
       obj.diffView === 'split' || obj.diffView === 'inline' ? obj.diffView : DEFAULTS.diffView,
+    showDotfiles: typeof obj.showDotfiles === 'boolean' ? obj.showDotfiles : DEFAULTS.showDotfiles,
+    respectGitignore:
+      typeof obj.respectGitignore === 'boolean' ? obj.respectGitignore : DEFAULTS.respectGitignore,
     sidebarWidth:
       typeof obj.sidebarWidth === 'number' &&
       obj.sidebarWidth >= SIDEBAR_MIN &&

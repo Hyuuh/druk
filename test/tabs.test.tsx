@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { fixture, launch, press, settle } from './helpers'
+import { fixture, launch, openPalette, press, settle } from './helpers'
 
 test('the tab bar is a single row above the editor', async () => {
   const t = await launch(fixture({ 'a.ts': 'x\n' }))
@@ -64,7 +64,7 @@ test('close others leaves a single tab', async () => {
     await press(t, i => i.pressEnter())
   }
 
-  await press(t, i => i.pressKey('p', { ctrl: true }))
+  await openPalette(t)
   await press(t, i => void i.typeText('Close other'))
   await press(t, i => i.pressEnter())
 

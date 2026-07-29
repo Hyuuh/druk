@@ -2,12 +2,34 @@ import { dirname, join } from 'node:path'
 
 import { createMemo, createSignal } from 'solid-js'
 
+import type { Config } from '../core/config'
 import { flattenVisible } from '../core/fs'
+import type { TreeNode } from '../core/fs'
+import { ignoredPaths } from '../core/git'
+
+/**
+ * The tree's row filter for the current settings, or null when nothing is hidden.
+ * Reads the config store, so a memo calling this recomputes when either setting
+ * flips. The ignored set is re-read from git on every call — the callers' memo
+ * already re-runs on each tree refresh, which is the same cadence `statusMap`
+ * runs on, and a stale set would hide files whose ignore rules are gone.
+ */
+export function hiddenNodes(
+  rootDir: string,
+  config: Pick<Config, 'showDotfiles' | 'respectGitignore'>,
+): ((node: TreeNode) => boolean) | null {
+  const hideDots = !config.showDotfiles
+  const ignored = config.respectGitignore ? ignoredPaths(rootDir) : null
+  if (!hideDots && ignored === null) return null
+  return node => (hideDots && node.name.startsWith('.')) || (ignored?.has(node.path) ?? false)
+}
 
 /** File-tree state: which folders are open, where the cursor is, what is marked. */
 export function createTree(
   rootDir: string,
   initial: { expanded: string[]; selected: string | null },
+  /** Current row filter — see `hiddenNodes`. Absent means list everything. */
+  hidden?: () => ((node: TreeNode) => boolean) | null,
 ) {
   const [expanded, setExpanded] = createSignal<Set<string>>(new Set(initial.expanded))
   const [selectedPath, setSelectedPath] = createSignal<string | null>(initial.selected)
@@ -20,7 +42,7 @@ export function createTree(
   /** Row the current range grows from; null when there is no range. */
   const [anchor, setAnchor] = createSignal<string | null>(null)
 
-  const nodes = createMemo(() => flattenVisible(rootDir, expanded()))
+  const nodes = createMemo(() => flattenVisible(rootDir, expanded(), hidden?.() ?? undefined))
 
   // Bump the Set identity so `nodes` recomputes and re-reads the filesystem.
   const refreshTree = () => setExpanded(prev => new Set(prev))

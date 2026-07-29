@@ -1,6 +1,6 @@
 /**
  * Command registry — the catalogue of everything druk can do. This tree is the
- * command palette (Ctrl+P), so it doubles as the feature index.
+ * command palette (F1 / Ctrl+Shift+P), so it doubles as the feature index.
  *
  * A command either runs (`run`) or opens a submenu (`children`), never both.
  * Typing in the palette searches every leaf across all levels, so nesting keeps
@@ -48,12 +48,9 @@ export interface CommandActions {
   toggleFocus: () => void
   toggleSidebar: () => void
   toggleGitView: () => void
-  setVim: (enabled: boolean) => void
-  setTabSize: (size: number) => void
   setTheme: (name: ThemeName) => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
-  toggleTrim: () => void
-  toggleAutoSave: () => void
+  openSettings: () => void
   gitDiffFile: () => void
   gitDiffAll: (focusPath?: string) => void
   gitCommit: () => void
@@ -68,21 +65,15 @@ export interface CommandActions {
 }
 
 export interface CommandContext {
-  vimEnabled: boolean
   activeTheme: ThemeName
-  tabSize: number
-  trimOnSave: boolean
-  autoSaveOnBlur: boolean
 }
-
-const TAB_SIZES = [2, 4, 8]
 
 /** Marks the entry matching the current setting, so submenus show state. */
 const check = (on: boolean) => (on ? '* ' : '  ')
 
 export function buildCommands(actions: CommandActions, ctx: CommandContext): Command[] {
   return [
-    { id: 'open', label: 'Open file…', hint: 'Ctrl+O', run: actions.openFile },
+    { id: 'open', label: 'Open file…', hint: 'Ctrl+P', run: actions.openFile },
     { id: 'save', label: 'Save file', hint: 'Ctrl+S', run: actions.save },
     { id: 'goto', label: 'Go to line…', hint: 'Ctrl+G', run: actions.gotoLine },
     { id: 'undo', label: 'Undo', hint: 'Ctrl+Z', run: actions.undo },
@@ -215,37 +206,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           hint: `${ALT}+Shift+↓`,
           run: () => actions.lineOp('duplicate'),
         },
-        {
-          id: 'editor.vimOn',
-          label: `${check(ctx.vimEnabled)}Vim mode on`,
-          run: () => actions.setVim(true),
-        },
-        {
-          id: 'editor.vimOff',
-          label: `${check(!ctx.vimEnabled)}Vim mode off`,
-          run: () => actions.setVim(false),
-        },
-        {
-          id: 'editor.tabSize',
-          label: 'Tab size',
-          children: TAB_SIZES.map(size => ({
-            id: `editor.tabSize.${size}`,
-            label: `${check(ctx.tabSize === size)}${size} spaces`,
-            run: () => actions.setTabSize(size),
-          })),
-        },
-        {
-          id: 'editor.trim',
-          label: `${check(ctx.trimOnSave)}Trim trailing whitespace on save`,
-          run: actions.toggleTrim,
-        },
-        {
-          id: 'editor.autoSave',
-          label: `${check(ctx.autoSaveOnBlur)}Auto-save on tab switch and terminal blur`,
-          run: actions.toggleAutoSave,
-        },
       ],
     },
+    // Vim, tab size, trim, auto-save and the rest live on the settings page —
+    // the palette carries features, not configuration. Themes stay above for
+    // the arrow-through live preview.
+    { id: 'settings', label: 'Settings', run: actions.openSettings },
     { id: 'help', label: 'Keyboard shortcuts', run: actions.showHelp },
     { id: 'quit', label: 'Quit', hint: 'Ctrl+Q', run: actions.quit },
   ]

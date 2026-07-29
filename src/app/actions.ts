@@ -96,12 +96,14 @@ export function createCommands(ctx: AppContext) {
     toggleFocus: () => (panes.focus() === 'tree' ? panes.setFocus('editor') : panes.focusTree()),
     toggleSidebar: panes.toggleSidebar,
     toggleGitView: panes.toggleGitView,
-    setVim: settings.applyVim,
-    setTabSize: settings.applyTabSize,
     setTheme: settings.applyTheme,
     lineOp: editor.requestLineOp,
-    toggleTrim: settings.toggleTrim,
-    toggleAutoSave: settings.toggleAutoSave,
+    openSettings: () => {
+      // One page at a time: the slot under the settings page is the editor's.
+      ctx.overlays.setDiff(null)
+      ctx.overlays.setSettingsPage(true)
+      panes.setFocus('editor')
+    },
     gitDiffFile: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
       const path = workspace.activePath()
@@ -110,6 +112,7 @@ export function createCommands(ctx: AppContext) {
       // empty) when the buffer holds unsaved edits, so 'modified' is the fallback.
       const file = diffFileFor(path, git.gitStatus().get(path) ?? 'modified')
       if (!file) return say('Cannot diff this file', 'warn')
+      ctx.overlays.setSettingsPage(false)
       ctx.overlays.setDiff({ files: [file], index: 0 })
       panes.setFocus('editor')
     },
@@ -122,6 +125,7 @@ export function createCommands(ctx: AppContext) {
       if (files.length === 0) return say('Nothing to diff — working tree clean')
       const target = focusPath ?? workspace.activePath()
       const active = files.findIndex(file => file.path === target)
+      ctx.overlays.setSettingsPage(false)
       ctx.overlays.setDiff({ files, index: Math.max(0, active) })
       panes.setFocus('editor')
     },
@@ -167,13 +171,7 @@ export function createCommands(ctx: AppContext) {
   }
 
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, {
-      vimEnabled: config.vim,
-      activeTheme: config.theme,
-      tabSize: config.tabSize,
-      trimOnSave: config.trimOnSave,
-      autoSaveOnBlur: config.autoSaveOnBlur,
-    }),
+    buildCommands(actions, { activeTheme: config.theme }),
   )
 
   return { commands, actions }

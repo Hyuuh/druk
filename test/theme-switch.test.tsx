@@ -3,7 +3,7 @@ import { afterAll, expect, test } from 'bun:test'
 import { getSyntaxStyle, invalidateSyntaxStyle } from '../src/languages/highlight'
 import { setTheme, syntaxTheme, THEMES } from '../src/themes'
 import type { ThemeName } from '../src/themes'
-import { fixture, launch, press } from './helpers'
+import { fixture, launch, openPalette, press } from './helpers'
 import type { Harness } from './helpers'
 import { allSegments } from './syntax'
 
@@ -43,7 +43,7 @@ const hexToRgb = (hex: string) => {
 }
 
 async function switchTheme(t: Harness, query: string) {
-  await press(t, i => i.pressKey('p', { ctrl: true }))
+  await openPalette(t)
   await press(t, i => void i.typeText(query))
   await press(t, i => i.pressEnter())
 }

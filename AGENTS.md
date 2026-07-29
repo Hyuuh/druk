@@ -10,11 +10,14 @@ A TUI code editor built on [OpenTUI](https://github.com/anomalyco/opentui) (Soli
 reconciler on a native Zig core). Shipped as a standalone binary — npm, Homebrew, a curl
 installer — and run as a CLI.
 
-Features: file tree with bulk file operations, preview/pinned tabs, tree-sitter syntax
+Features: file tree with bulk file operations and opt-in hiding of dotfiles and
+git-ignored files, preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide), command palette, themes, vim mode,
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar and
 palette commands for commit/undo/stash/push/fetch/pull, a diff view (inline or
-side-by-side, one file or every change), file watching with conflict prompts,
+side-by-side, one file or every change), an image viewer (PNG/JPEG as half-block
+cells), a settings page (palette → Settings) that edits and persists every option
+live, with a filterable value list per option, file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
 ## Runtime and tooling
@@ -59,12 +62,19 @@ writes to your real `~/.config/druk`.
 ## Shipping
 
 `bun run build` produces one executable; `bun run release` turns the executables in
-`dist/` into npm packages and release archives. Five things about that are easy to break:
+`dist/` into npm packages and release archives. Six things about that are easy to break:
 
 - **Assets must be static `with { type: 'file' }` imports.** Bun embeds only what it can
   see at build time, so a computed specifier or an `import.meta.resolve` call leaves the
   binary without that file. Every grammar and query goes through
   `src/languages/grammars.ts` for this reason.
+- **`index.tsx` must keep the app behind its dynamic import.** `core/assets.ts` stages
+  the native library to a per-build cache and points `OTUI_ASSET_ROOT` at it — worth
+  ~250ms of startup on macOS, which otherwise re-validates a freshly extracted dylib on
+  every launch. Bundled statically, Bun's scope hoisting runs `@opentui/core`'s
+  top-level code before the entry's own statements, so the env var would be set too
+  late; the dynamic import in `index.tsx` is what forces the order (and is also why
+  `druk --version` answers in milliseconds). Details in ARCHITECTURE.md.
 - **The binary must not autoload `bunfig.toml`.** druk is opened inside other people's
   projects, and a standalone Bun binary otherwise reads the `bunfig.toml` it finds there —
   whose `preload` fails to resolve and kills startup. `build.ts` turns that off.
@@ -118,9 +128,10 @@ dependency rule, and recipes for the extension points:
 | --- | --- |
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
-| setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) |
+| setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) + a row in `src/app/settings.ts` (`rows`) so the settings page shows it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | handler in `src/app/keyboard.ts` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay and Alt+/ peek) |
+| git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 

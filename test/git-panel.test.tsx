@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press, pressEscape, settle } from './helpers'
+import { fixture, launch, press, pressEscape, runCommand, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const ESC = String.fromCharCode(27)
@@ -96,8 +96,6 @@ test('the peek strip advertises the panel keys, not the tree ones', async () => 
 
 test('the palette opens the panel too', async () => {
   const t = await launch(repo())
-  await press(t, i => i.pressKey('p', { ctrl: true }))
-  await press(t, i => void i.typeText('Source control'))
-  await press(t, i => i.pressEnter())
+  await runCommand(t, 'Source control')
   expect(frame(t)).toContain('source control')
 })

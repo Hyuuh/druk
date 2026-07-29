@@ -31,11 +31,13 @@ export interface KeyInfo {
 
 export const KEYS: KeyInfo[] = [
   {
-    key: 'Ctrl+P',
+    // Ctrl+Shift+P reaches only kitty-protocol terminals; the Opt spelling and
+    // F1 are what work everywhere, so F1 is the one the hint advertises.
+    key: `F1 · Ctrl+${ALT}+P`,
     label: 'Command palette (+ themes)',
     section: 'General',
     where: 'all',
-    hint: { pane: 'all', label: 'commands', rank: 0 },
+    hint: { pane: 'all', label: 'commands', rank: 0, key: 'F1' },
   },
   {
     key: 'Ctrl+K',
@@ -44,7 +46,7 @@ export const KEYS: KeyInfo[] = [
     where: 'all',
     hint: { pane: 'all', label: 'keys', rank: 1 },
   },
-  { key: 'Ctrl+O', label: 'Open file (fuzzy)', section: 'General', where: 'all' },
+  { key: 'Ctrl+P · Ctrl+O', label: 'Open file (fuzzy)', section: 'General', where: 'all' },
   { key: 'Ctrl+G', label: 'Go to line', section: 'General', where: 'all' },
   { key: 'Ctrl+Q', label: 'Quit', section: 'General', where: 'all' },
   { key: 'Mouse', label: 'Click tabs, tree rows, editor', section: 'General', where: 'help' },

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press, pressEscape } from './helpers'
+import { F1, fixture, launch, openPalette, press, pressEscape } from './helpers'
 import type { Harness } from './helpers'
 
 type Input = Harness['mockInput']
@@ -32,7 +32,7 @@ describe('focus after an overlay closes', () => {
 
   test(
     'after the command palette',
-    reopensTyping(i => i.pressKey('p', { ctrl: true })),
+    reopensTyping(i => void i.pressKeys([F1])),
   )
   test(
     'after find in file',
@@ -128,7 +128,7 @@ test('go to line rejects something that is not a line number', async () => {
 
 test('the palette keeps its input and footer on screen when a filter matches everything', async () => {
   const t = await launch(fixture(PROJECT))
-  await press(t, i => i.pressKey('p', { ctrl: true }))
+  await openPalette(t)
   await press(t, i => void i.typeText('e')) // matches most of the 50-odd leaves
 
   const frame = t.captureCharFrame()

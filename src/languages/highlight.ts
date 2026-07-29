@@ -27,6 +27,9 @@ function registerVendoredParsers(client: TreeSitterClient): void {
   }
 }
 
+/** Cleared with the style table: the ids are only valid for the theme they came from. */
+const styleIdByGroup = new Map<string, number | null>()
+
 /** Shared style table used by every editor buffer (built from the active theme). */
 export function getSyntaxStyle(): SyntaxStyle {
   if (!syntaxStyle) {
@@ -40,6 +43,7 @@ export function getSyntaxStyle(): SyntaxStyle {
 
 export function invalidateSyntaxStyle(): void {
   syntaxStyle = null
+  styleIdByGroup.clear()
 }
 
 /**
@@ -98,19 +102,27 @@ async function ensureClient(): Promise<TreeSitterClient | null> {
 
 /**
  * Resolve a capture group to a style id, walking from the most specific scope
- * ("type.builtin") to the least ("type").
+ * ("type.builtin") to the least ("type"). Memoized per group: segmentation asks
+ * for the same handful of groups once per capture in every window it paints.
  */
 export function styleIdForGroup(group: string): number | null {
+  const hit = styleIdByGroup.get(group)
+  if (hit !== undefined) return hit
   const ss = getSyntaxStyle()
+  let resolved: number | null = null
   let g = group
   while (g.length > 0) {
     const id = ss.getStyleId(g)
-    if (id != null) return id
+    if (id != null) {
+      resolved = id
+      break
+    }
     const dot = g.lastIndexOf('.')
     if (dot < 0) break
     g = g.slice(0, dot)
   }
-  return null
+  styleIdByGroup.set(group, resolved)
+  return resolved
 }
 
 export interface Segment {
@@ -202,13 +214,23 @@ interface Capture {
   start: number
   end: number
   group: string
+  /** Position in `ordered` — the paint order the buckets would otherwise lose. */
+  ord: number
 }
 
 /**
- * A parsed document, prepared for windowed segmentation. Neither field is derived
- * per window: both `lineStarts` (O(characters)) and the sort (O(captures log n))
- * used to run on every call, which put a floor of ~2ms under segmenting a *single*
- * line of a 20 000-line file — more than painting the whole viewport costs.
+ * A capture spanning at least this many lines skips the per-line buckets: a huge
+ * block comment would otherwise be pushed into thousands of them. There are only
+ * ever a handful of such captures, so windows scan them linearly instead.
+ */
+const WIDE_LINES = 256
+
+/**
+ * A parsed document, prepared for windowed segmentation. Nothing here is derived
+ * per window: `lineStarts` (O(characters)), the specificity sort (O(captures
+ * log n)) and the per-line buckets all used to be recomputed or scanned on every
+ * call, which put a floor proportional to the *whole file* under segmenting a
+ * single line — more than painting the viewport costs.
  */
 export interface Highlighted {
   content: string
@@ -220,6 +242,22 @@ export interface Highlighted {
    * order tree-sitter reported them — the tie-break the painter relies on.
    */
   ordered: Capture[]
+  /** Captures touching each line, so a window never walks the whole file's list. */
+  byLine: (Capture[] | undefined)[]
+  /** The few captures wider than `WIDE_LINES`, checked against every window. */
+  wide: Capture[]
+}
+
+/** Index of the line containing `offset`: last start at or before it. */
+function lineOfOffset(starts: number[], offset: number): number {
+  let low = 0
+  let high = starts.length - 1
+  while (low < high) {
+    const mid = (low + high + 1) >> 1
+    if (starts[mid]! <= offset) low = mid
+    else high = mid - 1
+  }
+  return low
 }
 
 function prepare(
@@ -227,10 +265,61 @@ function prepare(
   raw: ReadonlyArray<readonly [number, number, string, ...unknown[]]>,
 ): Highlighted {
   const ordered = raw
-    .map(([start, end, group]) => ({ start, end, group }))
+    .map(([start, end, group]) => ({ start, end, group, ord: 0 }))
     .filter(h => h.end > h.start)
     .toSorted((a, b) => specificity(a.group) - specificity(b.group))
-  return { content, starts: lineStarts(content), ordered }
+  const starts = lineStarts(content)
+  const byLine: (Capture[] | undefined)[] = Array.from({ length: starts.length })
+  const wide: Capture[] = []
+  for (let i = 0; i < ordered.length; i++) {
+    const h = ordered[i]!
+    h.ord = i
+    const first = lineOfOffset(starts, h.start)
+    const last = lineOfOffset(starts, h.end - 1)
+    if (last - first >= WIDE_LINES) {
+      wide.push(h)
+      continue
+    }
+    for (let line = first; line <= last; line++) (byLine[line] ??= []).push(h)
+  }
+  return { content, starts, ordered, byLine, wide }
+}
+
+/**
+ * Parsed documents by content, so switching back to a tab never repeats the
+ * parse — the worker round-trip is the whole cost of first colour (~350ms at
+ * 5 000 lines), and tab switches otherwise pay it every time. Entries are keyed
+ * on the exact text and checked against filetype and tab size; a `Highlighted`
+ * is theme-independent, so theme switches keep the cache.
+ */
+const PARSE_CACHE_LIMIT = 8
+interface ParseEntry {
+  filetype: string | undefined
+  tabSize: number
+  parsed: Highlighted
+}
+const parseCache = new Map<string, ParseEntry>()
+
+function cachedParse(content: string, filetype: string | undefined, tabSize: number) {
+  const hit = parseCache.get(content)
+  if (!hit || hit.filetype !== filetype || hit.tabSize !== tabSize) return null
+  // Re-insert to mark it most recently used; eviction takes the oldest.
+  parseCache.delete(content)
+  parseCache.set(content, hit)
+  return hit.parsed
+}
+
+function storeParse(
+  content: string,
+  filetype: string | undefined,
+  tabSize: number,
+  parsed: Highlighted,
+) {
+  parseCache.delete(content)
+  parseCache.set(content, { filetype, tabSize, parsed })
+  while (parseCache.size > PARSE_CACHE_LIMIT) {
+    parseCache.delete(parseCache.keys().next().value!)
+  }
 }
 
 export async function computeHighlights(
@@ -239,6 +328,12 @@ export async function computeHighlights(
   tabSize = 2,
   isStale?: () => boolean,
 ): Promise<Highlighted | typeof STALE> {
+  // The probe outranks the cache: a caller that already knows the text moved on
+  // was promised STALE, not a correct-but-unwanted result.
+  if (isStale?.()) return STALE
+  const cached = cachedParse(content, filetype, tabSize)
+  if (cached) return cached
+
   const guides = indentGuides(content, tabSize)
   const lang = filetype ? languageFor(filetype) : undefined
   const overlay = lang?.patterns ? highlightWithPatterns(content, lang.patterns) : []
@@ -246,7 +341,9 @@ export async function computeHighlights(
   // anyway can hang the query engine (tree-sitter-yaml). Only a language that
   // declares both wants its patterns layered over a parse.
   if (lang?.patterns && !lang.wasm && !lang.bundled) {
-    return prepare(content, [...overlay, ...guides])
+    const parsed = prepare(content, [...overlay, ...guides])
+    storeParse(content, filetype, tabSize, parsed)
+    return parsed
   }
 
   const client = filetype ? await ensureClient() : null
@@ -255,7 +352,9 @@ export async function computeHighlights(
     const res = await client.highlightOnce(content, filetype!)
     if (isStale?.()) return STALE
     const hl = res.highlights ?? []
-    return prepare(content, [...hl, ...outsideProse(content, overlay, hl), ...guides])
+    const parsed = prepare(content, [...hl, ...outsideProse(content, overlay, hl), ...guides])
+    storeParse(content, filetype, tabSize, parsed)
+    return parsed
   } catch {
     return prepare(content, [...overlay, ...guides])
   }
@@ -264,28 +363,55 @@ export async function computeHighlights(
 /**
  * Non-overlapping segments for lines `from`..`to` (inclusive) of a parsed document.
  *
- * Two steps:
- *   1. Paint each capture's style onto a per-character array. The captures arrive
+ * Three steps:
+ *   1. Collect the captures touching the range from the per-line buckets (plus
+ *      the wide list) and restore paint order by `ord`. This is what keeps a
+ *      window from scanning every capture in the file.
+ *   2. Paint each capture's style onto a per-character array. The captures run
  *      least specific first, so the most specific one wins each character — the
  *      same rule OpenTUI's own renderer uses.
- *   2. Merge runs of equal style into segments.
+ *   3. Merge runs of equal style into segments.
  *
  * Coordinates are per line: the buffer stores highlights against a line index,
- * which lets the editor add and drop them a line at a time while scrolling. Both
- * steps are O(characters in the range), which is why only the viewport is done.
+ * which lets the editor add and drop them a line at a time while scrolling. The
+ * work is O(characters and captures in the range), which is why only the
+ * viewport is done.
  */
 export function segmentsIn(parsed: Highlighted, from: number, to: number): Segment[] {
-  const { content, starts, ordered } = parsed
+  const { content, starts, byLine, wide } = parsed
   const first = Math.max(0, Math.min(from, starts.length - 1))
   const last = Math.max(first, Math.min(to, starts.length - 1))
   const sliceStart = starts[first]!
   const sliceEnd = last + 1 < starts.length ? starts[last + 1]! - 1 : content.length
 
+  let picked: Capture[]
+  if (first === 0 && last >= starts.length - 1) {
+    // Whole document: `ordered` already is every capture in paint order, and
+    // collecting it back out of the buckets would only add a set and a sort.
+    picked = parsed.ordered
+  } else {
+    picked = []
+    for (const h of wide) {
+      if (h.end > sliceStart && h.start < sliceEnd) picked.push(h)
+    }
+    // A capture sits in every bucket it touches, so one spanning several window
+    // lines arrives once per line; the set keeps it from painting twice.
+    const seen = new Set<Capture>()
+    for (let line = first; line <= last; line++) {
+      const bucket = byLine[line]
+      if (!bucket) continue
+      for (const h of bucket) {
+        if (!seen.has(h)) {
+          seen.add(h)
+          picked.push(h)
+        }
+      }
+    }
+    picked.sort((a, b) => a.ord - b.ord)
+  }
+
   const styleAt = new Int32Array(Math.max(0, sliceEnd - sliceStart)).fill(-1)
-  for (const h of ordered) {
-    // Skipped before resolving the group: the style lookup is the expensive part,
-    // and most of a file's captures are outside any one window.
-    if (h.end <= sliceStart || h.start >= sliceEnd) continue
+  for (const h of picked) {
     const styleId = styleIdForGroup(h.group)
     if (styleId == null) continue
     const start = Math.max(h.start, sliceStart)
