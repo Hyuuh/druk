@@ -10,6 +10,7 @@ const SAMPLES: Record<string, string> = {
   rust: 'fn main() {\n    let x: i32 = 1; // c\n}\n',
   go: 'package main\n// c\nfunc main() { return }\n',
   typescriptreact: '// c\nconst A = () => <div className="a">{1}</div>\n',
+  tsrx: '// c\nexport function A() @{\n\t@if (ok) {\n\t\t<p>{x as string}</p>\n\t}\n}\n',
   vue: '<template>\n  <!-- c -->\n  <div class="a">x</div>\n</template>\n',
   css: '.a { color: #fff; }\n/* c */\n',
   scss: '/* c */\n$brand: #f00;\n.a { color: $brand; &:hover { top: 1px } }\n',

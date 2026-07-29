@@ -64,6 +64,7 @@ export function filetypeForPath(path: string): string | undefined {
   const name = path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
   if (BY_NAME[name]) return BY_NAME[name]
   if (DOTENV.test(name)) return 'dotenv'
+  if (name.endsWith('.tsrx')) return 'tsrx'
   return pathToFiletype(path) ?? undefined
 }
 
@@ -150,6 +151,31 @@ function highlightWithPatterns(content: string, patterns: NonNullable<Language['
   return out
 }
 
+/**
+ * Overlay matches that a comment or string capture already covers. A regex has no
+ * context, so the literal `@for` in prose is indistinguishable from the directive.
+ *
+ * Only those two, and deliberately: everywhere else the overlay must win, because
+ * the grammar mis-attributes these tokens rather than missing them — tsx reads
+ * `@catch` as a call and captures `catch` as `function`.
+ *
+ * The mask is what keeps this linear. Testing each match against every capture is
+ * O(matches x captures), and cost 100ms on a 6 000-line file — on every reparse,
+ * so on every keystroke.
+ */
+function outsideProse(
+  content: string,
+  overlay: RawHighlight[],
+  claimed: ReadonlyArray<readonly [number, number, string, ...unknown[]]>,
+): RawHighlight[] {
+  if (overlay.length === 0) return overlay
+  const prose = new Uint8Array(content.length)
+  for (const [start, end, group] of claimed) {
+    if (group.startsWith('comment') || group.startsWith('string')) prose.fill(1, start, end)
+  }
+  return overlay.filter(([start, end]) => prose.subarray(start, end).every(c => c === 0))
+}
+
 /** Answered instead of segments when `isStale` says the text moved on. */
 export const STALE = Symbol('stale')
 
@@ -195,19 +221,24 @@ export async function computeHighlights(
   isStale?: () => boolean,
 ): Promise<Highlighted | typeof STALE> {
   const guides = indentGuides(content, tabSize)
-  const patterns = filetype ? languageFor(filetype)?.patterns : undefined
-  if (patterns) {
-    return prepare(content, [...highlightWithPatterns(content, patterns), ...guides])
+  const lang = filetype ? languageFor(filetype) : undefined
+  const overlay = lang?.patterns ? highlightWithPatterns(content, lang.patterns) : []
+  // Patterns without a grammar mean no usable grammar exists, and asking for one
+  // anyway can hang the query engine (tree-sitter-yaml). Only a language that
+  // declares both wants its patterns layered over a parse.
+  if (lang?.patterns && !lang.wasm && !lang.bundled) {
+    return prepare(content, [...overlay, ...guides])
   }
 
   const client = filetype ? await ensureClient() : null
-  if (!client) return prepare(content, guides)
+  if (!client) return prepare(content, [...overlay, ...guides])
   try {
     const res = await client.highlightOnce(content, filetype!)
     if (isStale?.()) return STALE
-    return prepare(content, [...(res.highlights ?? []), ...guides])
+    const hl = res.highlights ?? []
+    return prepare(content, [...hl, ...outsideProse(content, overlay, hl), ...guides])
   } catch {
-    return prepare(content, guides)
+    return prepare(content, [...overlay, ...guides])
   }
 }
 

@@ -115,7 +115,7 @@ dependency rule, and recipes for the extension points:
 
 | Want to add a… | Edit |
 | --- | --- |
-| language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts` |
+| language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |

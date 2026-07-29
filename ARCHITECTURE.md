@@ -98,7 +98,11 @@ nature, and threading twenty props would say less.
 
 Grammars OpenTUI already bundles (javascript, typescript, markdown, zig) only need
 `bundled: true` — no wasm or query. Parser registration and highlighting both read from
-this one table.
+this one table. A dialect close enough to an existing language can reuse its grammar
+outright: `javascriptreact` and `tsrx` are both `...GRAMMARS.tsx`.
+
+OpenTUI resolves the extension, so a filetype it has never heard of also needs a line in
+`filetypeForPath` (`src/languages/highlight.ts`), beside the `bun.lock` and `.env` cases.
 
 The status bar shows the `id`, which is fine for almost all of them. Add a `label` only
 where OpenTUI's filetype name is not what a person would call the file — `typescriptreact`
@@ -113,6 +117,16 @@ When no grammar works — tree-sitter-yaml, for one, needs an external scanner O
 worker cannot link — declare `patterns` instead: a list of `{ group, re }` painted in
 order, later entries winning the characters they overlap. Good enough for line-oriented
 config formats, and it needs no wasm.
+
+`patterns` beside a grammar means something else: an overlay for a dialect the grammar
+cannot parse. `.tsrx` is tsx plus Octane's `@if`/`@for`/`@{` directives, which land in
+tree-sitter `ERROR` regions — a query cannot reach inside one, so the tokens are regex-
+matched instead. `outsideProse` then drops any match a comment or string capture already
+covers, and *only* those: elsewhere the overlay has to win, because the grammar
+mis-attributes these tokens rather than missing them (tsx reads `@catch` as a call and
+captures `catch` as `function`). Ordering is load-bearing in the other direction too —
+patterns without a grammar must never reach tree-sitter, which is what keeps a yaml file
+from hanging the query engine.
 
 ### Add a theme
 
