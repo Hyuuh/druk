@@ -115,37 +115,46 @@ export function CommandPalette(props: CommandPaletteProps) {
         {/* A blank line between the field and the list, so the two read as separate
             things rather than one dense block. */}
         <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-        <Show
-          when={rows().length > 0}
-          fallback={<text fg={ui.dim} bg={ui.panelBg} content="No matching commands" />}
-        >
-          <For each={windowed().rows}>
-            {(row, i) => {
-              const active = () => windowed().start + i() === selected()
-              const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-              const prefix = row.trail.length > 0 ? `${row.trail.join(' › ')} › ` : ''
-              return (
-                <box flexDirection="row" backgroundColor={bg()}>
-                  {/* A bar on the selected row: the background alone is easy to miss
-                      on a low-contrast theme. */}
-                  <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
-                  <box flexGrow={1}>
+        {/* Fixed height, not content height: the panel is centered, so a list that
+            shrinks with every keystroke moves the input field the user is typing in. */}
+        <box flexDirection="column" height={visibleRows()}>
+          <Show
+            when={rows().length > 0}
+            fallback={<text fg={ui.dim} bg={ui.panelBg} content="No matching commands" />}
+          >
+            <For each={windowed().rows}>
+              {(row, i) => {
+                const active = () => windowed().start + i() === selected()
+                const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
+                const prefix = row.trail.length > 0 ? `${row.trail.join(' › ')} › ` : ''
+                return (
+                  <box flexDirection="row" backgroundColor={bg()}>
+                    {/* A bar on the selected row: the background alone is easy to miss
+                        on a low-contrast theme. */}
                     <text
-                      fg={active() ? ui.text : ui.dim}
+                      fg={ui.accent}
                       bg={bg()}
-                      content={`${prefix}${row.command.label}${row.command.children ? ' ›' : ''}`}
+                      flexShrink={0}
+                      content={active() ? '▌ ' : '  '}
                     />
+                    <box flexGrow={1}>
+                      <text
+                        fg={active() ? ui.text : ui.dim}
+                        bg={bg()}
+                        content={`${prefix}${row.command.label}${row.command.children ? ' ›' : ''}`}
+                      />
+                    </box>
+                    <Show when={row.command.hint}>
+                      {(hint: () => string) => (
+                        <text fg={ui.faint} bg={bg()} content={`${hint()} `} />
+                      )}
+                    </Show>
                   </box>
-                  <Show when={row.command.hint}>
-                    {(hint: () => string) => (
-                      <text fg={ui.faint} bg={bg()} content={`${hint()} `} />
-                    )}
-                  </Show>
-                </box>
-              )
-            }}
-          </For>
-        </Show>
+                )
+              }}
+            </For>
+          </Show>
+        </box>
         <text
           fg={ui.dim}
           bg={ui.panelBg}
