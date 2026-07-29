@@ -151,7 +151,7 @@ export function EditorPane(props: EditorPaneProps) {
   /** LineNumberRenderable takes `minWidth` in its constructor only, and Solid's
    * reconciler builds elements bare, so the width has to be poked in by hand. */
   interface GutterHost {
-    gutter?: { _minWidth?: number }
+    gutter?: { _minWidth?: number; requestRender?: () => void }
     setLineSigns?: (signs: Map<number, { before?: string; beforeColor?: string }>) => void
   }
   let gutter: GutterHost | undefined
@@ -935,6 +935,14 @@ export function EditorPane(props: EditorPaneProps) {
                 editor = el
                 setEditorEl(el)
                 ignoreScrollOutsideBounds(el)
+                // The gutter paints into a cached buffer and repaints only when
+                // it is dirty or the scroll moved. A file switch reuses this
+                // textarea (setText), and the rewrap lands after the git-signs
+                // effect has already dirtied and repainted the gutter — so the
+                // old file's wrap layout stays on screen. LineNumberRenderable
+                // only dirties *itself* on this event; the cached child is the
+                // one that has to hear it.
+                el.on('line-info-change', () => gutter?.gutter?.requestRender?.())
                 afterResize(el, () => {
                   applyLineSigns()
                   syncViewport()
