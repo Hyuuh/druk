@@ -19,7 +19,9 @@ palette commands for commit/undo/stash/push/fetch/pull and for branches
 side-by-side) for whichever change the panel's cursor is on — the arrows page
 through them and the panel is the only way in, an image viewer (PNG/JPEG as half-block
 cells), a settings page (palette → Settings) that edits and persists every option
-live, with a filterable value list per option, file watching with conflict prompts,
+live, with a filterable value list per option, LSP diagnostics from the user's own
+language servers (gutter marks, status-bar counts, a problems list in the palette;
+the settings page toggles LSP and each server), file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
 ## Runtime and tooling
@@ -129,6 +131,7 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
+| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts` (users override per-server with the `lspServers` setting; the settings page toggles them) |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) + a row in `src/app/settings.ts` (`rows`) so the settings page shows it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
@@ -137,7 +140,7 @@ dependency rule, and recipes for the extension points:
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 
-`ui/` and the feature folders (`core/`, `languages/`, `themes/`, `editor/`) must never
+`ui/` and the feature folders (`core/`, `languages/`, `themes/`, `editor/`, `lsp/`) must never
 import from `app/`. State lives in the `app/` controller modules (`createWorkspace`,
 `createTree`, …), which `App.tsx` creates once in dependency order and composes;
 components take props and call callbacks.

@@ -33,6 +33,7 @@ scripts/
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
+    lsp.ts           language servers: spawn per language, sync buffers, diagnostics
     settings.ts      config store, the actions that patch and persist it, and the
                      settings page's rows
     status.ts        status-bar message + the one busy/progress slot
@@ -56,6 +57,11 @@ scripts/
     grammars.ts      wasm + query file imports, the form the binary can embed
     queries/*.scm    highlight queries for grammars we vendor
     highlight.ts     tree-sitter client → non-overlapping highlight segments
+  lsp/
+    protocol.ts      the slice of LSP druk speaks, hand-written (a dozen shapes)
+    transport.ts     JSON-RPC stdio framing (Content-Length frames over Buffers)
+    client.ts        one language server: spawn, handshake, document sync, dispose
+    servers.ts       filetype → server command  ← add a language server here
   themes/
     index.ts         theme registry  ← add a theme here
     types.ts         Theme / ThemeUi shape
@@ -380,3 +386,14 @@ vim mode).
   `preventDefault()`.
 - **Conflicts.** Each buffer records the disk mtime it was last in sync with; saving over
   a file that changed underneath prompts instead of clobbering.
+- **LSP servers are the user's, not druk's.** `src/lsp` spawns whatever
+  `typescript-language-server`, `gopls`, … is on PATH (`lspServers` in the config
+  overrides or disables per server; the settings page flips the same keys); a missing
+  one is reported once in the status bar and that is all. Documents sync as full text —
+  simple and impossible to desynchronize — and the didChange debounce in `src/app/lsp.ts`
+  captures `{path, text}` inside the tracked effect run, so a tab switch during the wait
+  can never re-aim an edit at the wrong document. Servers are torn down from App's
+  `onCleanup` (which also covers tests) and one shared `process.on('exit')` backstop —
+  shared so a dozen servers never trip Node's max-listeners warning mid-frame — and a
+  server that never answers `initialize` is killed after a bounded wait instead of
+  queueing notifications forever.

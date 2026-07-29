@@ -67,6 +67,13 @@ export interface Config {
   showDotfiles: boolean
   /** Hide git-ignored files from the tree. Off by default for the same reason. */
   respectGitignore: boolean
+  /** Language servers: spawn one per language as matching files open. */
+  lsp: boolean
+  /**
+   * Per-server command override, keyed by server id — see src/lsp/servers.ts
+   * for the ids and defaults. An empty array disables that server.
+   */
+  lspServers: Record<string, string[]>
 }
 
 export const DEFAULTS: Config = {
@@ -80,6 +87,8 @@ export const DEFAULTS: Config = {
   diffView: 'inline',
   showDotfiles: true,
   respectGitignore: false,
+  lsp: true,
+  lspServers: {},
 }
 
 function parse(raw: unknown): Config {
@@ -100,6 +109,8 @@ function parse(raw: unknown): Config {
     showDotfiles: typeof obj.showDotfiles === 'boolean' ? obj.showDotfiles : DEFAULTS.showDotfiles,
     respectGitignore:
       typeof obj.respectGitignore === 'boolean' ? obj.respectGitignore : DEFAULTS.respectGitignore,
+    lsp: typeof obj.lsp === 'boolean' ? obj.lsp : DEFAULTS.lsp,
+    lspServers: parseServers(obj.lspServers),
     sidebarWidth:
       typeof obj.sidebarWidth === 'number' &&
       obj.sidebarWidth >= SIDEBAR_MIN &&
@@ -108,6 +119,18 @@ function parse(raw: unknown): Config {
         : // Anything else, `'auto'` included, is the default.
           DEFAULTS.sidebarWidth,
   }
+}
+
+/** Only well-formed entries survive; a malformed one must not break startup. */
+function parseServers(raw: unknown): Record<string, string[]> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return DEFAULTS.lspServers
+  const servers: Record<string, string[]> = {}
+  for (const [id, command] of Object.entries(raw)) {
+    if (Array.isArray(command) && command.every(part => typeof part === 'string')) {
+      servers[id] = command
+    }
+  }
+  return servers
 }
 
 /** Read the config file, falling back to defaults on any error or bad value. */

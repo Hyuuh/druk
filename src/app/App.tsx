@@ -2,7 +2,7 @@ import { basename } from 'node:path'
 
 import type { MouseEvent } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
 
 import { CONFIG_FILE } from '../core/config'
 import type { Config } from '../core/config'
@@ -11,6 +11,8 @@ import { isImagePath } from '../core/image'
 import { checkForUpdate, currentVersion } from '../core/update'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
+import { SEVERITY_RANK } from '../lsp/protocol'
+import type { ProblemSeverity } from '../lsp/protocol'
 import { ui } from '../themes'
 import { DiffView } from '../ui/DiffView'
 import type { DiffFile } from '../ui/DiffView'
@@ -29,6 +31,7 @@ import { createEditorBridge } from './editor'
 import { createFileOps } from './fileOps'
 import { createGit, createGitOp, wireGitEffects } from './git'
 import { installKeyboard } from './keyboard'
+import { createLsp, wireLspEffects } from './lsp'
 import { createOverlays, OverlayStack } from './Overlays'
 import { createPanes } from './panes'
 import { createPromptHandlers, createPromptState } from './prompts'
@@ -76,6 +79,10 @@ export function App(props: {
   const panes = createPanes(tree, restored.sidebar)
   const git = createGit(rootDir)
   const promptState = createPromptState()
+  const lsp = createLsp({ rootDir, settings, status })
+  // Also on the quit path: the renderer tears the root down before exiting, and
+  // a leaked server would outlive the editor (tests leak them per launch).
+  onCleanup(lsp.dispose)
   const workspace = createWorkspace({
     rootDir,
     single,
@@ -123,6 +130,7 @@ export function App(props: {
     editor,
     git,
     gitOp,
+    lsp,
     branches,
     workspace,
     fileOps,
@@ -131,6 +139,7 @@ export function App(props: {
   }
 
   wireGitEffects({ rootDir, git, tree, editor, workspace, config: settings.config })
+  wireLspEffects({ lsp, settings, workspace })
   const { commands, actions } = createCommands(ctx)
   installKeyboard(ctx, actions)
 
@@ -145,6 +154,31 @@ export function App(props: {
 
   /** True between grabbing the sidebar divider and letting go. */
   const [resizing, setResizing] = createSignal(false)
+
+  /** Worst problem per line of the active file, for the gutter. */
+  const problemLines = createMemo(() => {
+    const lines = new Map<number, ProblemSeverity>()
+    const path = workspace.activePath()
+    if (!path) return lines
+    for (const problem of lsp.problems[path] ?? []) {
+      const held = lines.get(problem.line)
+      if (!held || SEVERITY_RANK[problem.severity] < SEVERITY_RANK[held]) {
+        lines.set(problem.line, problem.severity)
+      }
+    }
+    return lines
+  })
+
+  const problemCounts = createMemo(() => {
+    const path = workspace.activePath()
+    let errors = 0
+    let warnings = 0
+    for (const problem of (path ? lsp.problems[path] : undefined) ?? []) {
+      if (problem.severity === 'error') errors++
+      else if (problem.severity === 'warning') warnings++
+    }
+    return { errors, warnings }
+  })
 
   /** The active tab when it is an image — a viewer page covers the editor slot. */
   const activeImage = () => {
@@ -362,6 +396,7 @@ export function App(props: {
             vim={config.vim}
             tabSize={config.tabSize}
             gitLines={git.gitLines()}
+            problems={problemLines()}
             notice={workspace.notice()}
             // The diff is a page over this pane, not an overlay — but the hidden
             // textarea must still not eat keys meant for it.
@@ -438,6 +473,7 @@ export function App(props: {
         ahead={git.upstream()?.ahead ?? 0}
         behind={git.upstream()?.behind ?? 0}
         changed={git.gitStatus().size}
+        problems={problemCounts()}
         focus={panes.focus()}
         busy={status.busy()}
       />

@@ -21,6 +21,7 @@ import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
 import type { AppContext } from './context'
+import { problemFrom } from './lsp'
 
 /** Wire the palette's command tree to the controllers that carry the actions out. */
 export function createCommands(ctx: AppContext) {
@@ -75,6 +76,19 @@ export function createCommands(ctx: AppContext) {
     ctx.overlays.setDiff(file)
   }
 
+  /** Jump to the neighbouring problem and read it out in the status bar. */
+  const jumpProblem = (direction: 1 | -1) => {
+    const path = workspace.activePath()
+    const list = path ? ctx.lsp.problems[path] : undefined
+    const cursor = editor.cursor()
+    const target = list ? problemFrom(list, cursor.line, cursor.col, direction) : null
+    if (!target) return say('No problems in this file')
+    editor.requestGoto(target.line, target.col)
+    const tone =
+      target.severity === 'error' ? 'error' : target.severity === 'warning' ? 'warn' : 'info'
+    say(target.message.replaceAll(/\s+/g, ' '), tone)
+  }
+
   const actions = {
     save: workspace.saveActive,
     openFile: () => ctx.overlays.setPicker('files'),
@@ -120,6 +134,13 @@ export function createCommands(ctx: AppContext) {
       ctx.overlays.setSettingsPage(true)
       panes.setFocus('editor')
     },
+    problemsList: () => {
+      const any = workspace.tabs().some(path => (ctx.lsp.problems[path] ?? []).length > 0)
+      if (!any) return say('No problems')
+      ctx.overlays.setProblemsOpen(true)
+    },
+    problemsNext: () => jumpProblem(1),
+    problemsPrev: () => jumpProblem(-1),
     showDiff,
     /**
      * "Diff current file" — the palette's way into the panel: it opens the

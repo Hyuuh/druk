@@ -2,6 +2,7 @@ import type { Branches } from './branches'
 import type { EditorBridge } from './editor'
 import type { FileOps } from './fileOps'
 import type { Git, GitOp } from './git'
+import type { Lsp } from './lsp'
 import type { Overlays } from './Overlays'
 import type { Panes } from './panes'
 import type { PromptHandlers, PromptState } from './prompts'
@@ -20,6 +21,7 @@ export interface AppContext {
   editor: EditorBridge
   git: Git
   gitOp: GitOp
+  lsp: Lsp
   branches: Branches
   workspace: Workspace
   fileOps: FileOps

@@ -51,6 +51,9 @@ export interface CommandActions {
   setTheme: (name: ThemeName) => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   openSettings: () => void
+  problemsList: () => void
+  problemsNext: () => void
+  problemsPrev: () => void
   gitDiffFile: () => void
   /** Not a command: the panel's cursor is what opens a diff, and this is it. */
   showDiff: (path: string) => void
@@ -160,6 +163,15 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
             },
           ],
         },
+      ],
+    },
+    {
+      id: 'problems',
+      label: 'Problems',
+      children: [
+        { id: 'problems.list', label: 'List problems', run: actions.problemsList },
+        { id: 'problems.next', label: 'Next problem', run: actions.problemsNext },
+        { id: 'problems.prev', label: 'Previous problem', run: actions.problemsPrev },
       ],
     },
     {

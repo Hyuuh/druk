@@ -15,6 +15,7 @@ import { lineAt, logicalWindow } from '../editor/window'
 import { commentPrefix } from '../languages'
 import { computeHighlights, getSyntaxStyle, segmentsIn, STALE } from '../languages/highlight'
 import type { Highlighted, Segment } from '../languages/highlight'
+import type { ProblemSeverity } from '../lsp/protocol'
 import { ui } from '../themes'
 import type { ThemeName } from '../themes'
 import { Welcome } from './Welcome'
@@ -47,6 +48,8 @@ export interface EditorPaneProps {
   blocked: boolean
   /** Lines changed against git HEAD, for the gutter marks. */
   gitLines: Map<number, LineChange>
+  /** Worst LSP diagnostic per line; claims the gutter slot over a git mark. */
+  problems: Map<number, ProblemSeverity>
   /**
    * A file that would not open. Drawn over the pane, because the answer to "open
    * this" has to land where the file would have appeared — not as a status-bar line
@@ -294,14 +297,22 @@ export function EditorPane(props: EditorPaneProps) {
       modified: ui.gitModified,
       deleted: ui.gitDeleted,
     }
-    gutter?.setLineSigns?.(
-      new Map(
-        [...props.gitLines].map(([line, change]) => [
-          line,
-          { before: SIGN_GLYPH[change], beforeColor: signColor[change] },
-        ]),
-      ),
-    )
+    const problemColor: Record<ProblemSeverity, string> = {
+      error: ui.error,
+      warning: ui.dirty,
+      info: ui.dim,
+      hint: ui.dim,
+    }
+    const signs = new Map<number, { before?: string; beforeColor?: string }>()
+    for (const [line, change] of props.gitLines) {
+      signs.set(line, { before: SIGN_GLYPH[change], beforeColor: signColor[change] })
+    }
+    // After the git marks, so a line holding both shows the problem: the mark
+    // says "you touched this", the problem says "and it is broken".
+    for (const [line, severity] of props.problems) {
+      signs.set(line, { before: '●', beforeColor: problemColor[severity] })
+    }
+    gutter?.setLineSigns?.(signs)
   }
   createEffect(applyLineSigns)
 

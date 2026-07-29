@@ -36,7 +36,9 @@ export async function launch(
         rootDir: dir,
         openFile: options.openFile ?? null,
         openLine: options.openLine ?? null,
-        initialConfig: { ...DEFAULTS, ...config },
+        // LSP is off unless a test opts in: the default would spawn whatever
+        // real language server the machine has on PATH, per launch.
+        initialConfig: { ...DEFAULTS, lsp: false, ...config },
         // Off by default: the real check is unconditional, and without this every
         // launch in the suite would hit the npm registry.
         checkUpdates: options.checkUpdates ?? false,
