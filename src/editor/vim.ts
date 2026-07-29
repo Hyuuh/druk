@@ -21,8 +21,8 @@ export interface VimState {
   anchor: number
   visualKind: VisualKind
   pendingTobj: 'i' | 'a' | null // text object prefix (i = inner, a = a/an)
-  /** Operator to apply after the text object is resolved. */
-  textObjOp: string
+  /** Operator to apply after the text object is resolved; '' in visual mode. */
+  textObjOp: '' | 'd' | 'c' | 'y'
 }
 
 export function initialVimState(): VimState {
@@ -405,8 +405,13 @@ function dispatch(editor: Editor, key: KeyEvent, state: VimState, actions: VimAc
     const op = state.pending
     state.pending = ''
 
-    // i / a as text object prefix
-    if ((k === 'i' || k === 'a') && !state.pendingTobj) {
+    // i / a as text object prefix — only d/c/y take one. Without the gate `gi`
+    // would claim the prefix too, paint a selection and apply no operator.
+    if (
+      (k === 'i' || k === 'a') &&
+      !state.pendingTobj &&
+      (op === 'd' || op === 'c' || op === 'y')
+    ) {
       state.textObjOp = op
       state.pendingTobj = k
       state.count = digits // the text object target still needs it
@@ -453,7 +458,7 @@ function dispatch(editor: Editor, key: KeyEvent, state: VimState, actions: VimAc
         const start = Math.min(state.anchor, editor.cursorOffset)
         const end = Math.max(state.anchor, editor.cursorOffset)
         editor.setSelectionInclusive(start, end)
-        if (saved === 'd' || saved === 'x') {
+        if (saved === 'd') {
           yankSelection(editor, state)
           editor.deleteSelection()
           state.mode = 'normal'
@@ -473,7 +478,10 @@ function dispatch(editor: Editor, key: KeyEvent, state: VimState, actions: VimAc
       }
       return true
     }
-    // Non-target key after text object prefix: cancel and let key fall through
+    // Non-target key after text object prefix: cancel and let the key fall
+    // through. Both fields must reset — a leaked pendingTobj turns every later
+    // bracket key into a text object instead of a motion.
+    state.pendingTobj = null
     state.textObjOp = ''
   }
 

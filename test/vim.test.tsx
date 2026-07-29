@@ -766,6 +766,22 @@ describe('text objects', () => {
     expect(await save(t, file)).toBe('const x = \n')
   })
 
+  // ---- canceled prefix must not leak into later keys ----
+
+  test('diw cancels the prefix: a later { is a paragraph motion again', async () => {
+    const { t } = await vimEditor('a { b }\n\nc { d }\ne\n')
+    await type(t, 'jj04l') // Ln 3, cursor inside { d }
+    await type(t, 'diw') // w is not a text-object target — the prefix must cancel
+    await type(t, '{')
+    expect(at(t)).toContain('Ln 2')
+  })
+
+  test('gi{ is not a text object: g does not take i as a prefix', async () => {
+    const { t } = await vimEditor('{ x }\nrest\n')
+    await type(t, 'gi{')
+    expect(at(t)).toContain('Col 1')
+  })
+
   // ---- visual mode text objects ----
 
   test('vi{ in visual mode, c changes inner block', async () => {
@@ -778,7 +794,7 @@ describe('text objects', () => {
   })
 
   test('va{ in visual mode, y yanks around (Esc exits visual)', async () => {
-    const { t, file } = await bEdit(BRACE)
+    const { t } = await bEdit(BRACE)
     await type(t, '012l')
     await type(t, 'va{')
     expect(t.captureCharFrame()).toContain('VISUAL')
