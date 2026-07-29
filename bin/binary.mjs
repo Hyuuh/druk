@@ -63,12 +63,17 @@ export function findBinary() {
   return existsSync(local) ? local : null
 }
 
-/** Download and unpack the release asset. Returns the path, or null if it could not. */
-export async function fetchBinary() {
+/**
+ * Download and unpack the release asset. Returns the path, or null if it could not.
+ * `timeout` (ms) bounds the whole download — headers and body both, since a stalled
+ * body is how a slow mirror hangs an install forever.
+ */
+export async function fetchBinary({ timeout } = {}) {
   if (!supported) return null
   const temp = join(tmpdir(), `druk-${version}-${process.pid}`)
   try {
-    const response = await fetch(url, { redirect: 'follow' })
+    const signal = timeout ? AbortSignal.timeout(timeout) : undefined
+    const response = await fetch(url, { redirect: 'follow', signal })
     if (!response.ok) return null
     mkdirSync(temp, { recursive: true })
     const archive = join(temp, asset)

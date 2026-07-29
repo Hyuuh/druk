@@ -18,9 +18,10 @@ if (!binary) {
     process.exit(1)
   }
   // Install skipped its scripts, or had no network then. Say so — this takes seconds
-  // and silence would look like a hang.
+  // and silence would look like a hang. Bounded so a stalled download ends in the
+  // actionable error below instead of hanging forever.
   process.stderr.write(`druk: fetching the ${target} binary for ${version}…\n`)
-  binary = await fetchBinary()
+  binary = await fetchBinary({ timeout: 300_000 })
 }
 
 if (!binary) {
