@@ -530,18 +530,6 @@ function dispatch(editor: Editor, key: KeyEvent, state: VimState, actions: VimAc
         editor.clearSelection()
         state.mode = 'normal'
         break
-      case 'v':
-        if (state.visualKind === 'line') {
-          // When switching from linewise to charwise, widen the cursor to the
-          // last character of the last selected line (not the newline, which
-          // clampToLine would immediately pull it back from) so the full line
-          // range is preserved and the user can move horizontally after.
-          const text = editor.plainText
-          const nl = text.indexOf('\n', editor.cursorOffset)
-          editor.cursorOffset = nl > 0 ? nl - 1 : 0
-        }
-        state.visualKind = 'char'
-        break
       case 'd':
       case 'x':
         yankSelection(editor, state)
