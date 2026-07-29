@@ -32,8 +32,10 @@ export interface Language {
   /** Path to the highlight query, when we vendor the grammar ourselves. */
   query?: string
   /**
-   * Regex highlighting, for formats with no usable grammar. Patterns paint in
-   * order, so later entries win the characters they overlap.
+   * Regex highlighting. Alone, it is the whole answer for a format with no usable
+   * grammar. Beside a grammar, it is an overlay for a dialect the grammar cannot
+   * parse — see `outsideProse` in ./highlight.ts for what it may override.
+   * Patterns paint in order, so later entries win the characters they overlap.
    */
   patterns?: { group: string; re: RegExp }[]
 }
@@ -47,6 +49,21 @@ export const LANGUAGES: Language[] = [
   { id: 'html', ...GRAMMARS.html },
   { id: 'typescriptreact', label: 'tsx', ...GRAMMARS.tsx },
   { id: 'javascriptreact', label: 'jsx', ...GRAMMARS.tsx },
+  {
+    id: 'tsrx',
+    ...GRAMMARS.tsx,
+    // The `@` heads and `key` are the only tsrx tokens the tsx grammar cannot
+    // parse; everything inside `@{ … }` is ordinary tsx and highlights normally.
+    // `key` needs the lookahead: the clause is always `key <expr>)` closing a
+    // `@for` header, while `; key` alone also matches ordinary statements —
+    // `run(); key.press()` would paint a plain identifier.
+    patterns: [
+      {
+        group: 'keyword.directive',
+        re: /@(?:if|else|for|empty|switch|case|default|try|pending|catch)\b|@(?=\{)|(?<=;[ \t]*)key\b(?=[ \t]+[\w$.[\]]+[ \t]*\))/g,
+      },
+    ],
+  },
   { id: 'vue', ...GRAMMARS.vue },
   { id: 'css', ...GRAMMARS.css },
   { id: 'scss', ...GRAMMARS.css },
@@ -156,6 +173,7 @@ const LINE_COMMENTS: Record<string, string> = {
   typescript: '//',
   javascriptreact: '//',
   typescriptreact: '//',
+  tsrx: '//',
   zig: '//',
   scss: '//',
   less: '//',
