@@ -38,3 +38,18 @@ test('go to line moves the cursor there', async () => {
 
   expect(readFileSync(join(dir, 'notes.md'), 'utf8')).toBe('one\ntwo\nthree\nXfour\nfive\n')
 })
+
+test('root-level and nested files start in the same column in the picker', async () => {
+  const t = await launch(fixture(PROJECT))
+  await press(t, i => i.pressKey('o', { ctrl: true }))
+
+  const lines = t.captureCharFrame().split('\n')
+  const startOf = (name: string) => {
+    const row = lines.find(line => line.includes(name))!
+    expect(row).toBeDefined()
+    return row.indexOf(name.includes('/') ? name.split('/')[0]! : name)
+  }
+  // A root file has no faint folder prefix, and an empty <text> still occupies
+  // a column — the name used to sit one cell right of the nested paths.
+  expect(startOf('notes.md')).toBe(startOf('src/other.ts'))
+})

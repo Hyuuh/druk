@@ -87,33 +87,51 @@ export function FilePicker(props: FilePickerProps) {
           }}
         />
         <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-        <Show
-          when={matches().length > 0}
-          fallback={<text fg={ui.dim} bg={ui.panelBg} content="No matches" />}
-        >
-          <For each={matches()}>
-            {(match, i) => {
-              const active = () => i() === selected()
-              const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-              /** The name reads first; the folders it sits in are context. */
-              const shown = () => label(match.path).slice(0, width() - PAD * 2 - 4)
-              const cut = () => shown().lastIndexOf('/') + 1
-              return (
-                <box flexDirection="row" backgroundColor={bg()}>
-                  <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
-                  <text fg={ui.faint} bg={bg()} flexShrink={0} content={shown().slice(0, cut())} />
-                  <box flexGrow={1} backgroundColor={bg()}>
+        {/* Fixed height, not content height: the panel is centered, so a list that
+            shrinks with every keystroke moves the input field the user is typing in. */}
+        <box flexDirection="column" height={visibleRows()}>
+          <Show
+            when={matches().length > 0}
+            fallback={<text fg={ui.dim} bg={ui.panelBg} content="No matches" />}
+          >
+            <For each={matches()}>
+              {(match, i) => {
+                const active = () => i() === selected()
+                const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
+                /** The name reads first; the folders it sits in are context. */
+                const shown = () => label(match.path).slice(0, width() - PAD * 2 - 4)
+                const cut = () => shown().lastIndexOf('/') + 1
+                return (
+                  <box flexDirection="row" backgroundColor={bg()}>
                     <text
-                      fg={active() ? ui.text : ui.dim}
+                      fg={ui.accent}
                       bg={bg()}
-                      content={shown().slice(cut())}
+                      flexShrink={0}
+                      content={active() ? '▌ ' : '  '}
                     />
+                    {/* Only when there is a folder: an empty <text> still occupies
+                        one column, which shifted root-level files a cell right. */}
+                    <Show when={cut() > 0}>
+                      <text
+                        fg={ui.faint}
+                        bg={bg()}
+                        flexShrink={0}
+                        content={shown().slice(0, cut())}
+                      />
+                    </Show>
+                    <box flexGrow={1} backgroundColor={bg()}>
+                      <text
+                        fg={active() ? ui.text : ui.dim}
+                        bg={bg()}
+                        content={shown().slice(cut())}
+                      />
+                    </box>
                   </box>
-                </box>
-              )
-            }}
-          </For>
-        </Show>
+                )
+              }}
+            </For>
+          </Show>
+        </box>
         <text fg={ui.dim} bg={ui.panelBg} content="↑↓ move · Enter open · Esc close" />
       </box>
     </Overlay>
