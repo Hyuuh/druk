@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { realpathSync } from 'node:fs'
+import { lstatSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 export type LineChange = 'added' | 'modified' | 'deleted'
@@ -739,15 +739,63 @@ export function ignoredAmong(cwd: string, paths: string[]): Set<string> {
   const ignored = new Set<string>()
   if (paths.length === 0) return ignored
 
+  // git aborts the whole batch with 128 at the first path that reaches through a
+  // symlinked directory ("is beyond a symbolic link") — expanding pnpm's
+  // node_modules/@scope/pkg is enough — so those paths are never asked about.
+  // One of them in the list used to blank the answer for every other row.
+  //
+  // The cache lives for this call alone: a directory can be swapped for a symlink
+  // while druk is open, and the tree refresh this rides on is where that shows up.
+  const symlinkDirs = new Map<string, boolean>()
+  const askable: string[] = []
+  const unanswerable: string[] = []
+  for (const path of paths) {
+    ;(beyondSymlink(cwd, path, symlinkDirs) ? unanswerable : askable).push(path)
+  }
+
   // `-z` + `--stdin`: one NUL-terminated path each way. Exit 1 means none of the
   // paths are ignored, and 128 means there is no repository here — both are an
   // empty set rather than a failure, so only 0 has output worth reading.
-  const run = git(cwd, ['check-ignore', '--stdin', '-z'], 5000, `${paths.join('\0')}\0`)
-  if (run.status !== 0) return ignored
-  for (const path of run.stdout.split('\0')) {
-    if (path.length > 0) ignored.add(path)
+  const run = git(cwd, ['check-ignore', '--stdin', '-z'], 5000, `${askable.join('\0')}\0`)
+  if (run.status === 0) {
+    for (const path of run.stdout.split('\0')) {
+      if (path.length > 0) ignored.add(path)
+    }
+  }
+
+  // An ignored directory takes everything under it, which is the only answer left
+  // for the rows git refused. Applied to those alone: a force-added file under an
+  // ignored directory is not ignored, and git is the one who knows which.
+  for (const path of unanswerable) {
+    if (hasIgnoredAncestor(cwd, path, ignored)) ignored.add(path)
   }
   return ignored
+}
+
+/** Whether any directory between `cwd` and `path` is a symlink. */
+function beyondSymlink(cwd: string, path: string, cache: Map<string, boolean>): boolean {
+  if (!path.startsWith(`${cwd}/`)) return false
+  for (let dir = dirname(path); dir.length > cwd.length; dir = dirname(dir)) {
+    let symlink = cache.get(dir)
+    if (symlink === undefined) {
+      try {
+        symlink = lstatSync(dir).isSymbolicLink()
+      } catch {
+        symlink = false
+      }
+      cache.set(dir, symlink)
+    }
+    if (symlink) return true
+  }
+  return false
+}
+
+function hasIgnoredAncestor(cwd: string, path: string, ignored: Set<string>): boolean {
+  if (!path.startsWith(`${cwd}/`)) return false
+  for (let dir = dirname(path); dir.length > cwd.length; dir = dirname(dir)) {
+    if (ignored.has(dir)) return true
+  }
+  return false
 }
 
 /**
