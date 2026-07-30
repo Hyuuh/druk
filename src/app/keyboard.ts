@@ -12,7 +12,8 @@ const chord = (key: KeyEvent) => key.shift || key.option || key.meta
 
 /** The global keymap: everything that fires before the focused pane sees the key. */
 export function installKeyboard(ctx: AppContext, actions: CommandActions) {
-  const { settings, tree, panes, editor, workspace, fileOps, prompts, overlays, git } = ctx
+  const { settings, tree, panes, editor, workspace, fileOps, prompts, overlays, git, comparison } =
+    ctx
   const { config } = settings
 
   useKeyboard((key: KeyEvent) => {
@@ -84,6 +85,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         // A page is the frontmost "tab": close it before any file tab.
         if (workspace.settingsPage()) return workspace.setSettingsPage(false)
         if (workspace.diff()) return workspace.setDiff(null)
+        if (comparison.detailOpen()) return comparison.closeDetail()
         if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
       })
     }
@@ -108,7 +110,8 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       // With a page up, Esc belongs to it (it closes the page) — moving
       // focus to the tree here would take the key away before it ever arrives.
       // Same when the completion menu is open: Esc dismisses it in EditorPane.
-      const pageUp = workspace.diff() !== null || workspace.settingsPage()
+      const pageUp =
+        workspace.diff() !== null || workspace.settingsPage() || comparison.detailOpen()
       if (
         k === 'escape' &&
         panes.sidebar() &&
@@ -133,6 +136,53 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     // The source-control panel borrows the tree's focus slot, so its keys replace
     // the tree's while it shows — or `d` would still offer to delete files.
     if (panes.view() === 'git') {
+      // Comparison takes the panel's keyboard over while it is up: its list is a
+      // different list, and `d`/`Esc` mean different things there.
+      if (comparison.active()) {
+        switch (config.vim ? (vimNav[k] ?? k) : k) {
+          case 'b':
+            if (key.shift) comparison.openBasePicker()
+            else actions.gitSwitchBranch()
+            break
+          case 'c':
+            comparison.toggleMode()
+            break
+          case '/':
+            comparison.openFilter()
+            break
+          case 'up':
+            comparison.move(-1)
+            break
+          case 'down':
+            comparison.move(1)
+            break
+          case 'return':
+          case 'enter':
+            comparison.openSelection()
+            break
+          case 'tab':
+            if (comparison.detailOpen()) panes.setFocus('editor')
+            break
+          case 'escape':
+            // The detail sits on top of the panel: Esc dismisses that first, or
+            // the comparison would close and leave the page it opened behind.
+            if (comparison.detailOpen()) comparison.closeDetail()
+            else comparison.close()
+            break
+          case '[':
+            settings.nudgeSidebar(-2)
+            break
+          case ']':
+            settings.nudgeSidebar(2)
+            break
+        }
+        return
+      }
+      if (key.shift && k === 'b') {
+        actions.gitCompareBranches()
+        return
+      }
+
       const rows = git.rows()
       const at = Math.max(0, Math.min(panes.gitCursor(), rows.length - 1))
       const row = rows[at]

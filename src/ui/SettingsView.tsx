@@ -14,8 +14,12 @@ export interface SettingEdit {
   /** What the field opens holding — the value in force, or '' when adding. */
   initial: string
   placeholder?: string
-  /** One line under the field; say what an empty value means when it acts. */
-  hint?: string
+  /**
+   * Lines under the field, explaining the syntax the value has to be in. Worth
+   * spelling out here rather than in docs: this field *is* the documentation for
+   * anything the page cannot offer as a list of values.
+   */
+  hint?: string[]
   apply: (value: string) => void
 }
 
@@ -352,7 +356,10 @@ function SettingEditor(props: {
       >
         <TextInput value={value()} placeholder={props.edit.placeholder} onInput={setValue} />
         <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-        <text fg={ui.dim} bg={ui.panelBg} content={props.edit.hint ?? 'Enter apply · Esc cancel'} />
+        <For each={props.edit.hint ?? []}>
+          {line => <text fg={ui.faint} bg={ui.panelBg} content={line} />}
+        </For>
+        <text fg={ui.dim} bg={ui.panelBg} content="Enter apply · Esc cancel" />
       </box>
     </Overlay>
   )

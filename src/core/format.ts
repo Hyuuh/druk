@@ -29,17 +29,38 @@ export function formatterFor(path: string, formatters: Record<string, string[]>)
   return fallback
 }
 
+/**
+ * Stands in for the file's path inside a formatter command. Appending the path is
+ * right for most tools, but not for the ones that want it before a flag or inside
+ * an argument (`--stdin-filepath={}`), so the token is what makes those sayable.
+ */
+export const FILE_TOKEN = '{}'
+
+/**
+ * The arguments the formatter runs with: the token replaced wherever it appears,
+ * or the path appended when the command never mentions it.
+ */
+export function formatArgs(command: string[], path: string): string[] {
+  const args = command.slice(1)
+  return args.some(arg => arg.includes(FILE_TOKEN))
+    ? args.map(arg => arg.replaceAll(FILE_TOKEN, path))
+    : [...args, path]
+}
+
 const firstLine = (text: string) => text.trim().split('\n')[0] ?? ''
 
 /**
- * Run `command` with `path` appended, from `cwd` so the tool finds its own
- * project config. Resolves to an error line for the status bar, or null on
- * success — the caller re-reads the file to see what the formatter did.
+ * Run `command` over `path`, from `cwd` so the tool finds its own project config.
+ * Resolves to an error line for the status bar, or null on success — the caller
+ * re-reads the file to see what the formatter did.
  */
 export function runFormatter(command: string[], path: string, cwd: string): Promise<string | null> {
   return new Promise(resolve => {
-    const [bin, ...args] = command
-    const child = spawn(bin!, [...args, path], { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    const [bin] = command
+    const child = spawn(bin!, formatArgs(command, path), {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', chunk => (stdout += chunk))

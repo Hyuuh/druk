@@ -73,6 +73,21 @@ test('a failing formatter reports on the status bar and keeps the saved text', a
   expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('edit const a = 1\n')
 })
 
+test('the {} token puts the path mid-command instead of at the end', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n', 'fmt.js': UPPERCASE })
+  const t = await launch(dir, {
+    formatOnSave: true,
+    // The script uppercases argv[2]. Appending would leave "{}" there instead of
+    // the path, so this passing is the substitution working.
+    formatters: { ts: [process.execPath, join(dir, 'fmt.js'), '{}', '--ignored'] },
+  })
+  await editA(t, 'edit ')
+  await save(t)
+
+  await untilFrame(t, 'Formatted a.ts')
+  expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('EDIT CONST A = 1\n')
+})
+
 test('a file no formatter matches saves untouched', async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n', 'fmt.js': UPPERCASE })
   const t = await launch(dir, {

@@ -153,8 +153,8 @@ export const KEYS: KeyInfo[] = [
     where: 'git',
   },
   {
-    key: 'c · p · b · Esc',
-    label: 'Commit / push / branch / back',
+    key: 'c p b B Esc',
+    label: 'Commit/push/branch/compare/back',
     section: 'Source control',
     where: 'git',
   },

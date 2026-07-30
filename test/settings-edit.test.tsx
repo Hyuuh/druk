@@ -42,6 +42,52 @@ test('a formatter is added from the page, no config.json involved', async () => 
   expect(frame).toContain('Formatter: ts,tsx = prettier --write')
 })
 
+test('the formatter field explains the syntax it wants', async () => {
+  // Wide enough that the hint lines are not wrapped by the modal: the point of
+  // the test is that they read as written.
+  const t = await launch(fixture(PROJECT), {}, { width: 140, height: 30 })
+  await runCommand(t, 'Settings')
+  await gotoRow(t, 'Formatters')
+  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter()) // "+ Add formatter…" is the only option
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('extensions = command')
+  // The two things a command's author cannot guess: that the tool has to write
+  // the file rather than print it, and what happens to the path.
+  expect(frame).toContain('The tool must rewrite the file itself')
+  expect(frame).toContain('Its path is appended, or replaces {}')
+  expect(frame).toContain('Enter apply · Esc cancel')
+  // The example command sits in the field itself, as its placeholder.
+  expect(frame).toContain('prettier --write')
+})
+
+test('a formatter command can carry the {} token', async () => {
+  const t = await launch(fixture(PROJECT))
+  await runCommand(t, 'Settings')
+  await gotoRow(t, 'Formatters')
+  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter())
+  await press(t, i => void i.typeText('css = stylelint --fix {} --quiet'))
+  await press(t, i => i.pressEnter())
+
+  expect(saved().formatters).toEqual({ css: ['stylelint', '--fix', '{}', '--quiet'] })
+})
+
+test('a command of nothing but the token is refused', async () => {
+  const t = await launch(fixture(PROJECT))
+  await runCommand(t, 'Settings')
+  await gotoRow(t, 'Formatters')
+  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter())
+  await press(t, i => void i.typeText('ts = {}'))
+  await press(t, i => i.pressEnter())
+
+  // launch() never persists, so what the file holds is whatever an earlier test
+  // in this process wrote — it just must not have gained the refused entry.
+  expect(saved().formatters ?? {}).not.toHaveProperty('ts')
+  expect(t.captureCharFrame()).toContain('needs a program')
+})
+
 test('an existing entry opens prefilled and edits in place', async () => {
   const t = await launch(fixture(PROJECT), { formatters: { ts: ['oxfmt'] } })
   await runCommand(t, 'Settings')

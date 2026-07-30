@@ -12,6 +12,7 @@ import { ChoiceModal } from '../ui/ChoiceModal'
 import { CommandPalette } from '../ui/CommandPalette'
 import { CommitModal } from '../ui/CommitModal'
 import type { CommitFile } from '../ui/CommitModal'
+import { CompareFilter } from '../ui/CompareFilter'
 import { ConfirmModal } from '../ui/ConfirmModal'
 import { FilePicker } from '../ui/FilePicker'
 import { HelpOverlay } from '../ui/HelpOverlay'
@@ -22,6 +23,7 @@ import type { SearchScope } from '../ui/SearchPanel'
 import { UpdateBanner } from '../ui/UpdateBanner'
 import type { Branches } from './branches'
 import type { Command } from './commands'
+import type { Comparison } from './comparison'
 import type { AppContext } from './context'
 import type { EditorBridge } from './editor'
 import type { Git } from './git'
@@ -37,10 +39,11 @@ export function createOverlays(deps: {
   workspace: Workspace
   git: Git
   branches: Branches
+  comparison: Comparison
   panes: Panes
   editor: EditorBridge
 }) {
-  const { renderer, promptState, workspace, git, branches, panes, editor } = deps
+  const { renderer, promptState, workspace, git, branches, comparison, panes, editor } = deps
 
   const [help, setHelp] = createSignal(false)
   /** The Opt+/ strip of every key alive in this pane; any next key closes it. */
@@ -66,6 +69,8 @@ export function createOverlays(deps: {
         picker() ||
         git.commitPick() ||
         branches.pick() ||
+        comparison.basePick() ||
+        comparison.filterOpen() ||
         problemsOpen()
       ),
   )
@@ -265,6 +270,23 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             onClose={() => app.branches.setPick(null)}
           />
         )}
+      </Show>
+      <Show when={app.comparison.basePick()}>
+        {(branches: () => Branch[]) => (
+          <BranchPicker
+            title="Compare against branch"
+            branches={branches()}
+            onPick={app.comparison.chooseBase}
+            onClose={app.comparison.closeBasePicker}
+          />
+        )}
+      </Show>
+      <Show when={app.comparison.filterOpen()}>
+        <CompareFilter
+          value={app.comparison.filter()}
+          onInput={app.comparison.setFilter}
+          onClose={app.comparison.closeFilter}
+        />
       </Show>
       <Show when={overlays.problemsOpen()}>
         <ChoiceModal

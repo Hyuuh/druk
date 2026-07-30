@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { formatterFor, runFormatter } from '../src/core/format'
+import { FILE_TOKEN, formatArgs, formatterFor, runFormatter } from '../src/core/format'
 
 /** A command whose script file sees the target path as argv[2], as real ones do. */
 function script(code: string): { command: string[]; dir: string } {
@@ -41,6 +41,38 @@ describe('formatterFor', () => {
   test('a file with no extension only matches the catch-all', () => {
     expect(formatterFor('/p/Makefile', { '': ['fmt'], 'ts': ['fmt'] })).toBeNull()
     expect(formatterFor('/p/Makefile', { '*': ['generic'] })).toEqual(['generic'])
+  })
+})
+
+describe('formatArgs', () => {
+  test('the path is appended when the command never mentions it', () => {
+    expect(formatArgs(['prettier', '--write'], '/p/a.ts')).toEqual(['--write', '/p/a.ts'])
+  })
+
+  test('the token puts the path where the tool wants it', () => {
+    expect(formatArgs(['stylelint', '--fix', FILE_TOKEN, '--quiet'], '/p/a.css')).toEqual([
+      '--fix',
+      '/p/a.css',
+      '--quiet',
+    ])
+  })
+
+  test('a token inside an argument is substituted, not just a bare one', () => {
+    expect(formatArgs(['tool', `--stdin-filepath=${FILE_TOKEN}`], '/p/a.ts')).toEqual([
+      '--stdin-filepath=/p/a.ts',
+    ])
+  })
+
+  test('every occurrence is replaced', () => {
+    expect(formatArgs(['tool', FILE_TOKEN, '-o', FILE_TOKEN], '/p/a.ts')).toEqual([
+      '/p/a.ts',
+      '-o',
+      '/p/a.ts',
+    ])
+  })
+
+  test('a command of only a program still gets the path', () => {
+    expect(formatArgs(['oxfmt'], '/p/a.ts')).toEqual(['/p/a.ts'])
   })
 })
 

@@ -21,7 +21,10 @@ side-by-side) for whichever change the panel's cursor is on — the arrows page 
 them, the panel is the only way in, and the diff is a tab of its own in the strip
 (`⇄ name`), so opening a file switches away from it instead of leaving it on top — a
 comparison base that points marks, gutter, panel and diff at another branch instead of
-HEAD (palette → Git → Compare against branch…), an image viewer (PNG/JPEG as half-block
+HEAD (palette → Git → Compare against branch…), branch comparison against the
+repository's default branch or any selected base (palette → Git → Compare branches, or
+`B` in the panel) with merge-base file scoping, a commit list and lazily loaded diffs,
+an image viewer (PNG/JPEG as half-block
 cells), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
 `themeLight` / `themeDark` picked separately and defaulting to the GitHub pair —
 polled, since no OS offers a portable subscription; `DRUK_OS_APPEARANCE=dark|light`
@@ -43,7 +46,8 @@ commands), LSP autocomplete (a fuzzy-filtered menu that opens as you
 type or on Ctrl+Space, applies auto-import edits, and is toggled by
 `lspCompletion`), format on save through the user's own commands (`formatOnSave`
 is the switch, `formatters` maps extensions to an in-place command — prettier,
-eslint --fix, oxfmt, gofmt — edited on the settings page's Formatters row or in
+eslint --fix, oxfmt, gofmt — with the saved file's path appended, or put where a
+`{}` token sits, and edited on the settings page's Formatters row as much as in
 the config file), file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
@@ -164,6 +168,7 @@ dependency rule, and recipes for the extension points:
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | handler in `src/app/keyboard.ts` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Alt+/ peek and the welcome screen) |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
+| branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 

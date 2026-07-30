@@ -4,6 +4,7 @@ import { APPEARANCE_ENV, detectAppearance } from '../core/appearance'
 import type { Appearance } from '../core/appearance'
 import { saveConfig, sidebarColumns, SIDEBAR_MIN, SIDEBAR_MAX } from '../core/config'
 import type { Config } from '../core/config'
+import { FILE_TOKEN } from '../core/format'
 import { invalidateSyntaxStyle } from '../languages/highlight'
 import { DEFAULT_SERVERS } from '../lsp/servers'
 import { setTheme, setTransparency, themeLabels, THEMES } from '../themes'
@@ -157,6 +158,9 @@ export function createSettings(deps: {
         'warn',
       )
     }
+    if (command.length === 1 && command[0] === FILE_TOKEN) {
+      return status.say(`A formatter command needs a program, not just ${FILE_TOKEN}`, 'warn')
+    }
     if (previous !== null && previous !== key) delete formatters[previous]
     formatters[key] = command
     patchConfig({ formatters })
@@ -171,7 +175,14 @@ export function createSettings(deps: {
       title: key ? `Formatter — ${key}` : 'Add formatter',
       initial: key ? `${key} = ${config.formatters[key]!.join(' ')}` : '',
       placeholder: 'ts,tsx = prettier --write',
-      hint: 'extensions = command ("*" any file) · empty removes · Enter apply · Esc cancel',
+      // Short lines on purpose: the modal is only as wide as the editor pane,
+      // and beside a sidebar a longer line wraps mid-word.
+      hint: [
+        'extensions = command · "*" any file',
+        'The tool must rewrite the file itself',
+        `Its path is appended, or replaces ${FILE_TOKEN}`,
+        key ? 'An empty value removes this entry' : '',
+      ].filter(Boolean),
       apply: value => setFormatter(key, value),
     }
   }
@@ -412,7 +423,10 @@ export function createSettings(deps: {
         title: 'Sidebar width',
         initial: config.sidebarWidth === 'auto' ? 'auto' : String(config.sidebarWidth),
         placeholder: `auto, or ${SIDEBAR_MIN}–${SIDEBAR_MAX}`,
-        hint: '"auto" sizes to the terminal · Enter apply · Esc cancel',
+        hint: [
+          `A column count, ${SIDEBAR_MIN}–${SIDEBAR_MAX}`,
+          '"auto" takes a share of the terminal',
+        ],
         apply: applySidebarWidth,
       },
     },
@@ -473,7 +487,11 @@ export function createSettings(deps: {
           return {
             title: `Command — ${spec.id}`,
             initial: (override && override.length > 0 ? override : spec.command).join(' '),
-            hint: 'empty restores the default · Enter apply · Esc cancel',
+            hint: [
+              'Runs as given — it talks LSP over stdio,',
+              'so no file path is added',
+              'An empty value restores the default',
+            ],
             apply: (value: string) => setServerCommand(spec.id, value),
           }
         },
