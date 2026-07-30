@@ -2,7 +2,7 @@ import { afterAll, expect, test } from 'bun:test'
 
 import { invalidateSyntaxStyle } from '../src/languages/highlight'
 import { setTheme, THEMES } from '../src/themes'
-import { fixture, launch, openPalette, press, pressEscape } from './helpers'
+import { fixture, launch, openPalette, press, pressEscape, pressTimes } from './helpers'
 
 /** Reset the module-global theme so later test files do not depend on this one. */
 afterAll(() => {
@@ -52,4 +52,47 @@ test('palette filters from root and previews a theme before confirming', async (
   const appliedColors = bgColors(t)
   expect(appliedColors).toContain(hexToRgb(THEMES['catppuccin-latte'].ui.bg))
   expect(appliedColors).not.toContain(hexToRgb(THEMES.dark.ui.bg))
+})
+
+test('palette cancels a previewed theme when filtering away from it', async () => {
+  const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }))
+  await openPalette(t)
+
+  // Preview catppuccin-latte.
+  await press(t, i => void i.typeText('latte'))
+  const previewColors = bgColors(t)
+  expect(previewColors).toContain(hexToRgb(THEMES['catppuccin-latte'].ui.bg))
+
+  // Filtering until there are no matching commands leaves the preview row.
+  await press(t, i => void i.typeText('x'))
+  expect(t.captureCharFrame()).toContain('No matching commands')
+  const restoredColors = bgColors(t)
+  expect(restoredColors).toContain(hexToRgb(THEMES.dark.ui.bg))
+  expect(restoredColors).not.toContain(hexToRgb(THEMES['catppuccin-latte'].ui.bg))
+
+  // Closing the palette after the preview has already been cancelled.
+  await pressEscape(t)
+  const afterEsc = bgColors(t)
+  expect(afterEsc).toContain(hexToRgb(THEMES.dark.ui.bg))
+  expect(afterEsc).not.toContain(hexToRgb(THEMES['catppuccin-latte'].ui.bg))
+})
+
+test('palette cancels a previewed theme before running a non-preview command', async () => {
+  const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }))
+  await openPalette(t)
+
+  await press(t, i => void i.typeText('latte'))
+  const previewColors = bgColors(t)
+  expect(previewColors).toContain(hexToRgb(THEMES['catppuccin-latte'].ui.bg))
+
+  // Backspace the filter and select a non-preview command.
+  await pressTimes(t, 5, i => i.pressBackspace())
+  await press(t, i => void i.typeText('save'))
+  expect(t.captureCharFrame()).toContain('Save file')
+
+  // Running the non-preview command should cancel the stale preview.
+  await press(t, i => i.pressEnter())
+  const restoredColors = bgColors(t)
+  expect(restoredColors).toContain(hexToRgb(THEMES.dark.ui.bg))
+  expect(restoredColors).not.toContain(hexToRgb(THEMES['catppuccin-latte'].ui.bg))
 })

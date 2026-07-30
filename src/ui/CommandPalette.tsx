@@ -19,6 +19,7 @@ export function CommandPalette(props: CommandPaletteProps) {
   const [query, setQuery] = createSignal('')
   const [trail, setTrail] = createSignal<Command[]>([])
   const [index, setIndex] = createSignal(0)
+  let lastCancel: (() => void) | undefined
 
   const width = () => modalWidth(dimensions().width, 0.55, 58, 92)
   /** Border, input, blank line and footer. */
@@ -41,7 +42,13 @@ export function CommandPalette(props: CommandPaletteProps) {
   /** Paint a command's preview whenever the selection lands on one. */
   createEffect(() => {
     const row = rows()[selected()]
-    if (row?.command.preview) row.command.preview()
+    if (row?.command.preview) {
+      row.command.preview()
+      if (row.command.cancel) lastCancel = row.command.cancel
+    } else if (lastCancel) {
+      lastCancel()
+      lastCancel = undefined
+    }
   })
 
   // A filter can match every leaf in the tree; rendering them all pushes the
@@ -59,13 +66,22 @@ export function CommandPalette(props: CommandPaletteProps) {
       setIndex(0)
       return
     }
+    if (!row.command.preview && lastCancel) {
+      lastCancel()
+      lastCancel = undefined
+    }
     props.onClose()
     row.command.run?.()
   }
 
   const back = () => {
     const row = rows()[selected()]
-    if (row?.command.cancel) row.command.cancel()
+    if (lastCancel) {
+      lastCancel()
+      lastCancel = undefined
+    } else if (row?.command.cancel) {
+      row.command.cancel()
+    }
     if (trail().length === 0) {
       props.onClose()
       return
