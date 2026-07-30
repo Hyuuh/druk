@@ -37,7 +37,14 @@ export interface SettingRow {
    * A pick may hand back a `SettingEdit` to type into — that is how list rows
    * (formatters, server commands) chain into free text.
    */
-  select?: { options: string[]; pick: (index: number) => void | SettingEdit }
+  select?: {
+    options: string[]
+    pick: (index: number) => void | SettingEdit
+    /** Paint a value before confirming — used by theme rows. */
+    preview?: (index: number) => void
+    /** Revert to the value in force when backing out without confirming. */
+    cancel?: () => void
+  }
   /** When set, Enter opens this edit directly. Takes precedence over `select`. */
   edit?: SettingEdit
   /** The project's own settings file is what supplies this value. */
@@ -317,20 +324,27 @@ export function SettingsView(props: SettingsViewProps) {
       <text fg={ui.faint} bg={ui.solidBg} content={footer()} />
 
       <Show when={picking()}>
-        <SettingPicker
-          title={selectedRow()?.label ?? ''}
-          options={selectedRow()?.select?.options ?? []}
-          activeIndex={(selectedRow()?.select?.options ?? []).indexOf(selectedRow()?.value ?? '')}
-          paneWidth={props.width}
-          onPick={at => {
-            // Close first: picking rebuilds the rows, and a keyed accessor read
-            // after that tears the popup down mid-handler ("stale read").
-            setPicking(false)
-            const edit = selectedRow()?.select?.pick(at)
-            if (edit) setEditing(edit)
-          }}
-          onClose={() => setPicking(false)}
-        />
+        {(() => {
+          const row = selectedRow()
+          return (
+            <SettingPicker
+              title={row?.label ?? ''}
+              options={row?.select?.options ?? []}
+              activeIndex={(row?.select?.options ?? []).indexOf(row?.value ?? '')}
+              paneWidth={props.width}
+              onPick={at => {
+                // Close first: picking rebuilds the rows, and a keyed accessor read
+                // after that tears the popup down mid-handler ("stale read").
+                setPicking(false)
+                const edit = row?.select?.pick(at)
+                if (edit) setEditing(edit)
+              }}
+              onClose={() => setPicking(false)}
+              onPreview={row?.select?.preview}
+              onCancel={row?.select?.cancel}
+            />
+          )
+        })()}
       </Show>
 
       <Show when={editing()} keyed>
@@ -412,6 +426,8 @@ function SettingPicker(props: {
   paneWidth: number
   onPick: (index: number) => void
   onClose: () => void
+  onPreview?: (index: number) => void
+  onCancel?: () => void
 }) {
   const dimensions = useTerminalDimensions()
   const [query, setQuery] = createSignal('')
@@ -432,6 +448,11 @@ function SettingPicker(props: {
 
   const selected = () => Math.min(index(), Math.max(0, matches().length - 1))
 
+  createEffect(() => {
+    const match = matches()[selected()]
+    if (match && props.onPreview) props.onPreview(match.at)
+  })
+
   /** First row shown: slides so the selection stays inside the window. */
   const windowStart = () => Math.max(0, selected() - visibleRows() + 1)
 
@@ -451,6 +472,7 @@ function SettingPicker(props: {
       if (match) props.onPick(match.at)
     } else if (k === 'escape') {
       key.preventDefault()
+      if (props.onCancel) props.onCancel()
       props.onClose()
     }
   })

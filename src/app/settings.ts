@@ -463,6 +463,8 @@ export function createSettings(deps: {
       select: {
         options: THEME_NAMES.map(name => themeLabels[name]),
         pick: at => applyTheme(THEME_NAMES[at]!),
+        preview: at => paintTheme(THEME_NAMES[at]!),
+        cancel: () => paintTheme(config.theme),
       },
     },
     {
@@ -481,6 +483,13 @@ export function createSettings(deps: {
       select: {
         options: THEME_NAMES.map(name => themeLabels[name]),
         pick: at => applySideTheme('themeLight', THEME_NAMES[at]!),
+        preview: at => paintTheme(THEME_NAMES[at]!),
+        cancel: () => {
+          const appearance =
+            (config.themeSync && detectAppearance()) ||
+            (view().theme === config.themeLight ? 'light' : 'dark')
+          paintTheme(appearance === 'light' ? config.themeLight : config.theme)
+        },
       },
     },
     {
@@ -492,6 +501,13 @@ export function createSettings(deps: {
       select: {
         options: THEME_NAMES.map(name => themeLabels[name]),
         pick: at => applySideTheme('themeDark', THEME_NAMES[at]!),
+        preview: at => paintTheme(THEME_NAMES[at]!),
+        cancel: () => {
+          const appearance =
+            (config.themeSync && detectAppearance()) ||
+            (view().theme === config.themeDark ? 'dark' : 'light')
+          paintTheme(appearance === 'dark' ? config.themeDark : config.theme)
+        },
       },
     },
     {
