@@ -328,9 +328,6 @@ const parseCache = new Map<string, ParseEntry>()
 function cachedParse(content: string, filetype: string | undefined, tabSize: number) {
   const hit = parseCache.get(content)
   if (!hit || hit.filetype !== filetype || hit.tabSize !== tabSize) return null
-  // Re-insert to mark it most recently used; eviction takes the oldest.
-  parseCache.delete(content)
-  parseCache.set(content, hit)
   return hit.parsed
 }
 
@@ -340,8 +337,9 @@ function storeParse(
   tabSize: number,
   parsed: Highlighted,
 ) {
-  parseCache.delete(content)
   parseCache.set(content, { filetype, tabSize, parsed })
+  // Oldest out first. Recency would be the better rule and is not worth tracking:
+  // at eight entries the tabs anyone switches between are all still in here.
   while (parseCache.size > PARSE_CACHE_LIMIT) {
     parseCache.delete(parseCache.keys().next().value!)
   }
@@ -409,31 +407,24 @@ export function segmentsIn(parsed: Highlighted, from: number, to: number): Segme
   const sliceStart = starts[first]!
   const sliceEnd = last + 1 < starts.length ? starts[last + 1]! - 1 : content.length
 
-  let picked: Capture[]
-  if (first === 0 && last >= starts.length - 1) {
-    // Whole document: `ordered` already is every capture in paint order, and
-    // collecting it back out of the buckets would only add a set and a sort.
-    picked = parsed.ordered
-  } else {
-    picked = []
-    for (const h of wide) {
-      if (h.end > sliceStart && h.start < sliceEnd) picked.push(h)
-    }
-    // A capture sits in every bucket it touches, so one spanning several window
-    // lines arrives once per line; the set keeps it from painting twice.
-    const seen = new Set<Capture>()
-    for (let line = first; line <= last; line++) {
-      const bucket = byLine[line]
-      if (!bucket) continue
-      for (const h of bucket) {
-        if (!seen.has(h)) {
-          seen.add(h)
-          picked.push(h)
-        }
+  const picked: Capture[] = []
+  for (const h of wide) {
+    if (h.end > sliceStart && h.start < sliceEnd) picked.push(h)
+  }
+  // A capture sits in every bucket it touches, so one spanning several window
+  // lines arrives once per line; the set keeps it from painting twice.
+  const seen = new Set<Capture>()
+  for (let line = first; line <= last; line++) {
+    const bucket = byLine[line]
+    if (!bucket) continue
+    for (const h of bucket) {
+      if (!seen.has(h)) {
+        seen.add(h)
+        picked.push(h)
       }
     }
-    picked.sort((a, b) => a.ord - b.ord)
   }
+  picked.sort((a, b) => a.ord - b.ord)
 
   const styleAt = new Int32Array(Math.max(0, sliceEnd - sliceStart)).fill(-1)
   for (const h of picked) {

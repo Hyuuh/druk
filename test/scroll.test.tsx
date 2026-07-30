@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test'
 
 import type { MouseEvent, TextareaRenderable } from '@opentui/core'
 
+import { invalidateSyntaxStyle } from '../src/languages/highlight'
+import { setTheme, THEMES } from '../src/themes'
 import { ignoreScrollOutsideBounds } from '../src/ui/EditorPane'
+import { fixture, launch, openFile, pressTimes, until, untilFrame } from './helpers'
 
 /** A stand-in for the textarea: the renderer only needs bounds and the hook. */
 function fakeEditor(seen: MouseEvent[]) {
@@ -52,3 +55,42 @@ describe('scroll delivered to the focused editor', () => {
     expect(seen).toHaveLength(1)
   })
 })
+
+/**
+ * The pane caches the buffer's row layout — reading it unpacks four native
+ * arrays element by element, which the scroll path cannot afford per tick — and
+ * an edit that adds rows makes the cached copy describe a file that is no longer
+ * there. Left stale, scrolling past the edit asked for a highlight window around
+ * the wrong lines and the text below rendered plain.
+ */
+test('highlights survive scrolling past an edit that added lines', async () => {
+  // The theme is module state shared across test files, so pin it rather than
+  // asserting against whichever one the previously run file left behind.
+  setTheme('dark')
+  invalidateSyntaxStyle()
+
+  const source = `${Array.from({ length: 400 }, (_, i) => `const value${i} = 'text ${i}'`).join(
+    '\n',
+  )}\n`
+  const t = await launch(fixture({ 'a.ts': source }), {}, { width: 60, height: 20 })
+  await openFile(t, 'a.ts')
+  await untilFrame(t, 'value0')
+
+  await pressTimes(t, 200, i => i.pressEnter())
+  await pressTimes(t, 400, i => i.pressArrow('down'))
+
+  const colored = () => {
+    const spans = t.captureSpans() as unknown as {
+      lines: { spans: { text: string; fg?: { buffer: Record<string, number> } }[] }[]
+    }
+    const wanted = (THEMES.dark.syntax.string as { fg: string }).fg.replace('#', '')
+    const rgb = [0, 2, 4].map(i => Number.parseInt(wanted.slice(i, i + 2), 16)).join(',')
+    return spans.lines.some(line =>
+      line.spans.some(span => {
+        const b = span.fg?.buffer
+        return span.text.includes("'text") && b && `${b['0']},${b['1']},${b['2']}` === rgb
+      }),
+    )
+  }
+  await until(t, colored)
+}, 30000)

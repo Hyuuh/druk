@@ -1,7 +1,7 @@
 import { TextAttributes } from '@opentui/core'
 import type { KeyEvent, MouseEvent, TextareaRenderable } from '@opentui/core'
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show } from 'solid-js'
 
 import { copyToClipboard, readClipboard } from '../core/clipboard'
 import type { LineChange } from '../core/git'
@@ -149,6 +149,12 @@ const PROBLEM_COLORS: Record<ProblemSeverity, () => string> = {
   hint: () => ui.dim,
 }
 
+/** A track row's color: the mark's own, or the background where the row is bare. */
+const trackColor = <T extends string>(
+  colors: Record<T, () => string>,
+  mark: T | undefined,
+): string => (mark ? colors[mark]() : ui.bg)
+
 /**
  * Badge background behind an inline note: enough of the severity color to pull
  * the eye, not enough to fight the text. Info and hint stay flat — a tinted
@@ -269,20 +275,23 @@ export function EditorPane(props: EditorPaneProps) {
   const [viewTop, setViewTop] = createSignal(0)
   const [viewHeight, setViewHeight] = createSignal(0)
   const [viewTotal, setViewTotal] = createSignal(0)
-  const viewport = () => ({ top: viewTop(), height: viewHeight(), total: viewTotal() })
   /**
-   * Visual row to logical line. Wrapping makes those two different things, and
-   * `scrollY` counts visual rows while highlights are addressed by logical line:
-   * on a lockfile whose lines wrap four times, scrolling to line 1500 asked for
-   * a window around line 5970 — past the end of a 3000-line file, so nothing was
+   * The buffer's row layout: logical line per visual row, and each row's used
+   * width. Wrapping makes rows and lines two different things, and `scrollY`
+   * counts visual rows while highlights are addressed by logical line: on a
+   * lockfile whose lines wrap four times, scrolling to line 1500 asked for a
+   * window around line 5970 — past the end of a 3000-line file, so nothing was
    * highlighted and the text went white.
    *
-   * The table costs ~2ms to fetch on such a file, so it is cached and rebuilt
-   * only when the text or the width changes.
+   * Cached because reading it is not a property read: `lineInfo` unpacks four
+   * native arrays element by element, so a file that wraps to 12 000 rows costs
+   * milliseconds per read — far too much for the scroll path, which touches it
+   * on every wheel tick. Invalidated from `line-info-change`, which the buffer
+   * emits for exactly the two things that move rows: an edit and a resize.
    */
-  let visualToLogical: number[] | null = null
-  const forgetWrapMap = () => {
-    visualToLogical = null
+  let layout: { sources: number[]; widths: number[] } | null = null
+  const forgetLayout = () => {
+    layout = null
   }
 
   /**
@@ -290,11 +299,16 @@ export function EditorPane(props: EditorPaneProps) {
    * buffer's — it says 22 on a file whose 3 000 lines wrap to 12 000 — so the
    * table is the only honest answer.
    */
-  const wrapMap = (): number[] => {
-    if (!editor) return []
-    if (!visualToLogical) visualToLogical = editor.lineInfo.lineSources as number[]
-    return visualToLogical
+  const lineLayout = (): { sources: number[]; widths: number[] } => {
+    if (!editor) return { sources: [], widths: [] }
+    if (!layout) {
+      const info = editor.lineInfo
+      layout = { sources: info.lineSources as number[], widths: info.lineWidthCols as number[] }
+    }
+    return layout
   }
+
+  const wrapMap = (): number[] => lineLayout().sources
 
   const lineAtRow = (row: number): number => lineAt(wrapMap(), row)
 
@@ -326,19 +340,28 @@ export function EditorPane(props: EditorPaneProps) {
     return lines
   })
 
+  /**
+   * The track's size, apart from where the file is scrolled to — the two tracks
+   * beside the scrollbar depend on this and nothing else, and folding it into
+   * `scrollMetrics` would recompute both of them, and re-diff their rows, on
+   * every wheel tick.
+   *
+   * The textarea reports height 0 until the first layout, so until then fall
+   * back to the terminal minus the tab bar and status bar.
+   */
+  const trackHeight = createMemo(() => viewHeight() || dimensions().height - 2)
+  const trackTotal = createMemo(() => viewTotal() || lineCount())
+
   /** Track geometry, shared by the painter and the drag handler. */
   const scrollMetrics = createMemo(() => {
-    const measured = viewport()
-    // The textarea reports height 0 until the first layout, so until then fall
-    // back to the terminal minus the tab bar and status bar.
-    const height = measured.height || dimensions().height - 2
-    const total = measured.total || lineCount()
+    const height = trackHeight()
+    const total = trackTotal()
     if (height <= 0 || total <= height) return null
     const size = Math.max(1, Math.round((height * height) / total))
     // `top` counts visual rows and `total` counts lines. Left mixed, a wrapped
     // file drives the thumb to the bottom while the change marks — which are
     // per line — still sit halfway, so the two disagree about the same place.
-    return { height, total, size, span: height - size, top: lineAtRow(measured.top) }
+    return { height, total, size, span: height - size, top: lineAtRow(viewTop()) }
   })
 
   /**
@@ -374,21 +397,13 @@ export function EditorPane(props: EditorPaneProps) {
     if (!props.problemText || !el || !host || props.problems.size === 0) return []
     const top = viewTop()
     const height = viewHeight() || el.height
-    const info = el.lineInfo
-    const sources = info.lineSources as number[]
-    const widths = info.lineWidthCols as number[]
+    const { sources, widths } = lineLayout()
     const notes: { top: number; left: number; text: string; color: string; bg: string }[] = []
     for (const [line, problem] of props.problems) {
       // First visual row of the line, then walk to its last wrap row.
-      let low = 0
-      let high = sources.length - 1
-      while (low < high) {
-        const mid = (low + high) >> 1
-        if ((sources[mid] ?? 0) < line) low = mid + 1
-        else high = mid
-      }
-      if (sources[low] !== line) continue
-      let lastRow = low
+      const first = rowAtLine(line)
+      if (sources[first] !== line) continue
+      let lastRow = first
       while (sources[lastRow + 1] === line) lastRow++
       if (lastRow < top || lastRow >= top + height) continue
 
@@ -621,23 +636,17 @@ export function EditorPane(props: EditorPaneProps) {
    */
   const ensureSegments = (from: number, to: number) => {
     if (!parsed) return
-    // One call per contiguous run of unsegmented lines. A range whose ends are new
-    // but whose middle was done by an earlier window — jump away, jump back — must
-    // not re-segment that middle, or every line in it collects a second copy of its
-    // segments and gets highlighted twice.
     for (let line = from; line <= to; line++) {
+      // A line a previous window already did — jump away, jump back — must not be
+      // segmented twice, or it collects a second copy of its segments and gets
+      // highlighted twice. Recorded even when it had no captures at all.
       if (segmented.has(line)) continue
-      let last = line
-      while (last + 1 <= to && !segmented.has(last + 1)) last++
-
-      for (const segment of segmentsIn(parsed, line, last)) {
+      segmented.add(line)
+      for (const segment of segmentsIn(parsed, line, line)) {
         const list = byLine.get(segment.line)
         if (list) list.push(segment)
         else byLine.set(segment.line, [segment])
       }
-      // Recorded even when a line had no captures, so it is not re-segmented.
-      for (let done = line; done <= last; done++) segmented.add(done)
-      line = last
     }
   }
 
@@ -721,6 +730,13 @@ export function EditorPane(props: EditorPaneProps) {
     scrollTo(m.span === 0 ? 0 : (within / m.span) * Math.max(0, m.total - 1))
   }
 
+  /**
+   * One pass per burst of events, on the next macrotask — which is when the frame
+   * is painted anyway. A wheel notch is several scroll events and a trackpad
+   * flick is dozens, and each one would otherwise walk the applied lines, clear
+   * what left the window and highlight what entered, work whose result only the
+   * last event's position survives.
+   */
   let cursorSync: ReturnType<typeof setTimeout> | null = null
   const scheduleCursorSync = () => {
     if (cursorSync) return
@@ -804,7 +820,7 @@ export function EditorPane(props: EditorPaneProps) {
     // Every caller replaced the text wholesale — a file switch, undo, an outside
     // edit — and the word the menu was completing is gone with it.
     closeMenu()
-    forgetWrapMap()
+    forgetLayout()
     parsed = null
     byLine = new Map()
     segmented.clear()
@@ -980,20 +996,16 @@ export function EditorPane(props: EditorPaneProps) {
    * of the text at all.
    */
   const changeTrack = createMemo(() => {
-    const m = scrollMetrics()
-    const height = m?.height ?? viewHeight()
-    const total = m?.total ?? viewTotal()
+    const height = trackHeight()
     if (height <= 0) return []
-    return changeRows(props.gitLines, total, height)
+    return changeRows(props.gitLines, trackTotal(), height)
   })
 
   /** The same idea for diagnostics: the whole file's errors, in their own column. */
   const problemTrack = createMemo(() => {
-    const m = scrollMetrics()
-    const height = m?.height ?? viewHeight()
-    const total = m?.total ?? viewTotal()
+    const height = trackHeight()
     if (height <= 0) return []
-    return problemRows(props.problems, total, height)
+    return problemRows(props.problems, trackTotal(), height)
   })
 
   /** Click the track to jump there, the way dragging the thumb does. */
@@ -1416,14 +1428,16 @@ export function EditorPane(props: EditorPaneProps) {
                 // one that has to hear it.
                 el.on('line-info-change', () => {
                   gutter?.gutter?.requestRender?.()
+                  // The rows moved, so the cached layout describes the buffer as
+                  // it was before this edit or resize. This event is the buffer's
+                  // own signal for it, and the only one that covers typing.
+                  forgetLayout()
                   setWrapKey(key => key + 1)
                 })
                 afterResize(el, () => {
                   applyLineSigns()
                   syncViewport()
-                  // A resize re-wraps every line, so the visual-to-logical table
-                  // built at the old width no longer describes this one.
-                  forgetWrapMap()
+                  forgetLayout()
                   applyWindow(true)
                 })
                 allowSelectionOnlyInEditor(el)
@@ -1457,7 +1471,7 @@ export function EditorPane(props: EditorPaneProps) {
                 props.onChange(editor.plainText)
                 scheduleHighlight()
               }}
-              onMouse={() => applyWindow()}
+              onMouse={() => scheduleCursorSync()}
               onCursorChange={() => {
                 applyWindow()
                 syncCursor()
@@ -1504,15 +1518,20 @@ export function EditorPane(props: EditorPaneProps) {
                 if (!dragging()) jumpToRow(event.y - (editor?.y ?? 0))
               }}
             >
-              <For each={problemTrack()}>
+              {/* `Index`, not `For`, on all three tracks: the rows are a fixed
+                  column of marks whose *values* change as the file scrolls, and
+                  keyed reconciliation on a list of duplicate primitives tears
+                  down and rebuilds text renderables on every wheel tick. Indexed,
+                  each row is built once and only its content and colour move. */}
+              <Index each={problemTrack()}>
                 {severity => (
                   <text
-                    fg={severity ? PROBLEM_COLORS[severity]() : ui.bg}
+                    fg={trackColor(PROBLEM_COLORS, severity())}
                     bg={ui.bg}
-                    content={severity ? '•' : ' '}
+                    content={severity() ? '•' : ' '}
                   />
                 )}
-              </For>
+              </Index>
             </box>
           </Show>
           {/* Git changes for the whole file, beside the scrollbar rather than in
@@ -1527,15 +1546,15 @@ export function EditorPane(props: EditorPaneProps) {
                 if (!dragging()) jumpToRow(event.y - (editor?.y ?? 0))
               }}
             >
-              <For each={changeTrack()}>
+              <Index each={changeTrack()}>
                 {change => (
                   <text
-                    fg={change ? CHANGE_COLORS[change]() : ui.bg}
+                    fg={trackColor(CHANGE_COLORS, change())}
                     bg={ui.bg}
-                    content={change ? '▎' : ' '}
+                    content={change() ? '▎' : ' '}
                   />
                 )}
-              </For>
+              </Index>
             </box>
           </Show>
           <Show when={scrollbar().length > 0}>
@@ -1551,12 +1570,12 @@ export function EditorPane(props: EditorPaneProps) {
                 dragTo(event.y)
               }}
             >
-              <For each={scrollbar()}>
+              <Index each={scrollbar()}>
                 {/* The trough is a space, not a glyph hidden by painting it in
                     the background color: with `transparent` on there is no
                     background color to hide it in. */}
-                {filled => <text fg={ui.scrollbar} bg={ui.bg} content={filled ? '█' : ' '} />}
-              </For>
+                {filled => <text fg={ui.scrollbar} bg={ui.bg} content={filled() ? '█' : ' '} />}
+              </Index>
             </box>
           </Show>
         </box>

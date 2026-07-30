@@ -23,8 +23,8 @@ import type { Status } from './status'
 export type ComparisonListMode = 'files' | 'commits'
 export type ComparisonLoadState = 'idle' | 'loading' | 'ready' | 'empty' | 'error'
 
+/** Insert, dropping the oldest entry once the cache is over `limit`. */
 function remember<K, V>(cache: Map<K, V>, key: K, value: V, limit: number) {
-  cache.delete(key)
   cache.set(key, value)
   if (cache.size > limit) cache.delete(cache.keys().next().value!)
 }
@@ -106,7 +106,6 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     const key = `${identity.value.base.oid}:${identity.value.compare.oid}`
     const cached = comparisons.get(key)
     if (cached) {
-      remember(comparisons, key, cached, 8)
       show({ ...cached, base: identity.value.base, compare: identity.value.compare })
       return
     }
@@ -189,7 +188,6 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     const key = contentKey(file)
     const cached = contents.get(key)
     if (cached) {
-      remember(contents, key, cached, 64)
       if (generation === detailGeneration) setSelectedContent(cached)
       return
     }

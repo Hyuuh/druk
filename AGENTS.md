@@ -280,6 +280,10 @@ signals update the terminal directly. Three rules follow:
   `createMemo`; side effects are `createEffect(on(...))` / `onMount` / `onCleanup`.
 - Lists need `<For each={...}>` and conditionals `<Show when={...}>` — a bare `.map()`
   or `&&` renders once and never updates.
+- A fixed column of rows whose *values* change — the editor's scrollbar and its git and
+  problem tracks — belongs in `<Index>`, not `<For>`. `For` is keyed by item, so a list
+  of duplicate primitives tears renderables down and rebuilds them on every scroll tick;
+  `Index` is keyed by position and only updates the row that changed.
 - Shared mutable state must be a signal or store. A plain exported object (the theme
   palette, for one) updates in memory but repaints nothing.
 
