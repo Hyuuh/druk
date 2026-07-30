@@ -206,7 +206,7 @@ export function App(props: {
     return lines
   })
 
-  /** Every problem of the active file with its range, for the underlines. */
+  /** Every problem of the active file with its range, for the span tints. */
   const problemRanges = createMemo(() => {
     const path = workspace.activePath()
     return (path ? lsp.problems[path] : undefined) ?? []

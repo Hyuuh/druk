@@ -192,10 +192,15 @@ test('the page windows its rows and the selection carries the window down', asyn
   await runCommand(t, 'Settings')
   expect(t.captureCharFrame()).toContain('Settings')
 
-  await down(t, 20)
+  // Down until a late row is in view rather than a fixed count: every setting
+  // added below moves that row, and the assertion is about what the window does,
+  // not how many rows happen to precede it.
+  for (let step = 0; step < 40 && !t.captureCharFrame().includes('Servers'); step++) {
+    await down(t, 1)
+  }
   const frame = t.captureCharFrame()
   expect(frame).toContain('Servers')
   expect(frame).toContain('Settings')
   // The first rows gave way rather than the chrome.
   expect(frame).not.toContain('Vim mode')
-})
+}, 20_000)

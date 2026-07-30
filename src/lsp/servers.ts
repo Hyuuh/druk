@@ -35,7 +35,12 @@ export const DEFAULT_SERVERS: ServerSpec[] = [
     id: 'typescript',
     command: ['typescript-language-server', '--stdio'],
     filetypes: ['typescript', 'typescriptreact', 'javascript', 'javascriptreact'],
-    install: npm('typescript-language-server', 'typescript'),
+    // typescript is pinned to 5: `typescript@latest` is now 7.x, the native Go
+    // port, which ships a platform binary and no `tsserver.js` at all — the
+    // thing typescript-language-server exists to drive. Installing it unpinned
+    // gets a server that starts and then fails its handshake with "Could not
+    // find a valid TypeScript installation".
+    install: npm('typescript-language-server', 'typescript@5'),
   },
   {
     id: 'go',

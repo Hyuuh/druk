@@ -57,19 +57,19 @@ export function getSyntaxStyle(): SyntaxStyle {
     syntaxStyle = SyntaxStyle.fromStyles({
       ...syntaxTheme,
       [INDENT_GUIDE]: { bg: ui.indentGuide },
-      // Layered over the syntax highlights. No fg on purpose: the token keeps
-      // its syntax color. OpenTUI has no underline color — the line always
-      // takes the text's color — so the severity is carried by a tinted
-      // background instead, with the underline on top. Info and hint gain only
-      // the line. The names are druk's, not tree-sitter's.
-      'druk.problem.error': { bg: mixColors(ui.solidBg, ui.error, 0.28), underline: true },
-      'druk.problem.warning': { bg: mixColors(ui.solidBg, ui.dirty, 0.22), underline: true },
-      'druk.problem.info': { underline: true },
-      'druk.problem.hint': { underline: true },
+      // Layered over the syntax highlights. No fg and no underline on purpose:
+      // the token keeps its syntax color and its letterforms, and the severity
+      // is carried by a faint tinted background alone — OpenTUI's underline
+      // takes the *text's* color, so it read as a second, louder highlight on
+      // top of an already marked span. The names are druk's, not tree-sitter's.
+      'druk.problem.error': { bg: mixColors(ui.solidBg, ui.error, 0.16) },
+      'druk.problem.warning': { bg: mixColors(ui.solidBg, ui.dirty, 0.13) },
+      'druk.problem.info': { bg: mixColors(ui.solidBg, ui.dim, 0.1) },
+      'druk.problem.hint': { bg: mixColors(ui.solidBg, ui.dim, 0.1) },
       // Unused code (LSP's Unnecessary tag) reads as absence, not as a fault:
-      // it fades toward the background and drops the line, whatever severity
-      // the server gave it.
-      'druk.problem.unnecessary': { fg: mixColors(ui.solidBg, ui.text, 0.4), underline: false },
+      // it fades toward the background instead of gaining a tint, whatever
+      // severity the server gave it.
+      'druk.problem.unnecessary': { fg: mixColors(ui.solidBg, ui.text, 0.4) },
     })
   }
   return syntaxStyle

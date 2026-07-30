@@ -8,7 +8,7 @@ import { spawnLspClient } from '../lsp/client'
 import type { LspClient } from '../lsp/client'
 import { normalizeCompletion } from '../lsp/completion'
 import type { CompletionReply } from '../lsp/completion'
-import { hasNodeRuntime, installServer, installedCommand } from '../lsp/install'
+import { hasNodeRuntime, installServer, installedCommand, SERVER_ROOT } from '../lsp/install'
 import { isUnnecessary, severityOf } from '../lsp/protocol'
 import type { CompletionItem, Diagnostic, ProblemSeverity } from '../lsp/protocol'
 import { installHint, resolveServer } from '../lsp/servers'
@@ -118,6 +118,19 @@ export function createLsp(deps: {
     status.say(`LSP: ${name} not installed — ${installHint(spec)}`, 'warn')
   }
 
+  /**
+   * `initialize` options for one server. Only typescript has any: it drives a
+   * separate `tsserver`, and which TypeScript that is deserves to be settable.
+   * Left empty the server decides — it prefers the open project's own copy,
+   * which is what a project pinning a compiler version wants, and only falls
+   * back to the one druk installed.
+   */
+  const initializationOptionsFor = (id: string): unknown => {
+    if (id !== 'typescript') return undefined
+    const tsdk = settings.config.typescriptTsdk.trim()
+    return tsdk ? { tsserver: { path: tsdk } } : undefined
+  }
+
   /** The running client for `path`'s language — spawned on first use. */
   const clientFor = (path: string): LspClient | null => {
     if (!settings.config.lsp) return null
@@ -125,16 +138,26 @@ export function createLsp(deps: {
     if (!resolved) return null
     const known = clients.get(resolved.id)
     if (known !== undefined) return known
+    // A copy druk installed is used as-is; PATH is consulted only when there is
+    // none, so a user's own install wins from the moment they make one.
+    const local = installedCommand(resolved.command)
     const client = spawnLspClient({
-      // A copy druk installed is used as-is; PATH is consulted only when there is
-      // none, so a user's own install wins from the moment they make one.
-      command: installedCommand(resolved.command) ?? resolved.command,
+      command: local ?? resolved.command,
       rootDir,
+      initializationOptions: initializationOptionsFor(resolved.id),
       onDiagnostics,
       onFail: (reason, missing) => {
         clients.set(resolved.id, null)
         if (missing) return reportMissing(resolved)
-        status.say(`LSP: ${resolved.command[0]} ${reason}`, 'warn')
+        status.say(
+          // A copy druk fetched can be broken in ways the user cannot see and did
+          // not cause — a dependency that moved on, most of all. Naming the
+          // directory is what makes that repairable without reading the source.
+          local
+            ? `LSP: ${resolved.command[0]} ${reason} — delete ${SERVER_ROOT} to reinstall it`
+            : `LSP: ${resolved.command[0]} ${reason}`,
+          'warn',
+        )
       },
     })
     clients.set(resolved.id, client)

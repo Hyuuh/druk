@@ -46,13 +46,17 @@ overridden rows are marked ◆ and Backspace resets one), LSP diagnostics from t
 language servers (gutter marks, dots on a track beside the scrollbar — errors
 and warnings only, left of the git track and deliberately a different glyph —
 inline message text after the line, status-bar
-counts, a problems list in the palette, spans underlined except where the server
-tagged them Unnecessary — unused code fades toward the background instead; the
+counts, a problems list in the palette, spans given a faint severity tint — no
+underline, which OpenTUI can only draw in the text's own colour — except where
+the server tagged them Unnecessary, where unused code fades toward the
+background instead; the
 settings page toggles LSP, the inline text and each server, and edits per-server
 commands; a server that is not on PATH and has an npm package offers to install
 itself — a confirm prompt, never a silent fetch, into `$XDG_DATA_HOME/druk/lsp`
 rather than a global prefix, gated by `lspAutoInstall`, and the servers that come
-with a language toolchain print their install line instead), LSP autocomplete (a fuzzy-filtered menu that opens as you
+with a language toolchain print their install line instead; `typescriptTsdk`
+picks which TypeScript the typescript server drives, empty leaving it to the
+server — which prefers the open project's own copy), LSP autocomplete (a fuzzy-filtered menu that opens as you
 type or on Ctrl+Space, applies auto-import edits, and is toggled by
 `lspCompletion`), format on save through the user's own commands (`formatOnSave`
 is the switch, `formatters` maps extensions to an in-place command — prettier,

@@ -85,7 +85,7 @@ describe('protocol mapping', () => {
     expect(severityOf({ ...at(0, 0), severity: 4 })).toBe('hint')
   })
 
-  test('the underline styles are registered for every severity', () => {
+  test('the span styles are registered for every severity', () => {
     for (const severity of ['error', 'warning', 'info', 'hint']) {
       expect(styleIdForGroup(`druk.problem.${severity}`)).not.toBeNull()
     }
@@ -102,10 +102,6 @@ describe('protocol mapping', () => {
 
   test('overrides replace a server command, and an empty one disables it', () => {
     expect(resolveServer('typescript', {})?.command[0]).toBe('typescript-language-server')
-    expect(resolveServer('typescript', {})?.install).toEqual({
-      kind: 'npm',
-      packages: ['typescript-language-server', 'typescript'],
-    })
     expect(resolveServer('typescript', { typescript: ['deno', 'lsp'] })?.command).toEqual([
       'deno',
       'lsp',
@@ -115,6 +111,16 @@ describe('protocol mapping', () => {
     expect(resolveServer('typescript', { typescript: [] })).toBeNull()
     expect(resolveServer('brainfuck', {})).toBeNull()
     expect(resolveServer(undefined, {})).toBeNull()
+  })
+
+  test('typescript is pinned to 5, the last line that ships a tsserver.js', () => {
+    // 7.x is the native port: a platform binary and no tsserver.js, so
+    // typescript-language-server installs fine and then fails its handshake.
+    const install = resolveServer('typescript', {})?.install
+    expect(install).toEqual({
+      kind: 'npm',
+      packages: ['typescript-language-server', 'typescript@5'],
+    })
   })
 
   test('install hints read as the command that installs the server', () => {

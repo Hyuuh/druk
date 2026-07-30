@@ -384,6 +384,15 @@ export function createSettings(deps: {
     status.say(`Autocomplete ${onOff(config.lspCompletion)}`)
   }
 
+  /** The typed TypeScript location; empty hands the choice back to the server. */
+  const applyTypescriptTsdk = (value: string) => {
+    const tsdk = value.trim()
+    patchConfig({ typescriptTsdk: tsdk })
+    status.say(
+      tsdk ? `TypeScript: ${tsdk}` : "TypeScript: whichever the project's own server finds",
+    )
+  }
+
   const toggleLspAutoInstall = () => {
     patchConfig({ lspAutoInstall: !view().lspAutoInstall })
     status.say(`Offer to install servers ${onOff(config.lspAutoInstall)}`)
@@ -652,6 +661,23 @@ export function createSettings(deps: {
       label: 'Offer to install servers',
       value: onOff(view().lspAutoInstall),
       cycle: toggleLspAutoInstall,
+    },
+    {
+      section: 'Language servers',
+      key: 'typescriptTsdk',
+      label: 'TypeScript',
+      value: view().typescriptTsdk || 'from the project',
+      cycle: () => status.say('Enter sets a TypeScript path'),
+      edit: {
+        title: 'TypeScript path',
+        initial: view().typescriptTsdk,
+        placeholder: 'node_modules/typescript/lib',
+        hint: [
+          'A tsserver.js, a lib folder, or a typescript package',
+          "Empty: the project's own copy, else the one druk installed",
+        ],
+        apply: applyTypescriptTsdk,
+      },
     },
     {
       // One row, not fourteen: Enter lists every known server and picking one

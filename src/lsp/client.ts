@@ -57,6 +57,8 @@ export interface LspClientOptions {
    * failure that is the user's to fix by installing something.
    */
   onFail: (reason: string, missing: boolean) => void
+  /** Server-specific `initialize` options, when the caller has any to send. */
+  initializationOptions?: unknown
 }
 
 export function spawnLspClient(options: LspClientOptions) {
@@ -191,6 +193,7 @@ export function spawnLspClient(options: LspClientOptions) {
       },
     },
     workspaceFolders: [{ uri: rootUri, name: 'workspace' }],
+    initializationOptions: options.initializationOptions,
   })
     .then(result => {
       if (state !== 'starting') return

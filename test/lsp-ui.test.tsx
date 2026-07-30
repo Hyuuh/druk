@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
@@ -17,6 +17,7 @@ import {
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
 const MARKER = join(import.meta.dir, 'fixtures', 'marker-lsp.ts')
+const INIT = join(import.meta.dir, 'fixtures', 'init-lsp.ts')
 
 /** Diagnostics cross a process boundary; give the fake server room to start. */
 const LSP_WAIT = 15_000
@@ -105,6 +106,35 @@ test('a missing server druk cannot install just says so', async () => {
 
   await untilFrame(t, 'is not installed, or not on PATH', LSP_WAIT)
   expect(t.captureCharFrame()).not.toContain('Language server missing')
+}, 30_000)
+
+test('the chosen TypeScript is handed to the server, and no choice sends nothing', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const dump = join(dir, 'init.json')
+  const server = { typescript: [process.execPath, INIT, dump] }
+
+  const chosen = await launch(
+    dir,
+    { lsp: true, lspServers: server, typescriptTsdk: '/opt/ts/lib' },
+    {},
+    { openFile: join(dir, 'a.ts') },
+  )
+  await until(chosen, () => existsSync(dump), LSP_WAIT)
+  await until(chosen, () => readFileSync(dump, 'utf8').includes('/opt/ts/lib'), LSP_WAIT)
+  expect(JSON.parse(readFileSync(dump, 'utf8'))).toEqual({ tsserver: { path: '/opt/ts/lib' } })
+  chosen.renderer.destroy()
+
+  // Left empty the server picks for itself — it prefers the open project's own
+  // copy, so sending a path here would override the very thing that should win.
+  rmSync(dump)
+  const auto = await launch(
+    dir,
+    { lsp: true, lspServers: server },
+    {},
+    { openFile: join(dir, 'a.ts') },
+  )
+  await until(auto, () => existsSync(dump), LSP_WAIT)
+  expect(JSON.parse(readFileSync(dump, 'utf8'))).toBeNull()
 }, 30_000)
 
 test('a server spawns only once a file of its language opens', async () => {

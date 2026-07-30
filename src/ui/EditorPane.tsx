@@ -65,7 +65,7 @@ export interface EditorPaneProps {
   gitLines: Map<number, LineChange>
   /** Worst LSP diagnostic per line; claims the gutter slot over a git mark. */
   problems: Map<number, { severity: ProblemSeverity; message: string }>
-  /** Every diagnostic's span, for the underlines under the offending text. */
+  /** Every diagnostic's span, for the tint over the offending text. */
   problemRanges: {
     line: number
     col: number
@@ -154,15 +154,15 @@ const trackColor = <T extends string>(
 ): string => (mark ? colors[mark]() : ui.bg)
 
 /**
- * Badge background behind an inline note: enough of the severity color to pull
- * the eye, not enough to fight the text. Info and hint stay flat — a tinted
- * badge on every hint would make a linted file shimmer.
+ * Inline note text: the severity color pulled most of the way to the background
+ * so the message reads as an annotation beside the code rather than as a badge
+ * competing with it. The gutter dot carries the severity at full strength.
  */
-const PROBLEM_NOTE_BG: Record<ProblemSeverity, () => string | null> = {
-  error: () => mixColors(ui.solidBg, ui.error, 0.22),
-  warning: () => mixColors(ui.solidBg, ui.dirty, 0.18),
-  info: () => null,
-  hint: () => null,
+const PROBLEM_NOTE_COLORS: Record<ProblemSeverity, () => string> = {
+  error: () => mixColors(ui.solidBg, ui.error, 0.62),
+  warning: () => mixColors(ui.solidBg, ui.dirty, 0.62),
+  info: () => ui.dim,
+  hint: () => ui.dim,
 }
 
 /** Per renderer, the one renderable a mouse selection may start in. */
@@ -396,7 +396,7 @@ export function EditorPane(props: EditorPaneProps) {
     const top = viewTop()
     const height = viewHeight() || el.height
     const { sources, widths } = lineLayout()
-    const notes: { top: number; left: number; text: string; color: string; bg: string }[] = []
+    const notes: { top: number; left: number; text: string; color: string }[] = []
     for (const [line, problem] of props.problems) {
       // First visual row of the line, then walk to its last wrap row.
       const first = rowAtLine(line)
@@ -409,15 +409,12 @@ export function EditorPane(props: EditorPaneProps) {
       const room = host.width - left - 2
       if (room < 8) continue
       const message = problem.message.replaceAll(/\s+/g, ' ')
-      // A space each side: with a tinted background the note reads as a badge,
-      // and text flush against the badge's edge reads as a rendering bug.
-      const text = ` ${message.length > room - 2 ? `${message.slice(0, room - 3)}…` : message} `
+      const text = message.length > room ? `${message.slice(0, room - 1)}…` : message
       notes.push({
         top: el.y - host.y + (lastRow - top),
         left,
         text,
-        color: PROBLEM_COLORS[problem.severity](),
-        bg: PROBLEM_NOTE_BG[problem.severity]() ?? ui.bg,
+        color: PROBLEM_NOTE_COLORS[problem.severity](),
       })
     }
     return notes
@@ -650,12 +647,12 @@ export function EditorPane(props: EditorPaneProps) {
 
   /**
    * Mark the spans of every problem starting on `line`. Layered over the syntax
-   * highlights: a fault keeps its text color and gains an underline, while an
-   * Unnecessary-tagged span instead fades and stays unlined. A
-   * multi-line span underlines its first line only — the gutter dot marks the
-   * rest, and measuring every continuation line costs more than it says.
+   * highlights: a fault keeps its text color and gains a faint severity tint,
+   * while an Unnecessary-tagged span fades instead. A multi-line span marks its
+   * first line only — the gutter dot marks the rest, and measuring every
+   * continuation line costs more than it says.
    */
-  const underlineProblems = (line: number) => {
+  const markProblems = (line: number) => {
     if (!editor) return
     for (const problem of props.problemRanges) {
       if (problem.line !== line) continue
@@ -663,7 +660,7 @@ export function EditorPane(props: EditorPaneProps) {
       const styleId = styleIdForGroup(`druk.problem.${group}`)
       if (styleId == null) continue
       const sameLine = problem.endLine === problem.line
-      // A zero-width or line-crossing span still underlines something visible.
+      // A zero-width or line-crossing span still marks something visible.
       const end = sameLine ? Math.max(problem.endCol, problem.col + 1) : problem.col + 1
       editor.addHighlight(line, { start: problem.col, end, styleId, priority: 100 })
     }
@@ -690,7 +687,7 @@ export function EditorPane(props: EditorPaneProps) {
       if (appliedLines.has(line)) continue
       appliedLines.add(line)
       for (const segment of byLine.get(line) ?? []) editor.addHighlight(line, segment)
-      underlineProblems(line)
+      markProblems(line)
     }
   }
 
@@ -1499,7 +1496,7 @@ export function EditorPane(props: EditorPaneProps) {
                 left={note.left}
                 zIndex={5}
                 fg={note.color}
-                bg={note.bg}
+                bg={ui.bg}
                 content={note.text}
               />
             )}

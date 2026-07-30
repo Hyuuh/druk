@@ -126,6 +126,13 @@ export interface Config {
    */
   lspAutoInstall: boolean
   /**
+   * Which TypeScript the typescript server should drive — a path to a
+   * `tsserver.js`, to a `lib` folder, or to a typescript package directory.
+   * Empty leaves the choice to the server, which prefers the open project's own
+   * copy and falls back to whatever druk installed.
+   */
+  typescriptTsdk: string
+  /**
    * Per-server command override, keyed by server id — see src/lsp/servers.ts
    * for the ids and defaults. An empty array disables that server.
    */
@@ -161,6 +168,7 @@ export const DEFAULTS: Config = {
   lspInline: true,
   lspCompletion: true,
   lspAutoInstall: true,
+  typescriptTsdk: '',
   lspServers: {},
   keybindings: {},
 }
@@ -228,6 +236,7 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   lspInline: bool,
   lspCompletion: bool,
   lspAutoInstall: bool,
+  typescriptTsdk: text,
   lspServers: commands,
   keybindings: strings,
 }
