@@ -102,3 +102,24 @@ test('inline text hides when the setting is off, the gutter dot stays', async ()
   await untilFrame(t, '● 1', LSP_WAIT)
   expect(t.captureCharFrame()).not.toContain('found oops')
 }, 30_000)
+
+test('a problem far below the viewport is marked on the track', async () => {
+  const lines = Array.from({ length: 400 }, (_, index) => `const value${index} = ${index}`)
+  lines[380] = 'const oops = 1'
+  const dir = fixture({ 'big.ts': `${lines.join('\n')}\n` })
+  const t = await launch(
+    dir,
+    { lsp: true, lspServers: { typescript: [process.execPath, FAKE] } },
+    { width: 100, height: 24 },
+    { openFile: join(dir, 'big.ts') },
+  )
+
+  await untilFrame(t, '● 1', LSP_WAIT)
+  const frame = t.captureCharFrame().split('\n').filter(Boolean)
+  const marked = frame.flatMap((row, index) => (row.includes('•') ? [index] : []))
+
+  expect(marked).toHaveLength(1)
+  // Near the bottom of the track, where line 380 of 400 belongs — seeing that
+  // without scrolling is the whole point of the column.
+  expect(marked[0]!).toBeGreaterThan(frame.length * 0.8)
+}, 30_000)

@@ -28,7 +28,9 @@ polled, since no OS offers a portable subscription; `DRUK_OS_APPEARANCE=dark|lig
 forces the answer on a desktop none of the probes can read), a settings page
 (palette → Settings) that edits and persists every option live, with a filterable
 value list per option, LSP diagnostics from the user's own
-language servers (gutter marks, inline message text after the line, status-bar
+language servers (gutter marks, dots on a track beside the scrollbar — errors
+and warnings only, left of the git track and deliberately a different glyph —
+inline message text after the line, status-bar
 counts, a problems list in the palette, spans underlined except where the server
 tagged them Unnecessary — unused code fades toward the background instead; the
 settings page toggles LSP, the inline text and each server), LSP autocomplete (a fuzzy-filtered menu that opens as you

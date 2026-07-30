@@ -8,6 +8,7 @@ import type { LineChange } from '../core/git'
 import { changeRows } from '../editor/changes'
 import { History } from '../editor/history'
 import { duplicateLines, moveLines, toggleComment } from '../editor/lines'
+import { problemRows } from '../editor/problems'
 import { handleTyping } from '../editor/typing'
 import { handleVimKey, initialVimState } from '../editor/vim'
 import type { VimMode } from '../editor/vim'
@@ -986,6 +987,15 @@ export function EditorPane(props: EditorPaneProps) {
     return changeRows(props.gitLines, total, height)
   })
 
+  /** The same idea for diagnostics: the whole file's errors, in their own column. */
+  const problemTrack = createMemo(() => {
+    const m = scrollMetrics()
+    const height = m?.height ?? viewHeight()
+    const total = m?.total ?? viewTotal()
+    if (height <= 0) return []
+    return problemRows(props.problems, total, height)
+  })
+
   /** Click the track to jump there, the way dragging the thumb does. */
   const jumpToRow = (row: number) => {
     const m = scrollMetrics()
@@ -1480,6 +1490,30 @@ export function EditorPane(props: EditorPaneProps) {
                 width={at().width}
               />
             )}
+          </Show>
+          {/* LSP problems, in a column of their own left of the git track. A dot
+              rather than git's bar: side by side, one glyph in two palettes
+              would read as one kind of mark, and the dot is what the gutter
+              already uses for a diagnostic. */}
+          <Show when={problemTrack().some(Boolean)}>
+            <box
+              width={1}
+              flexShrink={0}
+              backgroundColor={ui.bg}
+              onMouseDown={(event: MouseEvent) => {
+                if (!dragging()) jumpToRow(event.y - (editor?.y ?? 0))
+              }}
+            >
+              <For each={problemTrack()}>
+                {severity => (
+                  <text
+                    fg={severity ? PROBLEM_COLORS[severity]() : ui.bg}
+                    bg={ui.bg}
+                    content={severity ? '•' : ' '}
+                  />
+                )}
+              </For>
+            </box>
           </Show>
           {/* Git changes for the whole file, beside the scrollbar rather than in
               it: the thumb says where you are, and a mark under it would be
