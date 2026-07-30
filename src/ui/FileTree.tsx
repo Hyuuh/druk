@@ -186,7 +186,7 @@ export function FileTree(props: FileTreeProps) {
     <box
       width={props.width}
       flexDirection="column"
-      backgroundColor={ui.panelBg}
+      backgroundColor={ui.sidebarBg}
       flexShrink={0}
       flexGrow={1}
       // The tree fills what the sidebar's tab strip leaves. `flexBasis` must be 0:
@@ -195,14 +195,14 @@ export function FileTree(props: FileTreeProps) {
       flexBasis={0}
       onMouseDown={() => props.onFocus()}
     >
-      <box height={2} flexDirection="column" backgroundColor={ui.panelBg} paddingLeft={2}>
+      <box height={2} flexDirection="column" backgroundColor={ui.sidebarBg} paddingLeft={2}>
         <text
           fg={props.focused ? ui.text : ui.dim}
-          bg={ui.panelBg}
+          bg={ui.sidebarBg}
           content={props.rootName}
           attributes={TextAttributes.BOLD}
         />
-        <text fg={ui.faint} bg={ui.panelBg} content="explorer" />
+        <text fg={ui.faint} bg={ui.sidebarBg} content="explorer" />
       </box>
       <scrollbox
         ref={el => {
@@ -211,19 +211,19 @@ export function FileTree(props: FileTreeProps) {
           enlargeThumb(el)
         }}
         flexGrow={1}
-        backgroundColor={ui.panelBg}
+        backgroundColor={ui.sidebarBg}
         scrollbarOptions={{
-          trackOptions: { foregroundColor: ui.scrollbar, backgroundColor: ui.panelBg },
+          trackOptions: { foregroundColor: ui.scrollbar, backgroundColor: ui.sidebarBg },
         }}
       >
         {/* Spacers keep the scrollable extent honest while only a window exists. */}
-        <box height={visible().start} flexShrink={0} backgroundColor={ui.panelBg} />
+        <box height={visible().start} flexShrink={0} backgroundColor={ui.sidebarBg} />
         <For each={visible().nodes}>
           {node => {
             const selected = () =>
               node.path === props.selectedPath || props.markedPaths.includes(node.path)
             const bg = () =>
-              selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.panelBg
+              selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.sidebarBg
             /** Taken with `x` and waiting for a destination: drawn as already gone. */
             const leaving = () => props.cutPaths.includes(node.path)
             const arrow = () => (node.isDir ? (props.expanded.has(node.path) ? '▾' : '▸') : '·')
@@ -298,7 +298,7 @@ export function FileTree(props: FileTreeProps) {
         <box
           height={Math.max(0, props.nodes.length - visible().start - visible().nodes.length)}
           flexShrink={0}
-          backgroundColor={ui.panelBg}
+          backgroundColor={ui.sidebarBg}
         />
       </scrollbox>
     </box>

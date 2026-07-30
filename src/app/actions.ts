@@ -150,6 +150,7 @@ export function createCommands(ctx: AppContext) {
     toggleSidebar: panes.toggleSidebar,
     toggleGitView: panes.toggleGitView,
     setTheme: settings.applyTheme,
+    toggleTransparent: settings.toggleTransparent,
     toggleThemeSync: settings.toggleThemeSync,
     lineOp: editor.requestLineOp,
     triggerCompletion: editor.requestCompletion,
@@ -270,7 +271,11 @@ export function createCommands(ctx: AppContext) {
   }
 
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, { activeTheme: config.theme, themeSync: config.themeSync }),
+    buildCommands(actions, {
+      activeTheme: config.theme,
+      themeSync: config.themeSync,
+      transparent: config.transparent,
+    }),
   )
 
   return { commands, actions }

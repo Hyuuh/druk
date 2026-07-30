@@ -32,10 +32,10 @@ import { rosePineMoon } from './rose-pine-moon'
 import { solarizedDark } from './solarized-dark'
 import { solarizedLight } from './solarized-light'
 import { tokyoNight } from './tokyo-night'
-import type { Theme, ThemeUi } from './types'
+import type { Theme, ThemeUi, UiColors } from './types'
 import { vesper } from './vesper'
 
-export type { Theme, ThemeUi }
+export type { Theme, ThemeUi, UiColors }
 
 // Mocha before Macchiato: the palette matches a query in order, so the flavor
 // whose name is a prefix of the other's search hits must come first.
@@ -76,10 +76,26 @@ export const themeLabels = Object.fromEntries(
 
 const DEFAULT: ThemeName = 'dark'
 
+/** Whether the app paints its own background at all — the `transparent` setting. */
+let seeThrough = false
+let painted: ThemeName = DEFAULT
+
+/** The store's contents for a theme, with `transparent` applied or not. */
+function colorsFor(name: ThemeName, transparent: boolean): UiColors {
+  const theme = THEMES[name].ui
+  return {
+    ...theme,
+    sidebarBg: transparent ? 'transparent' : theme.panelBg,
+    solidBg: theme.bg,
+    solidBarBg: theme.barBg,
+    ...(transparent ? { bg: 'transparent', barBg: 'transparent' } : null),
+  }
+}
+
 // `ui` is a store, not a plain object: Solid components never re-render, so a
 // mutated object would leave every color on screen stale after a theme switch.
 // Reading `ui.bg` inside JSX subscribes that spot to the change.
-const [ui, setUi] = createStore<ThemeUi>({ ...THEMES[DEFAULT].ui })
+const [ui, setUi] = createStore<UiColors>(colorsFor(DEFAULT, seeThrough))
 export { ui }
 
 // Read imperatively when the syntax style table is rebuilt, so a plain object is fine.
@@ -90,9 +106,16 @@ export function isThemeName(value: unknown): value is ThemeName {
 }
 
 export function setTheme(name: ThemeName): void {
-  setUi(THEMES[name].ui)
+  painted = name
+  setUi(colorsFor(name, seeThrough))
   // Replace, never merge: a group the new theme omits would otherwise keep the
   // previous theme's color and render invisible when light/dark flips.
   for (const group of Object.keys(syntaxTheme)) delete syntaxTheme[group]
   Object.assign(syntaxTheme, THEMES[name].syntax)
+}
+
+/** Paint the app's own background, or leave the terminal's showing through. */
+export function setTransparency(on: boolean): void {
+  seeThrough = on
+  setUi(colorsFor(painted, on))
 }

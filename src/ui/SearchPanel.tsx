@@ -324,7 +324,7 @@ export function SearchPanel(props: SearchPanelProps) {
             const active = () => at() === selected()
 
             if (row.kind === 'file') {
-              const bg = () => (active() ? ui.treeSelectedBg : ui.barBg)
+              const bg = () => (active() ? ui.treeSelectedBg : ui.solidBarBg)
               return (
                 <box flexDirection="row" backgroundColor={bg()}>
                   <text
@@ -396,20 +396,23 @@ export function SearchPanel(props: SearchPanelProps) {
 
         <Show when={preview()}>
           {(around: () => Context) => (
-            <box flexDirection="column" backgroundColor={ui.bg} marginTop={1}>
+            <box flexDirection="column" backgroundColor={ui.solidBg} marginTop={1}>
               <For each={around().lines}>
                 {(line, i) => {
                   const at = () => around().start + i()
                   const isMatch = () => at() === current()?.line
                   return (
-                    <box flexDirection="row" backgroundColor={isMatch() ? ui.currentLine : ui.bg}>
+                    <box
+                      flexDirection="row"
+                      backgroundColor={isMatch() ? ui.currentLine : ui.solidBg}
+                    >
                       <text
                         fg={ui.gutter}
-                        bg={isMatch() ? ui.currentLine : ui.bg}
+                        bg={isMatch() ? ui.currentLine : ui.solidBg}
                         flexShrink={0}
                         content={`${`${at() + 1}`.padStart(5)} `}
                       />
-                      <box flexGrow={1} backgroundColor={isMatch() ? ui.currentLine : ui.bg}>
+                      <box flexGrow={1} backgroundColor={isMatch() ? ui.currentLine : ui.solidBg}>
                         {/* The selected line carries the same before/after as its row
                             above it, or the two would disagree about what the file is
                             about to say. */}
@@ -418,7 +421,7 @@ export function SearchPanel(props: SearchPanelProps) {
                           fallback={
                             <text
                               fg={isMatch() ? ui.text : ui.faint}
-                              bg={isMatch() ? ui.currentLine : ui.bg}
+                              bg={isMatch() ? ui.currentLine : ui.solidBg}
                               content={line.slice(0, contentWidth() - 6)}
                             />
                           }

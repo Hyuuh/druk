@@ -25,19 +25,26 @@ HEAD (palette → Git → Compare against branch…), an image viewer (PNG/JPEG 
 cells), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
 `themeLight` / `themeDark` picked separately and defaulting to the GitHub pair —
 polled, since no OS offers a portable subscription; `DRUK_OS_APPEARANCE=dark|light`
-forces the answer on a desktop none of the probes can read), a settings page
+forces the answer on a desktop none of the probes can read), an unpainted
+background for a translucent terminal (`transparent` — editor, tab strip and
+sidebar only; floating panels stay painted or the editor reads through them),
+a settings page
 (palette → Settings) that edits and persists every option live, with a filterable
-value list per option, LSP diagnostics from the user's own
+value list per option, `/` to filter the rows themselves, and free-text fields for
+the values no list holds (formatter entries, server commands, sidebar width) —
+nothing requires hand-editing config.json, LSP diagnostics from the user's own
 language servers (gutter marks, dots on a track beside the scrollbar — errors
 and warnings only, left of the git track and deliberately a different glyph —
 inline message text after the line, status-bar
 counts, a problems list in the palette, spans underlined except where the server
 tagged them Unnecessary — unused code fades toward the background instead; the
-settings page toggles LSP, the inline text and each server), LSP autocomplete (a fuzzy-filtered menu that opens as you
+settings page toggles LSP, the inline text and each server, and edits per-server
+commands), LSP autocomplete (a fuzzy-filtered menu that opens as you
 type or on Ctrl+Space, applies auto-import edits, and is toggled by
 `lspCompletion`), format on save through the user's own commands (`formatOnSave`
 is the switch, `formatters` maps extensions to an in-place command — prettier,
-eslint --fix, oxfmt, gofmt), file watching with conflict prompts,
+eslint --fix, oxfmt, gofmt — edited on the settings page's Formatters row or in
+the config file), file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
 ## Runtime and tooling
@@ -151,7 +158,7 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
-| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts` (users override per-server with the `lspServers` setting; the settings page toggles them) |
+| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts` (users override per-server with the `lspServers` setting; the settings page toggles them and edits their commands) |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) + a row in `src/app/settings.ts` (`rows`) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |

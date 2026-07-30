@@ -81,16 +81,16 @@ export function GitPanel(props: GitPanelProps) {
     <box
       width={props.width}
       flexDirection="column"
-      backgroundColor={ui.panelBg}
+      backgroundColor={ui.sidebarBg}
       flexShrink={0}
       flexGrow={1}
       flexBasis={0}
       onMouseDown={() => props.onFocus()}
     >
-      <box height={2} flexDirection="column" backgroundColor={ui.panelBg} paddingLeft={2}>
+      <box height={2} flexDirection="column" backgroundColor={ui.sidebarBg} paddingLeft={2}>
         <text
           fg={props.focused ? ui.text : ui.dim}
-          bg={ui.panelBg}
+          bg={ui.sidebarBg}
           content={headline()}
           attributes={TextAttributes.BOLD}
         />
@@ -98,29 +98,29 @@ export function GitPanel(props: GitPanelProps) {
             it touches is marked, which reads as a broken tree until you know why. */}
         <text
           fg={props.base ? ui.accent : ui.faint}
-          bg={ui.panelBg}
+          bg={ui.sidebarBg}
           content={props.base ? `vs ${props.base}` : 'source control'}
         />
       </box>
       <Show
         when={props.inRepo && props.rows.length > 0}
         fallback={
-          <box flexGrow={1} backgroundColor={ui.panelBg} paddingLeft={2}>
+          <box flexGrow={1} backgroundColor={ui.sidebarBg} paddingLeft={2}>
             <text
               fg={ui.faint}
-              bg={ui.panelBg}
+              bg={ui.sidebarBg}
               content={props.inRepo ? 'no changes' : 'open a repository to use git'}
             />
           </box>
         }
       >
-        <box flexGrow={1} flexDirection="column" backgroundColor={ui.panelBg}>
+        <box flexGrow={1} flexDirection="column" backgroundColor={ui.sidebarBg}>
           <For each={visible()}>
             {(row, at) => {
               const index = () => top() + at()
               const selected = () => index() === cursor()
               const bg = () =>
-                selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.panelBg
+                selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.sidebarBg
               return (
                 <box
                   height={1}
@@ -184,8 +184,8 @@ export function GitPanel(props: GitPanelProps) {
         </box>
       </Show>
       <Show when={props.inRepo}>
-        <box height={1} backgroundColor={ui.panelBg} paddingLeft={1}>
-          <text fg={ui.faint} bg={ui.panelBg} content="↑↓ diff · →← fold · c commit · p push" />
+        <box height={1} backgroundColor={ui.sidebarBg} paddingLeft={1}>
+          <text fg={ui.faint} bg={ui.sidebarBg} content="↑↓ diff · →← fold · c commit · p push" />
         </box>
       </Show>
     </box>

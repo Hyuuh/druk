@@ -81,6 +81,7 @@ export interface CommandActions {
   gitRenameBranch: () => void
   gitDeleteBranch: () => void
   gitDeleteBranchForce: () => void
+  toggleTransparent: () => void
   showHelp: () => void
   quit: () => void
 }
@@ -88,6 +89,7 @@ export interface CommandActions {
 export interface CommandContext {
   activeTheme: ThemeName
   themeSync: boolean
+  transparent: boolean
 }
 
 /** Marks the entry matching the current setting, so submenus show state. */
@@ -247,6 +249,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           label: `${check(ctx.themeSync)}Follow OS appearance`,
           hint: 'light / dark themes in Settings',
           run: actions.toggleThemeSync,
+        },
+        {
+          id: 'themes.transparent',
+          label: `${check(ctx.transparent)}Transparent background`,
+          hint: 'terminal shows through',
+          run: actions.toggleTransparent,
         },
         ...(Object.keys(THEMES) as ThemeName[]).map(name => ({
           id: `themes.${name}`,

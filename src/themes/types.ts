@@ -31,6 +31,27 @@ export interface ThemeUi {
 }
 
 /**
+ * What components actually read: the theme's colors plus the surfaces derived
+ * from them.
+ *
+ * `bg`, `barBg` and `sidebarBg` are the app's own background — the `transparent`
+ * setting empties all three so the terminal (translucent or not) shows through.
+ * Anything that floats over content has to stay painted, or the editor reads
+ * through it: `panelBg` is that surface, and `solidBg` / `solidBarBg` are the two
+ * tones a floating panel builds out of `bg` and `barBg`. Blending a color against
+ * the background (tinted diagnostic spans) also needs `solidBg` — a mix with
+ * `"transparent"` is not a color.
+ */
+export interface UiColors extends ThemeUi {
+  /** Sidebar background: `panelBg`, emptied by `transparent`. */
+  sidebarBg: string
+  /** The theme's `bg`, whatever `transparent` did to `bg` itself. */
+  solidBg: string
+  /** The theme's `barBg`, whatever `transparent` did to `barBg` itself. */
+  solidBarBg: string
+}
+
+/**
  * `syntax` maps tree-sitter capture groups to styles. Sub-scopes fall back to
  * their parent ("type.builtin" → "type"), so listing base scopes is enough.
  */

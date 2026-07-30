@@ -6,9 +6,9 @@ import { saveConfig, sidebarColumns, SIDEBAR_MIN, SIDEBAR_MAX } from '../core/co
 import type { Config } from '../core/config'
 import { invalidateSyntaxStyle } from '../languages/highlight'
 import { DEFAULT_SERVERS } from '../lsp/servers'
-import { setTheme, themeLabels, THEMES } from '../themes'
+import { setTheme, setTransparency, themeLabels, THEMES } from '../themes'
 import type { ThemeName } from '../themes'
-import type { SettingRow } from '../ui/SettingsView'
+import type { SettingEdit, SettingRow } from '../ui/SettingsView'
 import type { EditorBridge } from './editor'
 import type { Status } from './status'
 
@@ -33,6 +33,11 @@ export function createSettings(deps: {
 }) {
   const { status, editor, dimensions } = deps
   const [config, setConfig] = createStore<Config>({ ...deps.initial })
+
+  // Here rather than beside the `setTheme` in main.tsx: the theme store outlives
+  // any one app instance, so a launch whose config says otherwise has to undo
+  // what the last one left behind.
+  setTransparency(config.transparent)
 
   const patchConfig = (patch: Partial<Config>) => {
     setConfig(patch)
@@ -91,6 +96,13 @@ export function createSettings(deps: {
     status.say(`Following OS appearance (${appearance})`)
   }
 
+  const toggleTransparent = () => {
+    const enabled = !config.transparent
+    patchConfig({ transparent: enabled })
+    setTransparency(enabled)
+    status.say(`Transparent background ${onOff(enabled)}`)
+  }
+
   const applyTabSize = (size: number) => {
     patchConfig({ tabSize: size })
     status.say(`Tab size: ${size}`)
@@ -109,12 +121,73 @@ export function createSettings(deps: {
 
   const toggleFormatOnSave = () => {
     patchConfig({ formatOnSave: !config.formatOnSave })
-    // Turning it on with nothing configured would silently do nothing on save —
-    // point at the config file, which is where the commands live.
+    // Turning it on with nothing configured would silently do nothing on save.
     status.say(
       config.formatOnSave && Object.keys(config.formatters).length === 0
-        ? 'Format on save on — add commands to "formatters" in the config file'
+        ? 'Format on save on — add a command on the Formatters row'
         : `Format on save ${onOff(config.formatOnSave)}`,
+    )
+  }
+
+  /**
+   * One formatter entry as the page's one-line syntax: `ts,tsx = prettier --write`.
+   * `previous` names the entry being edited, or null when adding; an empty value
+   * removes the entry, and rewriting the extensions moves it rather than fork it.
+   */
+  const setFormatter = (previous: string | null, value: string) => {
+    const formatters = { ...config.formatters }
+    if (previous !== null && value.trim() === '') {
+      delete formatters[previous]
+      patchConfig({ formatters })
+      return status.say(`Formatter for "${previous}" removed`)
+    }
+    const at = value.indexOf('=')
+    const key = at < 0 ? '' : value.slice(0, at).trim()
+    const command =
+      at < 0
+        ? []
+        : value
+            .slice(at + 1)
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean)
+    if (!key || command.length === 0) {
+      return status.say(
+        'Formatter syntax: extensions = command, e.g. ts,tsx = prettier --write',
+        'warn',
+      )
+    }
+    if (previous !== null && previous !== key) delete formatters[previous]
+    formatters[key] = command
+    patchConfig({ formatters })
+    status.say(`Formatter: ${key} = ${command.join(' ')}`)
+  }
+
+  /** The edit a formatter pick opens — entry `at`, or "add" past the end. */
+  const formatterEdit = (at: number): SettingEdit => {
+    const keys = Object.keys(config.formatters)
+    const key = keys[at] ?? null
+    return {
+      title: key ? `Formatter — ${key}` : 'Add formatter',
+      initial: key ? `${key} = ${config.formatters[key]!.join(' ')}` : '',
+      placeholder: 'ts,tsx = prettier --write',
+      hint: 'extensions = command ("*" any file) · empty removes · Enter apply · Esc cancel',
+      apply: value => setFormatter(key, value),
+    }
+  }
+
+  /** Custom command for one server; empty restores the default. Disabling stays
+   * on the Servers row — an empty command already means "off" there. */
+  const setServerCommand = (id: string, value: string) => {
+    const overrides = { ...config.lspServers }
+    const command = value.trim().split(/\s+/).filter(Boolean)
+    if (command.length === 0) delete overrides[id]
+    else overrides[id] = command
+    patchConfig({ lspServers: overrides })
+    status.say(
+      command.length === 0
+        ? `LSP server "${id}" back on its default command`
+        : `LSP server "${id}": ${command.join(' ')}`,
     )
   }
 
@@ -210,6 +283,21 @@ export function createSettings(deps: {
    */
   const nudgeSidebar = (delta: number) => resizeSidebar(treeWidth() + delta)
 
+  /** The typed width: a column count (clamped as `[`/`]` are) or `auto`. */
+  const applySidebarWidth = (value: string) => {
+    const trimmed = value.trim().toLowerCase()
+    if (trimmed === '' || trimmed === 'auto') {
+      patchConfig({ sidebarWidth: 'auto' })
+      return status.say('Sidebar width: auto')
+    }
+    const width = Number(trimmed)
+    if (!Number.isFinite(width)) {
+      return status.say(`Sidebar width is a number of columns, or "auto"`, 'warn')
+    }
+    resizeSidebar(width)
+    status.say(`Sidebar width: ${config.sidebarWidth}`)
+  }
+
   /** The settings page's rows: current values plus their step actions, in display order. */
   const rows = (): SettingRow[] => [
     {
@@ -249,6 +337,12 @@ export function createSettings(deps: {
       },
     },
     {
+      section: 'Appearance',
+      label: 'Transparent background',
+      value: onOff(config.transparent),
+      cycle: toggleTransparent,
+    },
+    {
       section: 'Editor',
       label: 'Vim mode',
       value: onOff(config.vim),
@@ -277,6 +371,21 @@ export function createSettings(deps: {
       cycle: toggleFormatOnSave,
     },
     {
+      // Enter lists the configured entries plus an "add" row; picking one opens
+      // a text field, since a command is no pick-a-value setting.
+      section: 'Editor',
+      label: 'Formatters',
+      value: `${Object.keys(config.formatters).length} configured`,
+      cycle: () => status.say('Enter opens the formatter list'),
+      select: {
+        options: [
+          ...Object.entries(config.formatters).map(([key, cmd]) => `${key} = ${cmd.join(' ')}`),
+          '+ Add formatter…',
+        ],
+        pick: formatterEdit,
+      },
+    },
+    {
       section: 'Editor',
       label: 'Auto-save on tab switch and terminal blur',
       value: onOff(config.autoSaveOnBlur),
@@ -293,6 +402,19 @@ export function createSettings(deps: {
       label: 'Hide git-ignored files',
       value: onOff(config.respectGitignore),
       cycle: toggleGitignored,
+    },
+    {
+      section: 'Files',
+      label: 'Sidebar width',
+      value: config.sidebarWidth === 'auto' ? 'auto' : String(config.sidebarWidth),
+      cycle: dir => nudgeSidebar(dir),
+      edit: {
+        title: 'Sidebar width',
+        initial: config.sidebarWidth === 'auto' ? 'auto' : String(config.sidebarWidth),
+        placeholder: `auto, or ${SIDEBAR_MIN}–${SIDEBAR_MAX}`,
+        hint: '"auto" sizes to the terminal · Enter apply · Esc cancel',
+        apply: applySidebarWidth,
+      },
     },
     {
       // Two values: a list to choose between them is more ceremony than the
@@ -328,8 +450,7 @@ export function createSettings(deps: {
     },
     {
       // One row, not fourteen: Enter lists every known server and picking one
-      // flips it. Custom commands stay in the config file, which the page's
-      // footer already points at.
+      // flips it. Custom commands live on the row below.
       section: 'Language servers',
       label: 'Servers',
       value: `${DEFAULT_SERVERS.filter(s => (config.lspServers[s.id]?.length ?? 1) > 0).length}/${DEFAULT_SERVERS.length} enabled`,
@@ -337,6 +458,25 @@ export function createSettings(deps: {
       select: {
         options: DEFAULT_SERVERS.map(spec => serverLabel(spec.id, spec.command)),
         pick: at => toggleServer(DEFAULT_SERVERS[at]!.id),
+      },
+    },
+    {
+      section: 'Language servers',
+      label: 'Server commands',
+      value: `${Object.values(config.lspServers).filter(cmd => cmd.length > 0).length} custom`,
+      cycle: () => status.say('Enter opens the server list'),
+      select: {
+        options: DEFAULT_SERVERS.map(spec => serverLabel(spec.id, spec.command)),
+        pick: at => {
+          const spec = DEFAULT_SERVERS[at]!
+          const override = config.lspServers[spec.id]
+          return {
+            title: `Command — ${spec.id}`,
+            initial: (override && override.length > 0 ? override : spec.command).join(' '),
+            hint: 'empty restores the default · Enter apply · Esc cancel',
+            apply: (value: string) => setServerCommand(spec.id, value),
+          }
+        },
       },
     },
   ]
@@ -347,6 +487,7 @@ export function createSettings(deps: {
     applyTheme,
     applyAppearance,
     toggleThemeSync,
+    toggleTransparent,
     applyTabSize,
     applyVim,
     toggleTrim,
@@ -360,6 +501,9 @@ export function createSettings(deps: {
     toggleLspInline,
     toggleLspCompletion,
     toggleServer,
+    setFormatter,
+    setServerCommand,
+    applySidebarWidth,
     rows,
     treeWidth,
     resizeSidebar,

@@ -51,6 +51,13 @@ export interface Config {
   themeLight: ThemeName
   /** Theme used while the OS is dark and `themeSync` is on. */
   themeDark: ThemeName
+  /**
+   * Leave the editor, tab strip and sidebar backgrounds unpainted, so a
+   * translucent terminal shows through them. Floating panels — the palette, the
+   * modals, the settings page — stay painted whatever this says: the editor
+   * would otherwise read straight through them.
+   */
+  transparent: boolean
   /** Modal editing (normal / insert / visual). */
   vim: boolean
   /**
@@ -107,6 +114,7 @@ export const DEFAULTS: Config = {
   themeSync: true,
   themeLight: 'light',
   themeDark: 'dark',
+  transparent: false,
   vim: false,
   tabSize: 2,
   sidebarWidth: 'auto',
@@ -132,6 +140,7 @@ function parse(raw: unknown): Config {
     themeSync: typeof obj.themeSync === 'boolean' ? obj.themeSync : DEFAULTS.themeSync,
     themeLight: isThemeName(obj.themeLight) ? obj.themeLight : DEFAULTS.themeLight,
     themeDark: isThemeName(obj.themeDark) ? obj.themeDark : DEFAULTS.themeDark,
+    transparent: typeof obj.transparent === 'boolean' ? obj.transparent : DEFAULTS.transparent,
     vim: typeof obj.vim === 'boolean' ? obj.vim : DEFAULTS.vim,
     tabSize:
       typeof obj.tabSize === 'number' && obj.tabSize >= 1 && obj.tabSize <= 16

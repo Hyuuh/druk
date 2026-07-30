@@ -70,7 +70,11 @@ describe('registries', () => {
     const actions = new Proxy({} as CommandActions, {
       get: (_t, name: string) => () => ran.push(name),
     })
-    const tree = buildCommands(actions, { activeTheme: 'dark', themeSync: false })
+    const tree = buildCommands(actions, {
+      activeTheme: 'dark',
+      themeSync: false,
+      transparent: false,
+    })
     const leaves = flattenCommands(tree)
 
     expect(leaves.length).toBeGreaterThan(10)

@@ -17,9 +17,9 @@ export function TextInput(props: TextInputProps) {
       focused
       value={props.value}
       placeholder={props.placeholder}
-      backgroundColor={ui.bg}
+      backgroundColor={ui.solidBg}
       textColor={ui.text}
-      focusedBackgroundColor={ui.bg}
+      focusedBackgroundColor={ui.solidBg}
       focusedTextColor={ui.text}
       cursorColor={ui.cursor}
       placeholderColor={ui.faint}

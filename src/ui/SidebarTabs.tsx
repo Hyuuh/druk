@@ -38,7 +38,7 @@ export function SidebarTabs(props: SidebarTabsProps) {
           // Unfocused keeps the fill but drops to the tree's own selection colour:
           // which view is up is not the same fact as who has the keyboard.
           const bg = () =>
-            active() ? (props.focused ? ui.statusBg : ui.treeSelectedBg) : ui.panelBg
+            active() ? (props.focused ? ui.statusBg : ui.treeSelectedBg) : ui.sidebarBg
           const fg = () => (active() ? (props.focused ? ui.statusFg : ui.text) : ui.inactiveTabFg)
           return (
             <>

@@ -155,8 +155,8 @@ const PROBLEM_COLORS: Record<ProblemSeverity, () => string> = {
  * badge on every hint would make a linted file shimmer.
  */
 const PROBLEM_NOTE_BG: Record<ProblemSeverity, () => string | null> = {
-  error: () => mixColors(ui.bg, ui.error, 0.22),
-  warning: () => mixColors(ui.bg, ui.dirty, 0.18),
+  error: () => mixColors(ui.solidBg, ui.error, 0.22),
+  warning: () => mixColors(ui.solidBg, ui.dirty, 0.18),
   info: () => null,
   hint: () => null,
 }
@@ -1552,13 +1552,10 @@ export function EditorPane(props: EditorPaneProps) {
               }}
             >
               <For each={scrollbar()}>
-                {filled => (
-                  <text
-                    fg={filled ? ui.scrollbar : ui.bg}
-                    bg={ui.bg}
-                    content={filled ? '█' : '│'}
-                  />
-                )}
+                {/* The trough is a space, not a glyph hidden by painting it in
+                    the background color: with `transparent` on there is no
+                    background color to hide it in. */}
+                {filled => <text fg={ui.scrollbar} bg={ui.bg} content={filled ? '█' : ' '} />}
               </For>
             </box>
           </Show>

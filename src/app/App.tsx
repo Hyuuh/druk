@@ -318,7 +318,7 @@ export function App(props: {
             width={settings.treeWidth()}
             flexShrink={0}
             flexDirection="column"
-            backgroundColor={ui.panelBg}
+            backgroundColor={ui.sidebarBg}
           >
             <SidebarTabs
               view={panes.view()}
