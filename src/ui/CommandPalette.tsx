@@ -6,7 +6,7 @@ import type { Command, FlatCommand } from '../app/commands'
 import { flattenCommands } from '../app/commands'
 import { ui } from '../themes'
 import { listRows, modalWidth, PAD } from './modal'
-import { Overlay } from './Overlay'
+import { Overlay, topInset } from './Overlay'
 import { TextInput } from './TextInput'
 
 export interface CommandPaletteProps {
@@ -22,7 +22,7 @@ export function CommandPalette(props: CommandPaletteProps) {
 
   const width = () => modalWidth(dimensions().width, 0.55, 58, 92)
   /** Border, input, blank line and footer. */
-  const visibleRows = () => listRows(dimensions().height, 8, 18)
+  const visibleRows = () => listRows(dimensions().height - topInset(dimensions().height), 8, 18)
 
   const rows = createMemo<FlatCommand[]>(() => {
     const q = query().trim().toLowerCase()
@@ -85,7 +85,7 @@ export function CommandPalette(props: CommandPaletteProps) {
   })
 
   return (
-    <Overlay zIndex={150}>
+    <Overlay zIndex={150} align="top">
       <box
         width={width()}
         flexDirection="column"

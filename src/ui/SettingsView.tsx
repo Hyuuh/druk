@@ -1,3 +1,5 @@
+import { homedir } from 'node:os'
+
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
@@ -217,7 +219,13 @@ export function SettingsView(props: SettingsViewProps) {
       : props.scope === 'project'
         ? ' · ◆ set here'
         : ' · ◆ set by project'
-    let path = props.configFile
+    // `~` first: a home-relative path is what the user would type, and cutting
+    // the front off an absolute one leaves the unreadable middle of a temp dir.
+    const home = homedir()
+    let path =
+      home && props.configFile.startsWith(`${home}/`)
+        ? `~${props.configFile.slice(home.length)}`
+        : props.configFile
     const room = Math.max(8, props.width - 2 - legend.length)
     if (path.length > room) path = `…${path.slice(path.length - room + 1)}`
     return ` ${path}${legend}`

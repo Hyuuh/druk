@@ -9,7 +9,7 @@ import type { Context, Match, SearchOptions } from '../core/search'
 import { buildQuery, contextAround, contextIn, searchProject, searchText } from '../core/search'
 import { ui } from '../themes'
 import { modalWidth, PAD } from './modal'
-import { Overlay } from './Overlay'
+import { Overlay, topInset } from './Overlay'
 import { TextInput } from './TextInput'
 
 export type SearchScope = 'file' | 'project'
@@ -196,7 +196,8 @@ export function SearchPanel(props: SearchPanelProps) {
    * but a list of two rows is still a list.
    */
   const resultRows = () => {
-    const chrome = 7 + (replacing() ? 1 : 0) + (preview() ? CONTEXT * 2 + 2 : 0)
+    const chrome =
+      7 + topInset(dimensions().height) + (replacing() ? 1 : 0) + (preview() ? CONTEXT * 2 + 2 : 0)
     return Math.max(2, Math.min(18, dimensions().height - chrome))
   }
 
@@ -298,7 +299,7 @@ export function SearchPanel(props: SearchPanelProps) {
   }
 
   return (
-    <Overlay zIndex={150}>
+    <Overlay zIndex={150} align="top">
       <box
         width={width()}
         flexDirection="column"

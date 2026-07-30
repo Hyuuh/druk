@@ -93,10 +93,16 @@ export function Tabs(props: TabsProps) {
                   flexDirection="row"
                   flexShrink={0}
                   backgroundColor={bg()}
-                  paddingLeft={1}
                   paddingRight={1}
                   onMouseDown={() => props.onSelect(tab.id)}
                 >
+                  {/* The accent edge is what says "this one" at a glance — a bold
+                      label and a background a shade apart do not survive a
+                      low-contrast theme. It takes the column the padding had, so
+                      the strip's geometry is unchanged. A space on the inactive
+                      tabs, not the glyph hidden by painting it in the background:
+                      with `transparent` on there is no background to hide it in. */}
+                  <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▎' : ' '} />
                   <text
                     fg={active() ? ui.activeTabFg : ui.inactiveTabFg}
                     bg={bg()}

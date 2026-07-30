@@ -195,14 +195,25 @@ export function FileTree(props: FileTreeProps) {
       flexBasis={0}
       onMouseDown={() => props.onFocus()}
     >
-      <box height={2} flexDirection="column" backgroundColor={ui.sidebarBg} paddingLeft={2}>
+      {/* One row, not two: the project and the view it is showing are one fact,
+          and a sidebar that spends three rows before its first file reads as
+          chrome. The label goes right, where it stays out of the name's way. */}
+      <box
+        height={1}
+        flexDirection="row"
+        backgroundColor={ui.sidebarBg}
+        paddingLeft={2}
+        paddingRight={1}
+      >
         <text
           fg={props.focused ? ui.text : ui.dim}
           bg={ui.sidebarBg}
+          flexShrink={1}
           content={props.rootName}
           attributes={TextAttributes.BOLD}
         />
-        <text fg={ui.faint} bg={ui.sidebarBg} content="explorer" />
+        <box flexGrow={1} backgroundColor={ui.sidebarBg} />
+        <text fg={ui.faint} bg={ui.sidebarBg} flexShrink={0} content="explorer" />
       </box>
       <scrollbox
         ref={el => {

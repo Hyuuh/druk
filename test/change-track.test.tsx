@@ -19,12 +19,15 @@ interface Frame {
 const hex = (fg?: { buffer: Uint8Array }) =>
   fg ? `#${Array.from(fg.buffer.slice(0, 3), v => v.toString(16).padStart(2, '0')).join('')}` : ''
 
-/** Colours of the change marks beside the scrollbar. */
+/**
+ * Colours of the change marks beside the scrollbar. The tab strip is skipped:
+ * the active tab's accent edge is the same glyph, one row above the editor.
+ */
 const track = (t: Harness) => {
   const frame = t.captureSpans() as unknown as Frame
-  return frame.lines.flatMap(line =>
-    line.spans.filter(span => span.text.includes('▎')).map(span => hex(span.fg)),
-  )
+  return frame.lines
+    .slice(1)
+    .flatMap(line => line.spans.filter(span => span.text.includes('▎')).map(span => hex(span.fg)))
 }
 
 async function repoWith(edit: (lines: string[]) => void) {
@@ -104,12 +107,15 @@ describe('the track agrees with the scrollbar', () => {
     return dir
   }
 
+  // Row 0, the tab strip, is skipped rather than sliced away: the active tab's
+  // accent edge is the track's own glyph, and the rows either side of it have to
+  // keep the indices the assertions below compare against the terminal's height.
   const rowsOf = (t: Harness, glyph: string) =>
     t
       .captureCharFrame()
       .split('\n')
       .filter(row => row.length > 0)
-      .flatMap((row, index) => (row.includes(glyph) ? [index] : []))
+      .flatMap((row, index) => (index > 0 && row.includes(glyph) ? [index] : []))
 
   test('scrolling to a mark puts the thumb beside it', async () => {
     // The thumb used to be driven by the visual scroll position while the marks

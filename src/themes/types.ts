@@ -49,6 +49,13 @@ export interface UiColors extends ThemeUi {
   solidBg: string
   /** The theme's `barBg`, whatever `transparent` did to `barBg` itself. */
   solidBarBg: string
+  /**
+   * Hairline rules — the sidebar's edge, a modal's border, the strip under the
+   * tabs. Derived from the theme rather than listed by it: it has to read as the
+   * quietest line on screen, which is a relationship between two colours, not a
+   * colour anyone would pick.
+   */
+  border: string
 }
 
 /**

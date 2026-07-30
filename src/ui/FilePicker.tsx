@@ -7,7 +7,7 @@ import { createMemo, createSignal, For, Show } from 'solid-js'
 import { fuzzyScore, listFiles } from '../core/search'
 import { ui } from '../themes'
 import { listRows, modalWidth, PAD } from './modal'
-import { Overlay } from './Overlay'
+import { Overlay, topInset } from './Overlay'
 import { TextInput } from './TextInput'
 
 export interface FilePickerProps {
@@ -26,7 +26,7 @@ export function FilePicker(props: FilePickerProps) {
 
   const width = () => modalWidth(dimensions().width, 0.62, 72, 110)
   /** Border, input, blank line and footer. */
-  const visibleRows = () => listRows(dimensions().height, 8, 18)
+  const visibleRows = () => listRows(dimensions().height - topInset(dimensions().height), 8, 18)
 
   // Scanned once per open: a project's file list does not move under you mid-search.
   const files = props.files ?? listFiles(props.rootDir, 5000)
@@ -65,7 +65,7 @@ export function FilePicker(props: FilePickerProps) {
   })
 
   return (
-    <Overlay zIndex={150}>
+    <Overlay zIndex={150} align="top">
       <box
         width={width()}
         flexDirection="column"

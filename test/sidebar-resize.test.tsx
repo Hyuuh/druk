@@ -82,7 +82,7 @@ describe('resizing the sidebar', () => {
     expect(at).toBeLessThanOrEqual(60)
   })
 
-  test('the handle is a short grip at the middle, not a rule down the screen', async () => {
+  test('the handle is a hairline rule down the whole edge', async () => {
     const t = await launch(fixture(PROJECT))
     const at = dividerAt(t)
     expect(at).toBe(30)
@@ -94,14 +94,9 @@ describe('resizing the sidebar', () => {
       .slice(1, -1)
       .map(row => row[at] ?? ' ')
 
-    const marked = column.flatMap((glyph, row) => (glyph === '│' ? [row] : []))
-    expect(marked.length).toBeGreaterThan(2)
-    // A grip, not a rule: most of the column is blank.
-    expect(marked.length).toBeLessThan(column.length / 2)
-    // Contiguous, and centred to within a row of the middle.
-    expect(marked.at(-1)! - marked[0]!).toBe(marked.length - 1)
-    const middle = (marked[0]! + marked.at(-1)!) / 2
-    expect(Math.abs(middle - (column.length - 1) / 2)).toBeLessThanOrEqual(1)
+    // Every row of the pane, not a grip at the middle: the rule is what says
+    // where the sidebar ends, and a gap in it reads as a gap in the layout.
+    expect(column.every(glyph => glyph === '│')).toBe(true)
   })
 
   test('the whole column drags, not only the part that is drawn', async () => {

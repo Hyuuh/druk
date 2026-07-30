@@ -1,8 +1,8 @@
 import { basename } from 'node:path'
 
-import type { MouseEvent } from '@opentui/core'
+import type { BorderSides, MouseEvent } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from 'solid-js'
 
 import { watchAppearance } from '../core/appearance'
 import { loadProjectConfig, resolveConfig } from '../core/config'
@@ -45,8 +45,8 @@ import { createStatus, READY } from './status'
 import { createTree, hiddenNodes } from './tree'
 import { CLASH_CHANGED, CLASH_DELETED, createWorkspace, restoreWorkspace } from './workspace'
 
-/** Rows the divider's grip occupies — long enough to aim at, short enough to be a grip. */
-const GRIP = [0, 1, 2, 3, 4]
+/** The divider draws its own left edge; a box border is how it spans the height. */
+const BORDER_LEFT: BorderSides[] = ['left']
 
 /**
  * The composition root. Each concern lives in its own controller module; this
@@ -448,29 +448,27 @@ export function App(props: {
               </Show>
             </Show>
           </box>
-          {/* Drag handle: the whole column is the grab target, but only a short
-              grip is drawn at its middle — a full-height rule is a heavy line
-              down the screen for something you touch once. The spacers centre it
-              without anyone having to know the pane's height. `scrollbar` is the
-              palette's quiet rule colour, and the accent while dragging says the
-              grab took. The sidebar starts at column 0, so the pointer's x is the
-              width asked for. */}
+          {/* The sidebar's edge, and the grab target that resizes it. A rule the
+              whole way down rather than a short grip at the middle: in `border` it
+              is the quietest line on screen and reads as where one pane ends,
+              where five glyphs floating in the middle of an empty pane read as
+              debris. The accent while dragging says the grab took. Painted in
+              `bg`, not `panelBg` — the sidebar's right edge is found by where
+              panel colour stops, and the resize tests measure exactly that. The
+              sidebar starts at column 0, so the pointer's x is the width asked
+              for. */}
           <box
             width={1}
             flexShrink={0}
             flexDirection="column"
             backgroundColor={ui.bg}
+            border={BORDER_LEFT}
+            borderColor={resizing() ? ui.accent : ui.border}
             onMouseDown={(event: MouseEvent) => {
               setResizing(true)
               settings.resizeSidebar(event.x)
             }}
-          >
-            <box flexGrow={1} backgroundColor={ui.bg} />
-            <For each={GRIP}>
-              {() => <text fg={resizing() ? ui.accent : ui.scrollbar} bg={ui.bg} content="│" />}
-            </For>
-            <box flexGrow={1} backgroundColor={ui.bg} />
-          </box>
+          />
         </Show>
         {/* The diff pane sits over the editor's slot only, so the tabs, tree and
             status bar stay put — it reads as a view of the editor, not a modal. */}
