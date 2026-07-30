@@ -32,8 +32,7 @@ import {
 } from '../lsp/completion'
 import type { CompletionReply } from '../lsp/completion'
 import type { CompletionItem, ProblemSeverity } from '../lsp/protocol'
-import { ui } from '../themes'
-import type { ThemeName } from '../themes'
+import { paintedTheme, ui } from '../themes'
 import { CompletionMenu, MENU_ROWS, menuWidth } from './CompletionMenu'
 import { Welcome } from './Welcome'
 
@@ -46,7 +45,6 @@ export interface EditorPaneProps {
   version: string
   filetype?: string
   focused: boolean
-  theme: ThemeName
   reloadKey: number
   /** Cursor target requested from outside (search results); bumped `key` re-applies. */
   goto: { line: number; col: number; key: number } | null
@@ -1261,10 +1259,22 @@ export function EditorPane(props: EditorPaneProps) {
 
   createEffect(
     on(
-      () => [props.theme, props.tabSize],
-      () => {
+      // `paintedTheme`, not config: a live preview paints without writing the
+      // setting, and the buffer's style ids have to follow that paint.
+      () => [paintedTheme(), props.tabSize] as const,
+      (curr, prev) => {
         if (!editor) return
         editor.syntaxStyle = getSyntaxStyle()
+        // Style ids are per SyntaxStyle instance. Drop the segment cache and
+        // repaint from the (theme-independent) parse — a full rehighlight is
+        // wasted and races a preview that is already being cancelled, which is
+        // what left the editor on the previewed colors after Esc.
+        byLine = new Map()
+        segmented.clear()
+        if (parsed && prev && curr[1] === prev[1]) {
+          applyWindow(true)
+          return
+        }
         void highlight(editor.plainText, props.path)
       },
       { defer: true },

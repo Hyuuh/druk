@@ -494,7 +494,6 @@ export function App(props: {
               !activeImage() &&
               !workspace.renderedPath()
             }
-            theme={config.theme}
             reloadKey={editor.reloadKey()}
             goto={editor.goto()}
             history={editor.history()}
@@ -561,7 +560,6 @@ export function App(props: {
                   name={basename(path())}
                   content={workspace.buffers[path()]?.content ?? ''}
                   width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
-                  theme={config.theme}
                   focused={panes.focus() === 'editor'}
                   blocked={overlays.overlay()}
                   onFocus={() => panes.setFocus('editor')}
