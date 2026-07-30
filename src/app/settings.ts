@@ -705,6 +705,8 @@ export function createSettings(deps: {
     patchUserConfig,
     applyTheme,
     applyAppearance,
+    previewTheme: paintTheme,
+    restoreTheme: () => paintTheme(config.theme),
     toggleThemeSync,
     toggleTransparent,
     applyTabSize,

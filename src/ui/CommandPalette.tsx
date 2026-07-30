@@ -1,6 +1,6 @@
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
-import { createMemo, createSignal, For, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 
 import type { Command, FlatCommand } from '../app/commands'
 import { flattenCommands } from '../app/commands'
@@ -38,6 +38,12 @@ export function CommandPalette(props: CommandPaletteProps) {
 
   const selected = () => Math.min(index(), Math.max(0, rows().length - 1))
 
+  /** Paint a command's preview whenever the selection lands on one. */
+  createEffect(() => {
+    const row = rows()[selected()]
+    if (row?.command.preview) row.command.preview()
+  })
+
   // A filter can match every leaf in the tree; rendering them all pushes the
   // input and the footer off an 80x24 screen, so only a window is drawn.
   const windowed = createMemo(() => {
@@ -58,6 +64,8 @@ export function CommandPalette(props: CommandPaletteProps) {
   }
 
   const back = () => {
+    const row = rows()[selected()]
+    if (row?.command.cancel) row.command.cancel()
     if (trail().length === 0) {
       props.onClose()
       return

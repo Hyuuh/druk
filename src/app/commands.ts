@@ -19,6 +19,10 @@ export interface Command {
   /** Keybinding shown right-aligned, e.g. "Ctrl+S". Leaves only. */
   hint?: string
   run?: () => void
+  /** Paint a value before confirming — used by the themes submenu. */
+  preview?: () => void
+  /** Revert to the value in force when the user backs out without confirming. */
+  cancel?: () => void
   children?: Command[]
 }
 
@@ -50,6 +54,8 @@ export interface CommandActions {
   toggleGitView: () => void
   toggleMarkdown: () => void
   setTheme: (name: ThemeName) => void
+  previewTheme: (name: ThemeName) => void
+  restoreTheme: () => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   triggerCompletion: () => void
   openSettings: () => void
@@ -254,6 +260,8 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       children: (Object.keys(THEMES) as ThemeName[]).map(name => ({
         id: `themes.${name}`,
         label: `${check(ctx.activeTheme === name)}${themeLabels[name]}`,
+        preview: () => actions.previewTheme(name),
+        cancel: () => actions.restoreTheme(),
         run: () => actions.setTheme(name),
       })),
     },
