@@ -11,12 +11,19 @@ import {
   switchBranch,
 } from '../core/git'
 import type { Branch } from '../core/git'
-import type { GitOp } from './git'
+import type { Git, GitOp } from './git'
 import type { PromptState } from './prompts'
 import type { Status } from './status'
 
 /** What picking a branch in the picker goes on to do with it. */
-export type BranchMode = 'switch' | 'from' | 'merge' | 'rename' | 'delete' | 'deleteForce'
+export type BranchMode =
+  | 'switch'
+  | 'from'
+  | 'merge'
+  | 'rename'
+  | 'delete'
+  | 'deleteForce'
+  | 'diffBase'
 
 interface PickerSpec {
   title: string
@@ -55,6 +62,14 @@ const PICKERS: Record<BranchMode, PickerSpec> = {
     keep: branch => !branch.remote && !branch.current,
     empty: 'No other local branch to delete',
   },
+  // The current branch stays on offer: comparing against it is comparing against
+  // its tip, which is a narrower question than "everything I have not committed"
+  // and a reasonable one to ask.
+  diffBase: {
+    title: 'Compare against branch',
+    keep: () => true,
+    empty: 'No branch to compare against',
+  },
 }
 
 /**
@@ -65,10 +80,11 @@ const PICKERS: Record<BranchMode, PickerSpec> = {
 export function createBranches(deps: {
   rootDir: string
   status: Status
+  git: Git
   gitOp: GitOp
   prompts: PromptState
 }) {
-  const { rootDir, status, gitOp, prompts } = deps
+  const { rootDir, status, git, gitOp, prompts } = deps
 
   /** The open branch picker: what it lists and what picking will mean. */
   const [pick, setPick] = createSignal<{ mode: BranchMode; branches: Branch[] } | null>(null)
@@ -113,6 +129,11 @@ export function createBranches(deps: {
         return prompts.setPrompt({ kind: 'mergeBranch', name: branch.name })
       case 'rename':
         return prompts.setPrompt({ kind: 'renameBranch', from: branch.name })
+      // Not a mutation: nothing in the repository moves, only what druk compares
+      // against — so this one answers on the spot instead of going through gitOp.
+      case 'diffBase':
+        git.setDiffBase(branch.name)
+        return status.say(`Comparing against ${branch.name}`)
       case 'delete':
       case 'deleteForce':
         return prompts.setPrompt({

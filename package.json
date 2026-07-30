@@ -46,7 +46,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "check": "bun run check-types && bun run lint && bun run format:check && bun run test",
-    "test": "bun test --parallel",
+    "test": "bun scripts/test.ts",
     "test:watch": "bun test --watch"
   },
   "dependencies": {
@@ -63,7 +63,8 @@
     "@types/bun": "latest",
     "oxfmt": "^0.60.0",
     "oxlint": "^1.75.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-language-server": "^5.3.0"
   },
   "engines": {
     "bun": ">=1.1"

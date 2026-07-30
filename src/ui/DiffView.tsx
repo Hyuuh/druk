@@ -41,9 +41,12 @@ export interface DiffViewProps {
   blocked: boolean
   onFocus: () => void
   onToggleMode: () => void
+  /** Esc: closes the page, or hands the focus back to whatever opened it. */
   onClose: () => void
   /** Commit detail owns ↑/↓ as a file pager; ordinary diffs leave them scrolling. */
   onMoveFile?: (delta: number) => void
+  /** What Esc does now, for the hint line — the caller owns the behaviour. */
+  escLabel?: string
 }
 
 function diffMark(status: DiffFileStatus): string {
@@ -363,7 +366,7 @@ export function DiffView(props: DiffViewProps) {
   /** Long spelling when the pane can afford it, initials beside a sidebar. */
   const hints = () => {
     const mode = props.mode === 'inline' ? 'inline' : 'side-by-side'
-    const full = ` ${mode} · Tab layout · Esc close `
+    const full = ` ${mode} · Tab layout · Esc ${props.escLabel ?? 'close'} `
     if (full.length + 28 <= props.width) return full
     return ` ${mode} · Tab · Esc `
   }

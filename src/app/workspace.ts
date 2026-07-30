@@ -8,6 +8,7 @@ import type { TreeNode } from '../core/fs'
 import { isImagePath } from '../core/image'
 import { loadSession, saveSession } from '../core/session'
 import { trimTrailing } from '../editor/lines'
+import type { DiffFile } from '../ui/DiffView'
 import type { EditorBridge } from './editor'
 import type { Git } from './git'
 import type { Panes } from './panes'
@@ -114,6 +115,28 @@ export function createWorkspace(deps: {
   // Preview tab (VS Code style): opened from the tree, reused by the next
   // preview, and promoted to a permanent tab on click, double-click or edit.
   const [previewPath, setPreviewPath] = createSignal<string | null>(null)
+  /**
+   * The diff tab: its two texts as they read when it was opened, or null for no
+   * such tab. It is a tab like any other — the strip shows it, Ctrl+←/→ walks onto
+   * it — so opening a file switches away from it without closing it, and only
+   * `setDiff(null)` (Ctrl+W, Esc, or the change going away) takes it off the strip.
+   */
+  const [diffTab, setDiffTab] = createSignal<DiffFile | null>(null)
+  /** Whether the diff tab is the one on screen, rather than the active file. */
+  const [diffShown, setDiffShown] = createSignal(false)
+  /**
+   * The diff covering the editor slot, or null when a file is showing. Two states
+   * rather than one because the tab outlives its turn on screen; readers that ask
+   * "what is the editor slot showing" want this one.
+   */
+  const diff = () => (diffShown() ? diffTab() : null)
+  /** Open the diff tab and show it, or take it off the strip for null. */
+  const setDiff = (file: DiffFile | null) => {
+    setDiffTab(file)
+    setDiffShown(file !== null)
+  }
+  /** The settings page, which covers the editor slot the same way. */
+  const [settingsPage, setSettingsPage] = createSignal(false)
   /** A file that would not open, shown over the editor until the next keypress. */
   const [notice, setNotice] = createSignal<{ name: string; reason: string } | null>(null)
   const [conflict, setConflict] = createSignal<Conflict | null>(null)
@@ -131,6 +154,10 @@ export function createWorkspace(deps: {
 
   const openFile = (path: string, preview = false) => {
     setNotice(null)
+    // The file is what the editor slot shows now. The diff tab stays on the strip,
+    // as a file tab would — it is switched away from, not closed.
+    setDiffShown(false)
+    setSettingsPage(false)
     // Images get a viewer tab and no buffer — the door stays shut to a FileBuffer
     // for anything that is not text, which is what keeps "never written back"
     // structural. The tab itself flows through the same preview/pin/session logic.
@@ -222,11 +249,41 @@ export function createWorkspace(deps: {
     say(done)
   }
 
+  /** The diff tab's id in the strip. Not a path: a file and its diff are two tabs
+   * naming one file. */
+  const diffTabId = () => (diffTab() ? `diff:${diffTab()!.path}` : null)
+
+  /** Every tab in strip order, the diff among them — what Ctrl+←/→ walks. */
+  const views = () => {
+    const id = diffTabId()
+    return id ? [...tabs(), id] : tabs()
+  }
+
+  /** Which tab is on screen. */
+  const activeView = () => (diffShown() ? diffTabId() : activePath())
+
+  /** True for the diff tab's id: the strip labels it, and closing it is not a
+   * file being closed. */
+  const isDiffView = (id: string) => id === diffTabId()
+
+  /** Show the tab `id` names — a path, or the diff tab, which is already built. */
+  const showView = (id: string) => {
+    if (isDiffView(id)) {
+      setDiffShown(true)
+      setSettingsPage(false)
+      return panes.setFocus('editor')
+    }
+    openFile(id)
+  }
+
+  /** Close the tab `id` names, page or file. */
+  const closeView = (id: string) => (isDiffView(id) ? setDiff(null) : closeTab(id))
+
   const switchTab = (delta: number) => {
-    const list = tabs()
+    const list = views()
     if (list.length === 0) return
-    const idx = activePath() ? list.indexOf(activePath()!) : 0
-    openFile(list[(idx + delta + list.length) % list.length]!)
+    const at = activeView() ? list.indexOf(activeView()!) : 0
+    showView(list[(at + delta + list.length) % list.length]!)
   }
 
   const onEditorChange = (text: string) => {
@@ -447,6 +504,16 @@ export function createWorkspace(deps: {
     setConflict,
     activeBuffer,
     dirtyPaths,
+    diff,
+    diffTab,
+    setDiff,
+    settingsPage,
+    setSettingsPage,
+    views,
+    activeView,
+    showView,
+    isDiffView,
+    closeView,
     openFile,
     pinTab,
     activateNode,

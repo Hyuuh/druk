@@ -3,6 +3,7 @@ import { createStore, unwrap } from 'solid-js/store'
 import { saveConfig, sidebarColumns, SIDEBAR_MIN, SIDEBAR_MAX } from '../core/config'
 import type { Config } from '../core/config'
 import { invalidateSyntaxStyle } from '../languages/highlight'
+import { DEFAULT_SERVERS } from '../lsp/servers'
 import { setTheme, themeLabels, THEMES } from '../themes'
 import type { ThemeName } from '../themes'
 import type { SettingRow } from '../ui/SettingsView'
@@ -64,9 +65,43 @@ export function createSettings(deps: {
     patchConfig({ diffView: next })
   }
 
+  const toggleGitPanelView = () => {
+    const next = config.gitPanelView === 'tree' ? 'list' : 'tree'
+    patchConfig({ gitPanelView: next })
+    status.say(`Changed files as ${next === 'tree' ? 'a tree' : 'a flat list'}`)
+  }
+
   const toggleAutoSave = () => {
     patchConfig({ autoSaveOnBlur: !config.autoSaveOnBlur })
     status.say(`Auto-save ${config.autoSaveOnBlur ? 'on' : 'off'}`)
+  }
+
+  const toggleLsp = () => {
+    patchConfig({ lsp: !config.lsp })
+    status.say(`LSP diagnostics ${config.lsp ? 'on' : 'off'}`)
+  }
+
+  /**
+   * Flip one server between enabled and disabled. Disabling writes the empty
+   * command; re-enabling removes the override entirely, so a custom command set
+   * by hand in the config file is not resurrected wrongly — the file is where
+   * custom commands live, and the page only turns servers on and off.
+   */
+  const toggleServer = (id: string) => {
+    const overrides = { ...config.lspServers }
+    const disabled = overrides[id]?.length === 0
+    if (disabled) delete overrides[id]
+    else overrides[id] = []
+    patchConfig({ lspServers: overrides })
+    status.say(`LSP server "${id}" ${disabled ? 'enabled' : 'disabled'}`)
+  }
+
+  /** The page's one-line summary of a server: state, id, and the command it runs. */
+  const serverLabel = (id: string, command: string[]) => {
+    const override = config.lspServers[id]
+    const enabled = override === undefined || override.length > 0
+    const shown = override && override.length > 0 ? override : command
+    return `${enabled ? '✓' : '✗'} ${id} — ${shown.join(' ')}`
   }
 
   const toggleDotfiles = () => {
@@ -167,6 +202,31 @@ export function createSettings(deps: {
       value: config.diffView === 'inline' ? 'inline' : 'side-by-side',
       cycle: toggleDiffView,
     },
+    {
+      section: 'Git',
+      label: 'Changed files',
+      value: config.gitPanelView === 'tree' ? 'tree' : 'flat list',
+      cycle: toggleGitPanelView,
+    },
+    {
+      section: 'Language servers',
+      label: 'LSP diagnostics',
+      value: onOff(config.lsp),
+      cycle: toggleLsp,
+    },
+    {
+      // One row, not fourteen: Enter lists every known server and picking one
+      // flips it. Custom commands stay in the config file, which the page's
+      // footer already points at.
+      section: 'Language servers',
+      label: 'Servers',
+      value: `${DEFAULT_SERVERS.filter(s => (config.lspServers[s.id]?.length ?? 1) > 0).length}/${DEFAULT_SERVERS.length} enabled`,
+      cycle: () => status.say('Enter opens the server list'),
+      select: {
+        options: DEFAULT_SERVERS.map(spec => serverLabel(spec.id, spec.command)),
+        pick: at => toggleServer(DEFAULT_SERVERS[at]!.id),
+      },
+    },
   ]
 
   return {
@@ -178,8 +238,11 @@ export function createSettings(deps: {
     toggleTrim,
     toggleAutoSave,
     toggleDiffView,
+    toggleGitPanelView,
     toggleDotfiles,
     toggleGitignored,
+    toggleLsp,
+    toggleServer,
     rows,
     treeWidth,
     resizeSidebar,

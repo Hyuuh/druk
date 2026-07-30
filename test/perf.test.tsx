@@ -47,7 +47,7 @@ test('opening a large file costs about what opening a small one costs', async ()
     frame = big.frame
     ratios.push(big.elapsed / small.elapsed)
   }
-  const median = ratios.sort((a, b) => a - b)[1]!
+  const median = ratios.toSorted((a, b) => a - b)[1]!
 
   expect(frame).toContain('settings:')
   expect(`${median.toFixed(1)}x the small file, under 5x: ${median < 5}`).toBe(

@@ -149,3 +149,20 @@ test('booleans still flip on Enter without a list', async () => {
   expect(t.captureCharFrame()).not.toContain('Type to filter')
   expect(JSON.parse(readFileSync(CONFIG_FILE, 'utf8')).vim).toBe(true)
 })
+
+test('the page windows its rows and the selection carries the window down', async () => {
+  // Short terminal, long list: the title bar has to survive, which it did not
+  // when every row was drawn and the column overflowed.
+  const t = await launch(fixture(PROJECT), {}, { height: 16 })
+  await runCommand(t, 'Settings')
+  expect(t.captureCharFrame()).toContain('Settings')
+
+  // One flush per key: a burst of arrow sequences in one chunk is parsed as
+  // fewer keys than were sent, which would leave the selection near the top.
+  for (let step = 0; step < 10; step++) await press(t, i => i.pressArrow('down'))
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('Servers')
+  expect(frame).toContain('Settings')
+  // The first rows gave way rather than the chrome.
+  expect(frame).not.toContain('Vim mode')
+})

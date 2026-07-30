@@ -40,7 +40,7 @@ async function until(condition: () => boolean, timeout = 4000) {
 test('controller loads, filters and keeps independent file and commit cursors', async () => {
   const { dir } = repo()
   const root = createRoot(dispose => {
-    const git = createGit(dir)
+    const git = createGit(dir, () => 'tree')
     git.setBranch('feature')
     const comparison = createComparison({ rootDir: dir, git, status: createStatus() })
     return { comparison, dispose }
@@ -76,7 +76,7 @@ test('controller changes base through the existing branch model', async () => {
   const { dir, git: runGit } = repo()
   runGit('branch', 'develop', 'trunk')
   const root = createRoot(dispose => {
-    const git = createGit(dir)
+    const git = createGit(dir, () => 'tree')
     git.setBranch('feature')
     const comparison = createComparison({ rootDir: dir, git, status: createStatus() })
     return { comparison, dispose }
@@ -98,7 +98,7 @@ test('controller changes base through the existing branch model', async () => {
 test('controller lazily opens selected file content and closes detail first', async () => {
   const { dir } = repo()
   const root = createRoot(dispose => {
-    const git = createGit(dir)
+    const git = createGit(dir, () => 'tree')
     git.setBranch('feature')
     const comparison = createComparison({ rootDir: dir, git, status: createStatus() })
     return { comparison, dispose }
@@ -123,7 +123,7 @@ test('controller opens the base picker instead of guessing main', () => {
   const { dir, git: runGit } = repo()
   runGit('config', '--unset', 'init.defaultBranch')
   const root = createRoot(dispose => {
-    const git = createGit(dir)
+    const git = createGit(dir, () => 'tree')
     git.setBranch('feature')
     const comparison = createComparison({ rootDir: dir, git, status: createStatus() })
     return { comparison, dispose }
@@ -142,7 +142,7 @@ test('controller reports detached HEAD as an explicit comparison error', async (
   const root = createRoot(dispose => {
     const comparison = createComparison({
       rootDir: dir,
-      git: createGit(dir),
+      git: createGit(dir, () => 'tree'),
       status: createStatus(),
     })
     return { comparison, dispose }
@@ -158,7 +158,7 @@ test('controller reports detached HEAD as an explicit comparison error', async (
 test('controller opens commit metadata and its first file diff lazily', async () => {
   const { dir } = repo()
   const root = createRoot(dispose => {
-    const git = createGit(dir)
+    const git = createGit(dir, () => 'tree')
     git.setBranch('feature')
     const comparison = createComparison({ rootDir: dir, git, status: createStatus() })
     return { comparison, dispose }
@@ -194,7 +194,7 @@ test('a newer base choice wins over an earlier load still in flight', async () =
   const { dir, git: runGit } = repo()
   runGit('branch', 'develop', 'trunk')
   const root = createRoot(dispose => {
-    const git = createGit(dir)
+    const git = createGit(dir, () => 'tree')
     git.setBranch('feature')
     const comparison = createComparison({ rootDir: dir, git, status: createStatus() })
     return { comparison, dispose }

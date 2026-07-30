@@ -96,12 +96,17 @@ function gitAsync(cwd: string, args: string[], options: AsyncGitOptions = {}): P
 }
 
 /**
- * Lines changed against HEAD, keyed by 0-based line number. Returns an empty map
- * outside a repository, for untracked files, or when git is unavailable.
+ * Lines changed against `ref` (HEAD when null), keyed by 0-based line number.
+ * Returns an empty map outside a repository, for untracked files, or when git is
+ * unavailable.
  */
-export function diffLines(path: string): Map<number, LineChange> {
+export function diffLines(path: string, ref: string | null = null): Map<number, LineChange> {
   const marks = new Map<number, LineChange>()
-  const run = git(dirname(path), ['diff', '--no-color', '--unified=0', '--', path], 3000)
+  const run = git(
+    dirname(path),
+    ['diff', '--no-color', '--unified=0', ...(ref ? [ref] : []), '--', path],
+    3000,
+  )
   if (run.status !== 0 || !run.stdout) return marks
 
   for (const hunk of run.stdout.split('\n')) {
@@ -793,13 +798,50 @@ function keyBase(cwd: string): string | null {
 }
 
 /**
- * Working-tree status per absolute path. Staged and unstaged changes collapse to
- * one mark — the tree only needs "this differs from HEAD".
+ * Working-tree status against `ref`, keyed like `statusMap`. `git status` can
+ * only ever compare against HEAD, so this takes two queries: what the diff says
+ * about tracked files, plus the untracked ones — which differ from every ref,
+ * and which the diff never mentions.
  */
-export function statusMap(cwd: string): Map<string, FileStatus> {
+function statusAgainst(cwd: string, ref: string, base: string): Map<string, FileStatus> {
+  const statuses = new Map<string, FileStatus>()
+  // `-z` for the same reason as `statusMap`: quoted paths would never match its
+  // keys. It also drops the tab between the code and the path, so the fields
+  // arrive as a flat alternating list rather than one record per entry.
+  const run = git(cwd, ['diff', '--name-status', '-z', ref])
+  if (run.status !== 0) return statuses
+
+  const fields = run.stdout.split('\0')
+  for (let i = 0; i < fields.length; i += 2) {
+    const code = fields[i]
+    if (!code) continue
+    // A rename or copy spends a field on each path; the new one is what exists
+    // on disk, and skipping ahead keeps the codes on the even indices.
+    if (code[0] === 'R' || code[0] === 'C') i++
+    const path = fields[i + 1]
+    const status = STATUS_BY_CODE[code[0]!]
+    if (status && path) statuses.set(join(base, path), status)
+  }
+
+  const others = git(cwd, ['ls-files', '--others', '--exclude-standard', '-z'])
+  if (others.status === 0) {
+    for (const rel of others.stdout.split('\0')) {
+      if (rel.length > 0) statuses.set(join(base, rel), 'untracked')
+    }
+  }
+  return statuses
+}
+
+/**
+ * Working-tree status per absolute path. Staged and unstaged changes collapse to
+ * one mark — the tree only needs "this differs from HEAD", or from `ref` when
+ * the user has pointed the whole editor at another branch.
+ */
+export function statusMap(cwd: string, ref: string | null = null): Map<string, FileStatus> {
   const statuses = new Map<string, FileStatus>()
   const base = keyBase(cwd)
   if (base === null) return statuses
+  if (ref !== null) return statusAgainst(cwd, ref, base)
 
   // `-z` because the default output C-quotes and octal-escapes any path that is
   // not plain ASCII; unquoting that by hand loses every accented or spaced name.
@@ -853,13 +895,13 @@ export function ignoredAmong(cwd: string, paths: string[]): Set<string> {
 }
 
 /**
- * The file's content at HEAD, or null when HEAD has no such file (untracked,
+ * The file's content at `ref`, or null when `ref` has no such file (untracked,
  * added, unborn branch, outside a repository). `cwd` anchors the lookup — the
  * `./` spelling makes the path cwd-relative, so a deleted file still resolves
  * even though it no longer exists on disk.
  */
-export function headText(cwd: string, relPath: string): string | null {
-  const run = git(cwd, ['show', `HEAD:./${relPath}`], 3000)
+export function refText(cwd: string, relPath: string, ref = 'HEAD'): string | null {
+  const run = git(cwd, ['show', `${ref}:./${relPath}`], 3000)
   return run.status === 0 ? run.stdout : null
 }
 

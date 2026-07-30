@@ -6,7 +6,9 @@ import { createMemo, For, Show } from 'solid-js'
 import { ui } from '../themes'
 
 export interface TabInfo {
-  path: string
+  /** What the callbacks name this tab by: a file path, or the diff tab's own id —
+   * a diff of an open file is a second tab for the same path. */
+  id: string
   name: string
   dirty: boolean
   preview: boolean
@@ -14,9 +16,10 @@ export interface TabInfo {
 
 export interface TabsProps {
   tabs: TabInfo[]
-  activePath: string | null
-  onSelect: (path: string) => void
-  onClose: (path: string) => void
+  /** `id` of the tab on screen. */
+  activeId: string | null
+  onSelect: (id: string) => void
+  onClose: (id: string) => void
   /** Clicking an overflow counter asks for the full list of open tabs. */
   onOverflow: () => void
 }
@@ -43,7 +46,7 @@ export function Tabs(props: TabsProps) {
 
     const active = Math.max(
       0,
-      props.tabs.findIndex(tab => tab.path === props.activePath),
+      props.tabs.findIndex(tab => tab.id === props.activeId),
     )
     let first = active
     let last = active
@@ -83,7 +86,7 @@ export function Tabs(props: TabsProps) {
           </Show>
           <For each={visible().tabs}>
             {tab => {
-              const active = () => tab.path === props.activePath
+              const active = () => tab.id === props.activeId
               const bg = () => (active() ? ui.bg : ui.barBg)
               return (
                 <box
@@ -92,7 +95,7 @@ export function Tabs(props: TabsProps) {
                   backgroundColor={bg()}
                   paddingLeft={1}
                   paddingRight={1}
-                  onMouseDown={() => props.onSelect(tab.path)}
+                  onMouseDown={() => props.onSelect(tab.id)}
                 >
                   <text
                     fg={active() ? ui.activeTabFg : ui.inactiveTabFg}
@@ -110,7 +113,7 @@ export function Tabs(props: TabsProps) {
                     paddingLeft={1}
                     onMouseDown={(e: MouseEvent) => {
                       e.stopPropagation()
-                      props.onClose(tab.path)
+                      props.onClose(tab.id)
                     }}
                   >
                     <text

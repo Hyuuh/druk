@@ -143,6 +143,41 @@ test('the panel cursor pages the diff: ↓ to the next change, ↑ back', async 
   expect(frame).not.toContain('+ BETA')
 })
 
+test('Esc in the diff hands the focus back to the panel, which pages on', async () => {
+  const dir = repo({ 'a.ts': 'alpha\n', 'b.ts': 'beta\n' })
+  writeFileSync(join(dir, 'a.ts'), 'ALPHA\n')
+  writeFileSync(join(dir, 'b.ts'), 'BETA\n')
+
+  // Wide enough for the page's long hint spelling, which is what names the key.
+  const t = await launch(dir, {}, { width: 130 })
+  await openDiff(t)
+  await press(t, i => i.pressTab()) // into the page: the arrows scroll here now
+  expect(t.captureCharFrame()).toContain('Esc panel')
+
+  await pressEscape(t)
+  // The page stayed up, and the panel has the keyboard again.
+  expect(t.captureCharFrame()).toContain('+ ALPHA')
+  await press(t, i => i.pressArrow('down'))
+  expect(t.captureCharFrame()).toContain('+ BETA')
+
+  // Esc from the panel is still what closes the page.
+  await pressEscape(t)
+  expect(t.captureCharFrame()).not.toContain('+ BETA')
+})
+
+test('with the sidebar hidden, Esc closes the diff — there is no panel to go back to', async () => {
+  const dir = repo({ 'a.ts': 'alpha\n' })
+  writeFileSync(join(dir, 'a.ts'), 'ALPHA\n')
+
+  const t = await launch(dir, {}, { width: 130 })
+  await openDiff(t)
+  await press(t, i => i.pressKey('b', { ctrl: true }))
+  expect(t.captureCharFrame()).toContain('Esc close')
+
+  await pressEscape(t)
+  expect(t.captureCharFrame()).not.toContain('+ ALPHA')
+})
+
 test('an untracked file diffs as all additions', async () => {
   const dir = repo({ 'a.ts': 'alpha\n' })
   writeFileSync(join(dir, 'new.ts'), 'fresh\nlines\n')

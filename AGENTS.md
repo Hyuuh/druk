@@ -13,15 +13,23 @@ installer — and run as a CLI.
 Features: file tree with bulk file operations and opt-in hiding of dotfiles and
 git-ignored files, preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide), command palette, themes, vim mode,
-git marks in tree/gutter/status bar plus a source-control panel in the sidebar and
-palette commands for commit/undo/stash/push/fetch/pull and for branches
+git marks in tree/gutter/status bar plus a source-control panel in the sidebar
+(changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
+→ / ←) and palette commands for commit/undo/stash/push/fetch/pull and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
-side-by-side) for whichever change the panel's cursor is on — the arrows page
-through them and the panel is the only way in, branch comparison against the configured
-default or any selected base with progressive file metadata, commits and lazy diffs, an
-image viewer (PNG/JPEG as half-block cells), a settings page (palette → Settings) that
-edits and persists every option live, with a filterable value list per option, file
-watching with conflict prompts, per-project session restore, and a startup update check.
+side-by-side) for whichever change the panel's cursor is on — the arrows page through
+them, the panel is the only way in, and the diff is a tab of its own in the strip
+(`⇄ name`), so opening a file switches away from it instead of leaving it on top — a
+comparison base that points marks, gutter, panel and diff at another branch instead of
+HEAD (palette → Git → Compare against branch…), branch comparison against the
+repository's default branch or any selected base (palette → Git → Compare branches, or
+`B` in the panel) with merge-base file scoping, a commit list and lazily loaded diffs,
+an image viewer (PNG/JPEG as half-block
+cells), a settings page (palette → Settings) that edits and persists every option
+live, with a filterable value list per option, LSP diagnostics from the user's own
+language servers (gutter marks, status-bar counts, a problems list in the palette;
+the settings page toggles LSP and each server), file watching with conflict prompts,
+per-project session restore, and a startup update check.
 
 ## Runtime and tooling
 
@@ -34,9 +42,14 @@ watching with conflict prompts, per-project session restore, and a startup updat
   lockfile is `bun.lock`.
 - **Say `bun run <script>`, not `bun <script>`.** `build` collides with Bun's own bundler
   subcommand, so `bun build` silently bundles nothing instead of running the script. This
-  now includes `test`: bare `bun test` works, but the whole suite runs in one process and
-  takes twice as long — `--parallel` lives in the script and cannot be set from
-  `bunfig.toml` (the key is accepted there and silently ignored).
+  now includes `test`: bare `bun test` runs the whole suite in one process, where the
+  files interfere — ~140 tests fail on leaked stdin/signal state that separate processes
+  would isolate (`--isolate`'s fresh global is not enough). `bun run test` goes through
+  `scripts/test.ts`, which runs each file in its own process, sequentially. Not
+  `--parallel`: its concurrent workers can busy-spin at 100% CPU forever on macOS ARM
+  (oven-sh/bun#27766, still present in 1.3.14) — the spin is synchronous, so bun's own
+  per-test timeout never fires and only SIGKILL ends the worker. One bun process at a
+  time has never triggered it; the script's per-file cap is a backstop.
 
 ```bash
 bun install
@@ -47,20 +60,19 @@ bun run build            # compile a binary for this machine into dist/<target>/
 bun run build linux-x64  # …or for a named target, if its native package is installed
 bun run release          # package dist/ for npm + release archives (--publish to ship)
 bun run formula          # Homebrew formula for those archives (not published anywhere yet)
-bun run test             # unit + UI, one worker per core (~45s; 107s without --parallel)
+bun run test             # unit + UI, one file per process, sequential (~4 min)
 bun test test/foo.tsx    # a single file, where the flag buys nothing
-bun run check-types      # tsc --noEmit
-bun run lint             # oxlint
-bun run format           # oxfmt (writes); format:check to verify
+bun run check            # check-types + lint + format + test — the one to run
 ```
 
-Always run `bun run check-types`, `bun run lint`, `bun run format` and `bun run test`
-before considering a change done — `bun run check` is all four.
+**Verify with `bun run check`, not its parts.** It is `check-types`, `lint`, `format` and
+`test` in one, so running them separately only costs turns and invites a change called
+done on three of the four. A single test file (`bun test test/foo.tsx`) while iterating is
+fine — `bun run check` is still what says the change is finished.
 
-`--parallel` runs each *file* in its own worker process, so nothing may depend on state
-shared between files. `test/setup.ts` is preloaded to give every worker its own
-`XDG_CONFIG_HOME`; without it the workers fight over one `sessions.json` — and the suite
-writes to your real `~/.config/druk`.
+Each file runs in its own process, so nothing may depend on state shared between files.
+`test/setup.ts` is preloaded to give every process its own `XDG_CONFIG_HOME`; without it
+the suite writes to your real `~/.config/druk`.
 
 ## Shipping
 
@@ -130,8 +142,9 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
+| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts` (users override per-server with the `lspServers` setting; the settings page toggles them) |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
-| setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) + a row in `src/app/settings.ts` (`rows`) so the settings page shows it |
+| setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) + a row in `src/app/settings.ts` (`rows`) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | handler in `src/app/keyboard.ts` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Alt+/ peek and the welcome screen) |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
@@ -139,7 +152,7 @@ dependency rule, and recipes for the extension points:
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 
-`ui/` and the feature folders (`core/`, `languages/`, `themes/`, `editor/`) must never
+`ui/` and the feature folders (`core/`, `languages/`, `themes/`, `editor/`, `lsp/`) must never
 import from `app/`. State lives in the `app/` controller modules (`createWorkspace`,
 `createTree`, …), which `App.tsx` creates once in dependency order and composes;
 components take props and call callbacks.

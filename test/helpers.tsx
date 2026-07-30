@@ -11,6 +11,17 @@ import type { Config } from '../src/core/config'
 
 export type Harness = Awaited<ReturnType<typeof launch>>
 
+/**
+ * Every harness `launch()` has handed out and not yet destroyed. `App` opens fs
+ * watchers and git-polling timers in `onMount`, which only close via Solid's
+ * `onCleanup` — itself only wired to run on `renderer.destroy()`. Without this,
+ * an undisposed harness keeps watching and polling for the rest of the worker
+ * process's life: `test/setup.ts` sweeps this list in a global `afterEach` so a
+ * file with many `launch()` calls (some run into the teens) doesn't pile up
+ * dozens of live watchers and stall every test after it.
+ */
+export const liveHarnesses = new Set<Harness>()
+
 /** Temp project used by a test. `files` maps relative paths to contents. */
 export function fixture(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'druk-'))
@@ -36,7 +47,9 @@ export async function launch(
         rootDir: dir,
         openFile: options.openFile ?? null,
         openLine: options.openLine ?? null,
-        initialConfig: { ...DEFAULTS, ...config },
+        // LSP is off unless a test opts in: the default would spawn whatever
+        // real language server the machine has on PATH, per launch.
+        initialConfig: { ...DEFAULTS, lsp: false, ...config },
         // Off by default: the real check is unconditional, and without this every
         // launch in the suite would hit the npm registry.
         checkUpdates: options.checkUpdates ?? false,
@@ -50,6 +63,7 @@ export async function launch(
     },
   )
   await settle(t)
+  liveHarnesses.add(t)
   return t
 }
 
@@ -154,10 +168,33 @@ export async function runCommand(t: Harness, label: string) {
  */
 export async function openDiff(t: Harness, row = 0) {
   await runCommand(t, 'Source control')
-  for (let i = 0; i < row; i++) {
+  // The panel nests changes under folder rows by default, so which row holds the
+  // first file is not knowable from here — the arrows are what walks past the
+  // folders, and they diff whatever file they land on. ↑ at the top counts as a
+  // landing, which is how the file already under the cursor gets its page.
+  // Enter is deliberately not used: on a folder row it would fold it away.
+  await press(t, input => input.pressArrow('up'))
+  let seen = header(t) ? 0 : -1
+  let shown = header(t)
+  for (let step = 0; seen < row && step < 60; step++) {
     await press(t, input => input.pressArrow('down'))
+    const now = header(t)
+    if (now && now !== shown) {
+      shown = now
+      seen++
+    }
   }
-  await press(t, input => input.pressEnter())
+}
+
+/** The diff page's header row, or '' while no page is up: the `+N −M` counts are
+ * drawn on it and nowhere else, so they say both that a page is open and which. */
+function header(t: Harness): string {
+  return (
+    t
+      .captureCharFrame()
+      .split('\n')
+      .find(line => line.includes('−')) ?? ''
+  )
 }
 
 /** Enter branch comparison from the source-control panel. */

@@ -102,3 +102,27 @@ test('the palette opens the panel too', async () => {
   await runCommand(t, 'Source control')
   expect(frame(t)).toContain('source control')
 })
+
+test('Shift+Tab walks the sidebar tab strip: Files → Git → Files', async () => {
+  const t = await launch(repo())
+  expect(frame(t)).toContain('explorer')
+
+  await press(t, i => i.pressTab({ shift: true }))
+  const open = frame(t)
+  expect(open).toContain('source control')
+  expect(open).toContain('a.ts')
+
+  await press(t, i => i.pressTab({ shift: true }))
+  expect(frame(t)).toContain('explorer')
+})
+
+test('plain Tab still hands the keyboard to the editor, from either view', async () => {
+  const t = await launch(repo())
+  await press(t, i => i.pressArrow('down'))
+  await press(t, i => i.pressEnter()) // a.ts open, so there is somewhere to go
+
+  await press(t, i => i.pressTab())
+  // The editor has it: a bare letter types instead of reaching the tree's keymap.
+  await press(t, i => void i.typeText('Z'))
+  expect(frame(t)).toContain('Zalpha changed')
+})

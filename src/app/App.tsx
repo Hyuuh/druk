@@ -2,7 +2,7 @@ import { basename } from 'node:path'
 
 import type { MouseEvent } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 
 import { CONFIG_FILE } from '../core/config'
@@ -13,6 +13,8 @@ import { isImagePath } from '../core/image'
 import { checkForUpdate, currentVersion } from '../core/update'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
+import { SEVERITY_RANK } from '../lsp/protocol'
+import type { ProblemSeverity } from '../lsp/protocol'
 import { ui } from '../themes'
 import { CommitView } from '../ui/CommitView'
 import { ComparePanel } from '../ui/ComparePanel'
@@ -35,6 +37,7 @@ import { createEditorBridge } from './editor'
 import { createFileOps } from './fileOps'
 import { createGit, createGitOp, wireGitEffects } from './git'
 import { installKeyboard } from './keyboard'
+import { createLsp, wireLspEffects } from './lsp'
 import { createOverlays, OverlayStack } from './Overlays'
 import { createPanes } from './panes'
 import { createPromptHandlers, createPromptState } from './prompts'
@@ -80,8 +83,12 @@ export function App(props: {
     () => hiddenNodes(rootDir, settings.config),
   )
   const panes = createPanes(tree, restored.sidebar)
-  const git = createGit(rootDir)
+  const git = createGit(rootDir, () => settings.config.gitPanelView)
   const comparison = createComparison({ rootDir, git, status })
+  const lsp = createLsp({ rootDir, settings, status })
+  // Also on the quit path: the renderer tears the root down before exiting, and
+  // a leaked server would outlive the editor (tests leak them per launch).
+  onCleanup(lsp.dispose)
   const promptState = createPromptState()
   const workspace = createWorkspace({
     rootDir,
@@ -97,7 +104,7 @@ export function App(props: {
   })
   const fileOps = createFileOps({ rootDir, status, tree, workspace })
   const gitOp = createGitOp({ rootDir, git, status, workspace })
-  const branches = createBranches({ rootDir, status, gitOp, prompts: promptState })
+  const branches = createBranches({ rootDir, status, git, gitOp, prompts: promptState })
   const promptHandlers = createPromptHandlers({
     rootDir,
     renderer,
@@ -131,6 +138,7 @@ export function App(props: {
     editor,
     git,
     gitOp,
+    lsp,
     branches,
     comparison,
     workspace,
@@ -140,16 +148,21 @@ export function App(props: {
   }
 
   wireGitEffects({ rootDir, git, tree, editor, workspace, config: settings.config })
+  wireLspEffects({ lsp, settings, workspace })
   const { commands, actions } = createCommands(ctx)
   installKeyboard(ctx, actions)
 
   // `revision` covers saves, git commands and anything the watcher sees in .git;
-  // `reloadKey` covers a buffer replaced from disk. `refreshDiff` returns at once
-  // when no diff is open, so the subprocess it needs is only ever spawned for a
-  // page that is actually on screen.
+  // `reloadKey` covers a buffer replaced from disk; `diffBase` covers the branch
+  // being compared against moving under it. `refreshDiff` returns at once when no
+  // diff is open, so the subprocess it needs is only ever spawned for a page that
+  // is actually on screen.
+  //
+  // It reads `gitStatus`, which `wireGitEffects` fills from the same three — and
+  // does so first, since effects run in creation order and that call is above.
   createEffect(
     on(
-      () => [git.revision(), editor.reloadKey()] as const,
+      () => [git.revision(), editor.reloadKey(), git.diffBase()] as const,
       () => {
         actions.refreshDiff()
         comparison.refresh()
@@ -163,6 +176,31 @@ export function App(props: {
   /** True between grabbing the sidebar divider and letting go. */
   const [resizing, setResizing] = createSignal(false)
 
+  /** Worst problem per line of the active file, for the gutter. */
+  const problemLines = createMemo(() => {
+    const lines = new Map<number, ProblemSeverity>()
+    const path = workspace.activePath()
+    if (!path) return lines
+    for (const problem of lsp.problems[path] ?? []) {
+      const held = lines.get(problem.line)
+      if (!held || SEVERITY_RANK[problem.severity] < SEVERITY_RANK[held]) {
+        lines.set(problem.line, problem.severity)
+      }
+    }
+    return lines
+  })
+
+  const problemCounts = createMemo(() => {
+    const path = workspace.activePath()
+    let errors = 0
+    let warnings = 0
+    for (const problem of (path ? lsp.problems[path] : undefined) ?? []) {
+      if (problem.severity === 'error') errors++
+      else if (problem.severity === 'warning') warnings++
+    }
+    return { errors, warnings }
+  })
+
   /** The active tab when it is an image — a viewer page covers the editor slot. */
   const activeImage = () => {
     const path = workspace.activePath()
@@ -173,6 +211,10 @@ export function App(props: {
     comparison.closeDetail()
     panes.focusTree()
   }
+
+  /** The diff was opened from the source-control panel, and the panel is still
+   * there to go back to. */
+  const backToPanel = () => panes.sidebar() && panes.view() === 'git'
 
   onMount(() => {
     // Same refusal `druk file.ts` deserves as opening one from the tree, and for the
@@ -246,21 +288,17 @@ export function App(props: {
   return (
     <box flexDirection="column" width="100%" height="100%" backgroundColor={ui.bg}>
       <Tabs
-        tabs={workspace.tabs().map(p => ({
-          path: p,
-          name: basename(p),
-          dirty: workspace.buffers[p]?.dirty ?? false,
-          preview: p === workspace.previewPath(),
+        tabs={workspace.views().map(id => ({
+          id,
+          // The diff's own tab, marked as one: a file and its diff are two tabs
+          // for one path, and the strip has to say which is which.
+          name: workspace.isDiffView(id) ? `⇄ ${basename(id)}` : basename(id),
+          dirty: workspace.buffers[id]?.dirty ?? false,
+          preview: id === workspace.previewPath(),
         }))}
-        activePath={workspace.activePath()}
-        onSelect={p => {
-          // A tab picked while a page covers the editor must show the file, not
-          // change what the page happens to sit on top of.
-          overlays.setDiff(null)
-          overlays.setSettingsPage(false)
-          workspace.openFile(p)
-        }}
-        onClose={workspace.closeTab}
+        activeId={workspace.activeView()}
+        onSelect={workspace.showView}
+        onClose={workspace.closeView}
         onOverflow={() => overlays.setPicker('tabs')}
       />
       {/* Drag capture lives on the row, not the divider: the pointer leaves a
@@ -304,8 +342,8 @@ export function App(props: {
                   onActivate={node => {
                     // Landing in a file is how a page closes — the tree stays
                     // interactive while one is up, like any other editor page.
-                    overlays.setDiff(null)
-                    overlays.setSettingsPage(false)
+                    workspace.setDiff(null)
+                    workspace.setSettingsPage(false)
                     workspace.activateNode(node)
                   }}
                   onPin={node => workspace.pinTab(node.path)}
@@ -320,17 +358,14 @@ export function App(props: {
                     branch={git.branch()}
                     ahead={git.upstream()?.ahead ?? 0}
                     behind={git.upstream()?.behind ?? 0}
-                    changes={git.changes()}
+                    rows={git.rows()}
+                    base={git.diffBase()}
                     cursor={panes.gitCursor()}
                     focused={panes.focus() === 'tree'}
                     width={settings.treeWidth()}
                     inRepo={git.inRepo()}
                     onFocus={() => panes.setFocus('tree')}
-                    onActivate={index => {
-                      panes.setGitCursor(index)
-                      const file = git.changes()[index]
-                      if (file) actions.showDiff(file.path)
-                    }}
+                    onActivate={actions.gitActivateRow}
                   />
                 }
               >
@@ -401,8 +436,8 @@ export function App(props: {
             // whatever page sits on top.
             focused={
               panes.focus() === 'editor' &&
-              !overlays.diff() &&
-              !overlays.settingsPage() &&
+              !workspace.diff() &&
+              !workspace.settingsPage() &&
               !comparison.selectedFile() &&
               !activeImage()
             }
@@ -415,13 +450,14 @@ export function App(props: {
             vim={config.vim}
             tabSize={config.tabSize}
             gitLines={git.gitLines()}
+            problems={problemLines()}
             notice={workspace.notice()}
             // The diff is a page over this pane, not an overlay — but the hidden
             // textarea must still not eat keys meant for it.
             blocked={
               overlays.overlay() ||
-              overlays.diff() !== null ||
-              overlays.settingsPage() ||
+              workspace.diff() !== null ||
+              workspace.settingsPage() ||
               comparison.selectedFile() !== null ||
               activeImage() !== null
             }
@@ -443,7 +479,7 @@ export function App(props: {
               </box>
             )}
           </Show>
-          <Show when={overlays.settingsPage()}>
+          <Show when={workspace.settingsPage()}>
             <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={60}>
               <SettingsView
                 rows={settings.rows()}
@@ -452,11 +488,11 @@ export function App(props: {
                 focused={panes.focus() === 'editor'}
                 blocked={overlays.overlay()}
                 onFocus={() => panes.setFocus('editor')}
-                onClose={() => overlays.setSettingsPage(false)}
+                onClose={() => workspace.setSettingsPage(false)}
               />
             </box>
           </Show>
-          <Show when={overlays.diff()}>
+          <Show when={workspace.diff()}>
             {(file: () => DiffFile) => (
               <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={50}>
                 <DiffView
@@ -467,7 +503,15 @@ export function App(props: {
                   blocked={overlays.overlay()}
                   onFocus={() => panes.setFocus('editor')}
                   onToggleMode={settings.toggleDiffView}
-                  onClose={() => overlays.setDiff(null)}
+                  escLabel={backToPanel() ? 'panel' : 'close'}
+                  onClose={() => {
+                    // The panel is the only thing that pages to the next change,
+                    // so Esc here gives the focus back to it rather than closing:
+                    // Tab into the diff would otherwise be a dead end, with the
+                    // arrows scrolling and nothing left that moves to another file.
+                    if (backToPanel()) panes.focusTree()
+                    else workspace.setDiff(null)
+                  }}
                 />
               </box>
             )}
@@ -556,6 +600,7 @@ export function App(props: {
         ahead={git.upstream()?.ahead ?? 0}
         behind={git.upstream()?.behind ?? 0}
         changed={git.gitStatus().size}
+        problems={problemCounts()}
         focus={panes.focus()}
         busy={status.busy()}
       />
