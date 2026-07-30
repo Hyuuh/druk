@@ -3,8 +3,6 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { liveHarnesses } from './helpers'
-
 /**
  * Give every test process its own config home, before anything reads it.
  *
@@ -28,7 +26,11 @@ process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), 'druk-test-config-'))
  * calls compounds watchers/timers test over test until the process stalls or
  * gets OOM-killed.
  */
-afterEach(() => {
+afterEach(async () => {
+  // Imported lazily, on purpose: a static import would hoist `helpers` — and,
+  // through <App/>, `src/core/config.ts` — above the env assignment, capturing
+  // the developer's real ~/.config/druk as CONFIG_FILE for the whole process.
+  const { liveHarnesses } = await import('./helpers')
   for (const t of liveHarnesses) t.renderer.destroy()
   liveHarnesses.clear()
 })

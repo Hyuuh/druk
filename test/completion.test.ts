@@ -1,0 +1,173 @@
+import { describe, expect, test } from 'bun:test'
+
+import {
+  applyCompletion,
+  filterCompletions,
+  fuzzyMatch,
+  matchRuns,
+  normalizeCompletion,
+  stripSnippet,
+  wordStart,
+} from '../src/lsp/completion'
+import type { CompletionItem } from '../src/lsp/protocol'
+
+describe('normalizeCompletion', () => {
+  test('accepts a bare array, a list, and rejects junk', () => {
+    expect(normalizeCompletion(null)).toBeNull()
+    expect(normalizeCompletion([{ label: 'a' }])).toEqual({
+      items: [{ label: 'a' }],
+      isIncomplete: false,
+    })
+    expect(normalizeCompletion({ isIncomplete: true, items: [{ label: 'a' }] })).toEqual({
+      items: [{ label: 'a' }],
+      isIncomplete: true,
+    })
+    expect(normalizeCompletion({ nonsense: 1 })).toBeNull()
+  })
+})
+
+describe('wordStart', () => {
+  test('walks identifier characters back from the cursor', () => {
+    expect(wordStart('const foo_bar', 13)).toBe(6)
+    expect(wordStart('a.mem', 5)).toBe(2)
+    expect(wordStart('a.', 2)).toBe(2)
+    expect(wordStart('', 0)).toBe(0)
+  })
+})
+
+describe('fuzzyMatch', () => {
+  test('empty query matches everything with no highlight', () => {
+    expect(fuzzyMatch('', 'anything')).toEqual({ score: 0, positions: [] })
+  })
+
+  test('non-subsequence fails', () => {
+    expect(fuzzyMatch('xyz', 'map')).toBeNull()
+  })
+
+  test('prefers word starts and consecutive runs', () => {
+    const exact = fuzzyMatch('map', 'map')!
+    const scattered = fuzzyMatch('map', 'meltAtPressure')!
+    expect(exact.score).toBeGreaterThan(scattered.score)
+    expect(exact.positions).toEqual([0, 1, 2])
+  })
+
+  test('camelCase humps count as word starts', () => {
+    const hump = fuzzyMatch('fb', 'fooBar')!
+    const flat = fuzzyMatch('fb', 'foobar')!
+    expect(hump.score).toBeGreaterThan(flat.score)
+  })
+})
+
+describe('filterCompletions', () => {
+  const items: CompletionItem[] = [
+    { label: 'mapValues' },
+    { label: 'map' },
+    { label: 'unrelated' },
+    { label: 'flatMap' },
+  ]
+
+  test('drops non-matches and puts the tight match first', () => {
+    const got = filterCompletions(items, 'map').map(m => m.item.label)
+    expect(got).not.toContain('unrelated')
+    expect(got[0]).toBe('map')
+  })
+
+  test('matches filterText but only highlights an honest label', () => {
+    const [match] = filterCompletions([{ label: '★ send', filterText: 'send' }], 'se')
+    expect(match).toBeDefined()
+    expect(match!.positions).toEqual([])
+  })
+
+  test('empty prefix keeps the server order via sortText', () => {
+    const got = filterCompletions(
+      [
+        { label: 'b', sortText: '2' },
+        { label: 'a', sortText: '1' },
+      ],
+      '',
+    ).map(m => m.item.label)
+    expect(got).toEqual(['a', 'b'])
+  })
+})
+
+// The `${1:...}` strings below are LSP snippet syntax, not template literals.
+/* oxlint-disable no-template-curly-in-string */
+describe('stripSnippet', () => {
+  test('placeholders keep their text, stops vanish, caret lands on the first stop', () => {
+    expect(stripSnippet('foo($1)')).toEqual({ text: 'foo()', caret: 4 })
+    expect(stripSnippet('foo(${1:arg})')).toEqual({ text: 'foo(arg)', caret: 4 })
+    expect(stripSnippet('${1|red,green|}')).toEqual({ text: 'red', caret: 0 })
+    expect(stripSnippet('plain')).toEqual({ text: 'plain', caret: null })
+    // A trailing $0 is where the cursor would land anyway.
+    expect(stripSnippet('done$0')).toEqual({ text: 'done', caret: null })
+  })
+})
+
+describe('applyCompletion', () => {
+  test('replaces the typed prefix when the item has no textEdit', () => {
+    const got = applyCompletion('const x = ma\n', { line: 0, character: 12 }, 10, {
+      label: 'map',
+    })
+    expect(got.content).toBe('const x = map\n')
+    expect(got.cursor).toEqual({ line: 0, character: 13 })
+  })
+
+  test('honours the server textEdit range', () => {
+    const got = applyCompletion('a.me\n', { line: 0, character: 4 }, 2, {
+      label: 'method',
+      textEdit: {
+        range: { start: { line: 0, character: 2 }, end: { line: 0, character: 4 } },
+        newText: 'method',
+      },
+    })
+    expect(got.content).toBe('a.method\n')
+    expect(got.cursor).toEqual({ line: 0, character: 8 })
+  })
+
+  test('extends a stale textEdit to cover characters typed during the request', () => {
+    // Range measured at "con|", cursor has since reached "console|".
+    const got = applyCompletion('consol\n', { line: 0, character: 6 }, 0, {
+      label: 'console',
+      textEdit: {
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } },
+        newText: 'console',
+      },
+    })
+    expect(got.content).toBe('console\n')
+  })
+
+  test('applies additionalTextEdits and keeps the cursor on the primary insert', () => {
+    const got = applyCompletion('const y = druk\n', { line: 0, character: 14 }, 10, {
+      label: 'drukImported',
+      additionalTextEdits: [
+        {
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+          newText: 'import { drukImported } from "druk"\n',
+        },
+      ],
+    })
+    expect(got.content).toBe('import { drukImported } from "druk"\nconst y = drukImported\n')
+    expect(got.cursor).toEqual({ line: 1, character: 22 })
+  })
+
+  test('snippet inserts land the caret on the first stop', () => {
+    const got = applyCompletion('fo\n', { line: 0, character: 2 }, 0, {
+      label: 'foo',
+      insertText: 'foo(${1:x})',
+      insertTextFormat: 2,
+    })
+    expect(got.content).toBe('foo(x)\n')
+    expect(got.cursor).toEqual({ line: 0, character: 4 })
+  })
+})
+
+describe('matchRuns', () => {
+  test('splits a label into hit and miss runs', () => {
+    expect(matchRuns('flatMap', [0, 4, 5, 6])).toEqual([
+      { text: 'f', hit: true },
+      { text: 'lat', hit: false },
+      { text: 'Map', hit: true },
+    ])
+    expect(matchRuns('plain', [])).toEqual([{ text: 'plain', hit: false }])
+  })
+})

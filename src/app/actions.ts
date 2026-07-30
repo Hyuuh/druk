@@ -150,7 +150,9 @@ export function createCommands(ctx: AppContext) {
     toggleSidebar: panes.toggleSidebar,
     toggleGitView: panes.toggleGitView,
     setTheme: settings.applyTheme,
+    toggleThemeSync: settings.toggleThemeSync,
     lineOp: editor.requestLineOp,
+    triggerCompletion: editor.requestCompletion,
     openSettings: () => {
       // One page at a time: the slot under the settings page is the editor's.
       ctx.workspace.setDiff(null)
@@ -268,7 +270,7 @@ export function createCommands(ctx: AppContext) {
   }
 
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, { activeTheme: config.theme }),
+    buildCommands(actions, { activeTheme: config.theme, themeSync: config.themeSync }),
   )
 
   return { commands, actions }

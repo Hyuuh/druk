@@ -75,6 +75,7 @@ export const KEYS: KeyInfo[] = [
     where: 'editor',
   },
   { key: 'Shift+Tab', label: 'Outdent', section: 'Editing', where: 'editor' },
+  { key: 'Ctrl+Space', label: 'Autocomplete (Tab accepts)', section: 'Editing', where: 'editor' },
 
   {
     key: 'Ctrl+F',
@@ -163,6 +164,13 @@ export const KEYS: KeyInfo[] = [
     label: 'Show / hide sidebar',
     section: 'View',
     where: 'all',
+  },
+  // Ctrl+U / Ctrl+D too: MacBook keyboards have no page keys at all.
+  {
+    key: 'PgUp/Dn · Ctrl+U/D',
+    label: 'Scroll a page',
+    section: 'View',
+    where: 'editor',
   },
   // One row, not two: the help table only just fits a 60-row terminal, and
   // `test/help-scroll.test.tsx` measures exactly that.

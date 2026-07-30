@@ -22,10 +22,20 @@ them, the panel is the only way in, and the diff is a tab of its own in the stri
 (`⇄ name`), so opening a file switches away from it instead of leaving it on top — a
 comparison base that points marks, gutter, panel and diff at another branch instead of
 HEAD (palette → Git → Compare against branch…), an image viewer (PNG/JPEG as half-block
-cells), a settings page (palette → Settings) that edits and persists every option
-live, with a filterable value list per option, LSP diagnostics from the user's own
-language servers (gutter marks, status-bar counts, a problems list in the palette;
-the settings page toggles LSP and each server), file watching with conflict prompts,
+cells), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
+`themeLight` / `themeDark` picked separately and defaulting to the GitHub pair —
+polled, since no OS offers a portable subscription; `DRUK_OS_APPEARANCE=dark|light`
+forces the answer on a desktop none of the probes can read), a settings page
+(palette → Settings) that edits and persists every option live, with a filterable
+value list per option, LSP diagnostics from the user's own
+language servers (gutter marks, inline message text after the line, status-bar
+counts, a problems list in the palette, spans underlined except where the server
+tagged them Unnecessary — unused code fades toward the background instead; the
+settings page toggles LSP, the inline text and each server), LSP autocomplete (a fuzzy-filtered menu that opens as you
+type or on Ctrl+Space, applies auto-import edits, and is toggled by
+`lspCompletion`), format on save through the user's own commands (`formatOnSave`
+is the switch, `formatters` maps extensions to an in-place command — prettier,
+eslint --fix, oxfmt, gofmt), file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
 ## Runtime and tooling

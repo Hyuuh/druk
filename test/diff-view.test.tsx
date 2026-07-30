@@ -224,6 +224,27 @@ test('the mouse wheel scrolls the diff', async () => {
   await untilFrame(t, '- line0')
 })
 
+test('PageDown and Ctrl+D both page the diff, Ctrl+U comes back', async () => {
+  const lines = Array.from({ length: 60 }, (_, i) => `line${i}`)
+  const dir = repo({ 'a.ts': `${lines.join('\n')}\n` })
+  writeFileSync(join(dir, 'a.ts'), `${lines.map(l => `${l}!`).join('\n')}\n`)
+
+  const t = await launch(dir)
+  await openDiff(t)
+  await untilFrame(t, '- line0')
+  await press(t, i => i.pressTab()) // into the page: its keys stay dead unfocused
+
+  await press(t, i => void i.pressKeys(['\u001B[6~']))
+  await untilGone(t, '- line0')
+
+  await press(t, i => i.pressKey('u', { ctrl: true }))
+  await untilFrame(t, '- line0')
+
+  // Ctrl+D is the page key MacBook keyboards can actually send.
+  await press(t, i => i.pressKey('d', { ctrl: true }))
+  await untilGone(t, '- line0')
+})
+
 test('the diff is a page: sidebar, tabs and status bar all stay around it', async () => {
   const dir = repo({ 'a.ts': 'one\n' })
   writeFileSync(join(dir, 'a.ts'), 'ONE\n')

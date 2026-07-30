@@ -6,8 +6,10 @@ import { createStore } from 'solid-js/store'
 import { filetypeForPath } from '../languages/highlight'
 import { spawnLspClient } from '../lsp/client'
 import type { LspClient } from '../lsp/client'
-import { severityOf } from '../lsp/protocol'
-import type { Diagnostic, ProblemSeverity } from '../lsp/protocol'
+import { normalizeCompletion } from '../lsp/completion'
+import type { CompletionReply } from '../lsp/completion'
+import { isUnnecessary, severityOf } from '../lsp/protocol'
+import type { CompletionItem, Diagnostic, ProblemSeverity } from '../lsp/protocol'
 import { resolveServer } from '../lsp/servers'
 import type { Settings } from './settings'
 import type { Status } from './status'
@@ -18,7 +20,12 @@ export interface Problem {
   /** 0-based, like every position the editor bridge speaks. */
   line: number
   col: number
+  /** Range end, for the underline; equal to the start when the server sent none. */
+  endLine: number
+  endCol: number
   severity: ProblemSeverity
+  /** LSP's Unnecessary tag: unused code, dimmed instead of underlined. */
+  unnecessary: boolean
   message: string
   source?: string
 }
@@ -52,7 +59,10 @@ export function createLsp(deps: { rootDir: string; settings: Settings; status: S
           path,
           line: diagnostic.range.start.line,
           col: diagnostic.range.start.character,
+          endLine: diagnostic.range.end.line,
+          endCol: diagnostic.range.end.character,
           severity: severityOf(diagnostic),
+          unnecessary: isUnnecessary(diagnostic),
           message: diagnostic.message,
           source: diagnostic.source,
         }))
@@ -95,7 +105,45 @@ export function createLsp(deps: { rootDir: string; settings: Settings; status: S
     for (const path of Object.keys(problems)) clearProblems(path)
   }
 
-  return { problems, clearProblems, clientFor, dispose }
+  /** Set by `wireLspEffects`: push the debounced didChange for `path` out now. */
+  let flushEdits: ((path: string) => void) | null = null
+  const onFlushNeeded = (flush: (path: string) => void) => {
+    flushEdits = flush
+  }
+
+  /**
+   * Completion at a buffer position. The pending didChange goes first — the
+   * request is aimed at what is on screen, and a server answering against text
+   * 150ms stale would misplace every edit it returns.
+   */
+  const complete = async (
+    path: string,
+    line: number,
+    col: number,
+  ): Promise<CompletionReply | null> => {
+    if (!settings.config.lsp || !settings.config.lspCompletion) return null
+    const client = clientFor(path)
+    if (!client?.ready()) return null
+    flushEdits?.(path)
+    return normalizeCompletion(await client.complete(path, { line, character: col }))
+  }
+
+  /**
+   * Ask `path`'s server to fill in a chosen item's withheld fields — the
+   * auto-import edits most servers leave off the list. Null means "insert the
+   * item as it came".
+   */
+  const resolveCompletion = (
+    path: string,
+    item: CompletionItem,
+  ): Promise<CompletionItem | null> => {
+    if (!settings.config.lsp || !settings.config.lspCompletion) return Promise.resolve(null)
+    const client = clientFor(path)
+    if (!client?.ready()) return Promise.resolve(null)
+    return client.resolveCompletion(item)
+  }
+
+  return { problems, clearProblems, clientFor, complete, resolveCompletion, onFlushNeeded, dispose }
 }
 
 export type Lsp = ReturnType<typeof createLsp>
@@ -126,6 +174,8 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
     edit.entry.client.changeDocument(path, edit.text)
     edit.entry.text = edit.text
   }
+
+  lsp.onFlushNeeded(flushEdit)
 
   const flushAll = () => {
     flushTimer = null
