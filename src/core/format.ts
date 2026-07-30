@@ -5,18 +5,22 @@
  * in place, and the workspace pulls the result back into the buffer.
  */
 import { spawn } from 'node:child_process'
-import { extname } from 'node:path'
+import { existsSync } from 'node:fs'
+import { extname, isAbsolute, join, sep } from 'node:path'
 
 /** A formatter that hangs would otherwise hold the buffer's re-read forever. */
 const FORMAT_TIMEOUT = 10_000
 
 /**
  * The command for `path`, or null when nothing matches. Keys are comma-separated
- * extensions without the dot (`"ts,tsx"`); `"*"` matches any file but only when
- * no extension key did, so a catch-all and a specific entry can coexist.
+ * extensions (`"ts,tsx"`); `"*"` matches any file but only when no extension key
+ * did, so a catch-all and a specific entry can coexist. A leading dot is allowed
+ * here even though the settings page strips it — a hand-written config.json says
+ * `.ts` as often as `ts`, and the entry silently never matching is a bad answer.
  */
 export function formatterFor(path: string, formatters: Record<string, string[]>): string[] | null {
   const ext = extname(path).slice(1).toLowerCase()
+  const same = (part: string) => part.trim().replace(/^\./, '').toLowerCase() === ext
   let fallback: string[] | null = null
   for (const [key, command] of Object.entries(formatters)) {
     if (command.length === 0) continue
@@ -24,7 +28,7 @@ export function formatterFor(path: string, formatters: Record<string, string[]>)
       fallback = command
       continue
     }
-    if (ext && key.split(',').some(part => part.trim().toLowerCase() === ext)) return command
+    if (ext && key.split(',').some(same)) return command
   }
   return fallback
 }
@@ -50,6 +54,20 @@ export function formatArgs(command: string[], path: string): string[] {
 const firstLine = (text: string) => text.trim().split('\n')[0] ?? ''
 
 /**
+ * The program to spawn for `bin`: the project's own copy when it has one, the
+ * name untouched otherwise. A repository that installed prettier means *that*
+ * prettier — and `node_modules/.bin` is not on PATH, so spawning the bare name
+ * would fail with ENOENT even though the tool is there. Same rule the language
+ * servers follow (`lsp/project.ts`). A command that already spells out a path
+ * is the user naming a program, so it is left alone.
+ */
+export function resolveBin(bin: string, cwd: string): string {
+  if (isAbsolute(bin) || bin.includes(sep) || bin.includes('/')) return bin
+  const local = join(cwd, 'node_modules', '.bin', bin)
+  return existsSync(local) ? local : bin
+}
+
+/**
  * Run `command` over `path`, from `cwd` so the tool finds its own project config.
  * Resolves to an error line for the status bar, or null on success — the caller
  * re-reads the file to see what the formatter did.
@@ -57,7 +75,7 @@ const firstLine = (text: string) => text.trim().split('\n')[0] ?? ''
 export function runFormatter(command: string[], path: string, cwd: string): Promise<string | null> {
   return new Promise(resolve => {
     const [bin] = command
-    const child = spawn(bin!, formatArgs(command, path), {
+    const child = spawn(resolveBin(bin!, cwd), formatArgs(command, path), {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     })

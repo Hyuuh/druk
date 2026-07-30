@@ -213,32 +213,48 @@ export function createSettings(deps: {
   }
 
   /**
-   * One formatter entry as the page's one-line syntax: `ts,tsx = prettier --write`.
-   * `previous` names the entry being edited, or null when adding; an empty value
-   * removes the entry, and rewriting the extensions moves it rather than fork it.
+   * The stored key for what was typed into the File types field: `.TS, tsx` and
+   * `ts,tsx` are the same entry, so they have to spell it the same way or the
+   * page would let one formatter be written twice under two keys.
    */
-  const setFormatter = (previous: string | null, value: string) => {
+  const extensionKey = (value: string) =>
+    value
+      .split(',')
+      .map(part => part.trim().replace(/^\./, '').toLowerCase())
+      .filter(Boolean)
+      .join(',')
+
+  /** The file types an entry covers, as a reader would say them: `.ts .tsx`. */
+  const extensionLabel = (key: string) =>
+    key === '*'
+      ? 'Any file'
+      : key
+          .replace(/^\./, '')
+          .split(',')
+          .map(part => `.${part}`)
+          .join(' ')
+
+  /** One entry as the picker draws it — file types, then what runs over them. */
+  const formatterOption = (key: string, command: string[]) =>
+    `${extensionLabel(key)} → ${command.join(' ')}`
+
+  /**
+   * `previous` names the entry being edited, or null when adding; emptying either
+   * field removes it, and rewriting the extensions moves the entry rather than
+   * fork it.
+   */
+  const setFormatter = (previous: string | null, types: string, value: string) => {
     const formatters = { ...view().formatters }
-    if (previous !== null && value.trim() === '') {
+    const key = extensionKey(types)
+    const command = value.trim().split(/\s+/).filter(Boolean)
+    if (previous !== null && (key === '' || command.length === 0)) {
       delete formatters[previous]
       patchConfig({ formatters })
-      return status.say(`Formatter for "${previous}" removed`)
+      return status.say(`Formatter for ${extensionLabel(previous)} removed`)
     }
-    const at = value.indexOf('=')
-    const key = at < 0 ? '' : value.slice(0, at).trim()
-    const command =
-      at < 0
-        ? []
-        : value
-            .slice(at + 1)
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean)
-    if (!key || command.length === 0) {
-      return status.say(
-        'Formatter syntax: extensions = command, e.g. ts,tsx = prettier --write',
-        'warn',
-      )
+    if (!key) return status.say('Formatter file types: ts,tsx — or * for any file', 'warn')
+    if (command.length === 0) {
+      return status.say('A formatter needs a command, e.g. prettier --write', 'warn')
     }
     if (command.length === 1 && command[0] === FILE_TOKEN) {
       return status.say(`A formatter command needs a program, not just ${FILE_TOKEN}`, 'warn')
@@ -246,7 +262,7 @@ export function createSettings(deps: {
     if (previous !== null && previous !== key) delete formatters[previous]
     formatters[key] = command
     patchConfig({ formatters })
-    status.say(`Formatter: ${key} = ${command.join(' ')}`)
+    status.say(`Formatter: ${formatterOption(key, command)}`)
   }
 
   /** The edit a formatter pick opens — entry `at`, or "add" past the end. */
@@ -254,18 +270,23 @@ export function createSettings(deps: {
     const formatters = view().formatters
     const key = Object.keys(formatters)[at] ?? null
     return {
-      title: key ? `Formatter — ${key}` : 'Add formatter',
-      initial: key ? `${key} = ${formatters[key]!.join(' ')}` : '',
-      placeholder: 'ts,tsx = prettier --write',
+      title: key ? `Formatter — ${extensionLabel(key)}` : 'Add formatter',
+      fields: [
+        { label: 'File types', initial: key ?? '', placeholder: 'ts,tsx — or * for any file' },
+        {
+          label: 'Command',
+          initial: key ? formatters[key]!.join(' ') : '',
+          placeholder: 'prettier --write',
+        },
+      ],
       // Short lines on purpose: the modal is only as wide as the editor pane,
       // and beside a sidebar a longer line wraps mid-word.
       hint: [
-        'extensions = command · "*" any file',
         'The tool must rewrite the file itself',
         `Its path is appended, or replaces ${FILE_TOKEN}`,
-        key ? 'An empty value removes this entry' : '',
+        key ? 'Emptying a field removes this entry' : '',
       ].filter(Boolean),
-      apply: value => setFormatter(key, value),
+      apply: values => setFormatter(key, values[0] ?? '', values[1] ?? ''),
     }
   }
 
@@ -342,8 +363,7 @@ export function createSettings(deps: {
 
   const bindingEdit = (spec: Bindable): SettingEdit => ({
     title: `Shortcut — ${spec.label}`,
-    initial: keymap().display.get(spec.id) ?? '',
-    placeholder: `Ctrl+${ALT}+K`,
+    fields: [{ initial: keymap().display.get(spec.id) ?? '', placeholder: `Ctrl+${ALT}+K` }],
     // Short lines on purpose: beside a sidebar a longer one wraps mid-word.
     hint: [
       `One chord, e.g. Ctrl+G or Ctrl+${ALT}+K or F5`,
@@ -351,7 +371,7 @@ export function createSettings(deps: {
       '"none" takes the key away',
       'An empty value restores the default',
     ],
-    apply: value => setKeybinding(spec.id, value),
+    apply: values => setKeybinding(spec.id, values[0] ?? ''),
   })
 
   const toggleDiffView = () => {
@@ -570,11 +590,14 @@ export function createSettings(deps: {
       section: 'Editor',
       key: 'formatters',
       label: 'Formatters',
-      value: `${Object.keys(view().formatters).length} configured`,
+      value:
+        Object.keys(view().formatters).length === 0
+          ? 'none'
+          : `${Object.keys(view().formatters).length} configured`,
       cycle: () => status.say('Enter opens the formatter list'),
       select: {
         options: [
-          ...Object.entries(view().formatters).map(([key, cmd]) => `${key} = ${cmd.join(' ')}`),
+          ...Object.entries(view().formatters).map(([key, cmd]) => formatterOption(key, cmd)),
           '+ Add formatter…',
         ],
         pick: formatterEdit,
@@ -609,13 +632,17 @@ export function createSettings(deps: {
       cycle: dir => nudgeSidebar(dir),
       edit: {
         title: 'Sidebar width',
-        initial: view().sidebarWidth === 'auto' ? 'auto' : String(view().sidebarWidth),
-        placeholder: `auto, or ${SIDEBAR_MIN}–${SIDEBAR_MAX}`,
+        fields: [
+          {
+            initial: view().sidebarWidth === 'auto' ? 'auto' : String(view().sidebarWidth),
+            placeholder: `auto, or ${SIDEBAR_MIN}–${SIDEBAR_MAX}`,
+          },
+        ],
         hint: [
           `A column count, ${SIDEBAR_MIN}–${SIDEBAR_MAX}`,
           '"auto" takes a share of the terminal',
         ],
-        apply: applySidebarWidth,
+        apply: values => applySidebarWidth(values[0] ?? ''),
       },
     },
     {
@@ -670,13 +697,12 @@ export function createSettings(deps: {
       cycle: () => status.say('Enter sets a TypeScript path'),
       edit: {
         title: 'TypeScript path',
-        initial: view().typescriptTsdk,
-        placeholder: 'node_modules/typescript/lib',
+        fields: [{ initial: view().typescriptTsdk, placeholder: 'node_modules/typescript/lib' }],
         hint: [
           'A tsserver.js, a lib folder, or a typescript package',
           "Empty: the project's own copy, else the one druk installed",
         ],
-        apply: applyTypescriptTsdk,
+        apply: values => applyTypescriptTsdk(values[0] ?? ''),
       },
     },
     {
@@ -705,13 +731,15 @@ export function createSettings(deps: {
           const override = view().lspServers[spec.id]
           return {
             title: `Command — ${spec.id}`,
-            initial: (override && override.length > 0 ? override : spec.command).join(' '),
+            fields: [
+              { initial: (override && override.length > 0 ? override : spec.command).join(' ') },
+            ],
             hint: [
               'Runs as given — it talks LSP over stdio,',
               'so no file path is added',
               'An empty value restores the default',
             ],
-            apply: (value: string) => setServerCommand(spec.id, value),
+            apply: (values: string[]) => setServerCommand(spec.id, values[0] ?? ''),
           }
         },
       },

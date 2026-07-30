@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { FILE_TOKEN, formatArgs, formatterFor, runFormatter } from '../src/core/format'
+import { FILE_TOKEN, formatArgs, formatterFor, resolveBin, runFormatter } from '../src/core/format'
 
 /** A command whose script file sees the target path as argv[2], as real ones do. */
 function script(code: string): { command: string[]; dir: string } {
@@ -76,7 +76,41 @@ describe('formatArgs', () => {
   })
 })
 
+/** A project whose `node_modules/.bin` holds an executable `name`. */
+function projectWithBin(name: string, code: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'druk-proj-'))
+  const bin = join(dir, 'node_modules', '.bin')
+  mkdirSync(bin, { recursive: true })
+  const file = join(bin, name)
+  writeFileSync(file, `#!${process.execPath}\n${code}`)
+  chmodSync(file, 0o755)
+  return dir
+}
+
+describe('resolveBin', () => {
+  test('the project copy wins over the bare name', () => {
+    const dir = projectWithBin('prettier', '')
+    expect(resolveBin('prettier', dir)).toBe(join(dir, 'node_modules', '.bin', 'prettier'))
+  })
+
+  test('a name the project did not install is left to PATH', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'druk-proj-'))
+    expect(resolveBin('gofmt', dir)).toBe('gofmt')
+  })
+
+  test('a command that spells out a path is left alone', () => {
+    const dir = projectWithBin('prettier', '')
+    expect(resolveBin('./node_modules/.bin/prettier', dir)).toBe('./node_modules/.bin/prettier')
+    expect(resolveBin('/usr/bin/prettier', dir)).toBe('/usr/bin/prettier')
+  })
+})
+
 describe('runFormatter', () => {
+  test('a locally installed formatter runs without being on PATH', async () => {
+    const dir = projectWithBin('druk-local-fmt', 'process.exit(0)')
+    expect(await runFormatter(['druk-local-fmt'], '/p/a.ts', dir)).toBeNull()
+  })
+
   test('a missing binary reports name and PATH, not a stack', async () => {
     const error = await runFormatter(['druk-no-such-formatter'], '/p/a.ts', '/tmp')
     expect(error).toBe('druk-no-such-formatter is not installed, or not on PATH')

@@ -40,16 +40,32 @@ test('a formatter is added from the page, no config.json involved', async () => 
   expect(t.captureCharFrame()).toContain('+ Add formatter…')
   await press(t, i => void i.typeText('add'))
   await press(t, i => i.pressEnter())
-  await press(t, i => void i.typeText('ts,tsx = prettier --write'))
+  await press(t, i => void i.typeText('ts,tsx'))
+  await press(t, i => i.pressTab())
+  await press(t, i => void i.typeText('prettier --write'))
   await press(t, i => i.pressEnter())
 
   expect(saved().formatters).toEqual({ 'ts,tsx': ['prettier', '--write'] })
   const frame = t.captureCharFrame()
   expect(frame).toContain('1 configured')
-  expect(frame).toContain('Formatter: ts,tsx = prettier --write')
+  expect(frame).toContain('Formatter: .ts .tsx → prettier --write')
 })
 
-test('the formatter field explains the syntax it wants', async () => {
+test('the file types are stored without their dots, however they are typed', async () => {
+  const t = await launch(fixture(PROJECT))
+  await runCommand(t, 'Settings')
+  await gotoRow(t, 'Formatters')
+  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter()) // "+ Add formatter…" is the only option
+  await press(t, i => void i.typeText('.JS, .jsx'))
+  await press(t, i => i.pressTab())
+  await press(t, i => void i.typeText('oxfmt'))
+  await press(t, i => i.pressEnter())
+
+  expect(saved().formatters).toEqual({ 'js,jsx': ['oxfmt'] })
+})
+
+test('the formatter editor labels its fields and explains what a command must do', async () => {
   // Wide enough that the hint lines are not wrapped by the modal: the point of
   // the test is that they read as written.
   const t = await launch(fixture(PROJECT), {}, { width: 140, height: 30 })
@@ -58,13 +74,15 @@ test('the formatter field explains the syntax it wants', async () => {
   await press(t, i => i.pressEnter())
   await press(t, i => i.pressEnter()) // "+ Add formatter…" is the only option
   const frame = t.captureCharFrame()
-  expect(frame).toContain('extensions = command')
+  expect(frame).toContain('File types')
+  expect(frame).toContain('Command')
   // The two things a command's author cannot guess: that the tool has to write
   // the file rather than print it, and what happens to the path.
   expect(frame).toContain('The tool must rewrite the file itself')
   expect(frame).toContain('Its path is appended, or replaces {}')
-  expect(frame).toContain('Enter apply · Esc cancel')
-  // The example command sits in the field itself, as its placeholder.
+  expect(frame).toContain('Tab next field · Enter apply · Esc cancel')
+  // The examples sit in the fields themselves, as their placeholders.
+  expect(frame).toContain('ts,tsx — or * for any file')
   expect(frame).toContain('prettier --write')
 })
 
@@ -74,7 +92,9 @@ test('a formatter command can carry the {} token', async () => {
   await gotoRow(t, 'Formatters')
   await press(t, i => i.pressEnter())
   await press(t, i => i.pressEnter())
-  await press(t, i => void i.typeText('css = stylelint --fix {} --quiet'))
+  await press(t, i => void i.typeText('css'))
+  await press(t, i => i.pressTab())
+  await press(t, i => void i.typeText('stylelint --fix {} --quiet'))
   await press(t, i => i.pressEnter())
 
   expect(saved().formatters).toEqual({ css: ['stylelint', '--fix', '{}', '--quiet'] })
@@ -86,7 +106,9 @@ test('a command of nothing but the token is refused', async () => {
   await gotoRow(t, 'Formatters')
   await press(t, i => i.pressEnter())
   await press(t, i => i.pressEnter())
-  await press(t, i => void i.typeText('ts = {}'))
+  await press(t, i => void i.typeText('ts'))
+  await press(t, i => i.pressTab())
+  await press(t, i => void i.typeText('{}'))
   await press(t, i => i.pressEnter())
 
   // launch() never persists, so what the file holds is whatever an earlier test
@@ -100,15 +122,16 @@ test('an existing entry opens prefilled and edits in place', async () => {
   await runCommand(t, 'Settings')
   await gotoRow(t, 'Formatters')
   await press(t, i => i.pressEnter())
-  expect(t.captureCharFrame()).toContain('ts = oxfmt')
+  expect(t.captureCharFrame()).toContain('.ts → oxfmt')
   await press(t, i => i.pressEnter()) // the entry is the first option
+  await press(t, i => i.pressTab()) // the command is the second field
   await press(t, i => void i.typeText(' --check'))
   await press(t, i => i.pressEnter())
 
   expect(saved().formatters).toEqual({ ts: ['oxfmt', '--check'] })
 })
 
-test('an emptied entry is removed', async () => {
+test('an emptied field removes the entry', async () => {
   const t = await launch(fixture(PROJECT), { formatters: { ts: ['oxfmt'] } })
   await runCommand(t, 'Settings')
   await gotoRow(t, 'Formatters')
@@ -118,20 +141,45 @@ test('an emptied entry is removed', async () => {
   await press(t, i => i.pressEnter())
 
   expect(saved().formatters).toEqual({})
-  expect(t.captureCharFrame()).toContain('Formatter for "ts" removed')
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('Formatter for .ts removed')
+  expect(frame).toContain('none')
 })
 
-test('bad syntax warns and changes nothing', async () => {
+test('the catch-all entry reads as what it covers, not as "*"', async () => {
+  const t = await launch(fixture(PROJECT), { formatters: { '*': ['oxfmt'] } })
+  await runCommand(t, 'Settings')
+  await gotoRow(t, 'Formatters')
+  await press(t, i => i.pressEnter())
+
+  expect(t.captureCharFrame()).toContain('Any file → oxfmt')
+})
+
+test('a missing command warns and changes nothing', async () => {
   const t = await launch(fixture(PROJECT))
   await runCommand(t, 'Settings')
   await gotoRow(t, 'Formatters')
   await press(t, i => i.pressEnter())
   await press(t, i => i.pressEnter()) // "+ Add formatter…" is the only option
+  await press(t, i => void i.typeText('rb'))
+  await press(t, i => i.pressEnter())
+
+  expect(saved().formatters ?? {}).toEqual({})
+  expect(t.captureCharFrame()).toContain('A formatter needs a command')
+})
+
+test('missing file types warn and change nothing', async () => {
+  const t = await launch(fixture(PROJECT))
+  await runCommand(t, 'Settings')
+  await gotoRow(t, 'Formatters')
+  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressTab())
   await press(t, i => void i.typeText('prettier --write'))
   await press(t, i => i.pressEnter())
 
   expect(saved().formatters ?? {}).toEqual({})
-  expect(t.captureCharFrame()).toContain('Formatter syntax: extensions = command')
+  expect(t.captureCharFrame()).toContain('Formatter file types')
 })
 
 test('Esc leaves the editor without applying', async () => {
