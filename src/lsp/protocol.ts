@@ -50,6 +50,16 @@ export interface PublishDiagnosticsParams {
   diagnostics: Diagnostic[]
 }
 
+/**
+ * The answer to `textDocument/diagnostic` — the pull model (LSP 3.17), which a
+ * server may implement *instead of* publishing. `unchanged` means "what you
+ * already have still holds", so only a `full` report replaces anything.
+ */
+export interface DiagnosticReport {
+  kind: 'full' | 'unchanged'
+  items?: Diagnostic[]
+}
+
 export interface TextEdit {
   range: Range
   newText: string

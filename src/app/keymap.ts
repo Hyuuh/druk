@@ -82,6 +82,7 @@ export const BINDABLE: Bindable[] = [
   { id: 'problems.list', label: 'List problems', defaults: [] },
   { id: 'problems.next', label: 'Next problem', defaults: [] },
   { id: 'problems.prev', label: 'Previous problem', defaults: [] },
+  { id: 'problems.restart', label: 'Restart language servers', defaults: [] },
   { id: 'settings', label: 'Settings', defaults: [] },
   { id: 'help', label: 'Keyboard shortcuts', defaults: [] },
   { id: 'quit', label: 'Quit', defaults: ['Ctrl+Q'] },

@@ -335,6 +335,9 @@ export function App(props: {
         // History moved elsewhere: nothing in the working tree need have changed, so
         // this is the only thing that tells the branch and ahead/behind to re-read.
         if (changed.git) git.bump()
+        // An install replaced what every server resolves imports through, and
+        // none of them is watching it — see `dependenciesChanged`.
+        if (changed.deps) lsp.dependenciesChanged()
         if (!changed.tree) return
         const warning = workspace.clashWarning(workspace.syncFromDisk())
         if (warning) {

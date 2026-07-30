@@ -31,32 +31,49 @@ const UNWATCHED = new RegExp(
   `(?:^|[/\\\\])(?:${[...VCS_DIRS].map(dir => dir.replace('.', '\\.')).join('|')})(?:[/\\\\]|$)`,
 )
 
-/** What a debounced burst of events touched. Both can be true for one burst. */
+/**
+ * Where a package manager puts what it installed. Reported apart because a
+ * language server resolves imports through these directories and reads them
+ * once, at startup: a `bun install` run in another terminal is invisible to it
+ * until it is restarted.
+ */
+const DEPENDENCY_DIRS = ['node_modules', 'vendor', '.venv', 'venv']
+
+const DEPENDENCIES = new RegExp(
+  `(?:^|[/\\\\])(?:${DEPENDENCY_DIRS.map(dir => dir.replace('.', '\\.')).join('|')})(?:[/\\\\]|$)`,
+)
+
+/** What a debounced burst of events touched. More than one can be true for a burst. */
 export interface Changed {
   /** A file in the working tree. */
   tree: boolean
   /** `HEAD` or a ref moved: a commit, checkout or reset happened. */
   git: boolean
+  /** Installed dependencies were written — an install, an update, a removal. */
+  deps: boolean
 }
 
 /**
  * Watch `root` and call `onChange` (debounced) on any file event. Returns a stop
  * function. Best-effort — an unwatchable path is simply left unwatched.
  *
- * The two kinds are reported apart because they cost different things to react to.
+ * The kinds are reported apart because they cost different things to react to.
  * Re-reading ahead/behind is two subprocesses, and only history moving can change
- * it — running that on every keystroke-triggered save would be pure waste.
+ * it — running that on every keystroke-triggered save would be pure waste. A
+ * dependency write costs a language server restart, which is dearer still.
  */
 export function watchTree(root: string, onChange: (changed: Changed) => void): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null
-  let pending: Changed = { tree: false, git: false }
+  const empty = (): Changed => ({ tree: false, git: false, deps: false })
+  let pending = empty()
 
-  const schedule = (kind: keyof Changed) => {
-    pending[kind] = true
+  const schedule = (...kinds: (keyof Changed)[]) => {
+    if (kinds.length === 0) return // a filtered-out event, not a quiet one
+    for (const kind of kinds) pending[kind] = true
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       const changed = pending
-      pending = { tree: false, git: false }
+      pending = empty()
       onChange(changed)
     }, 80) // coalesce bursts of events
   }
@@ -64,24 +81,25 @@ export function watchTree(root: string, onChange: (changed: Changed) => void): (
   const watchers: fs.FSWatcher[] = []
   const watch = (
     path: string,
-    kind: keyof Changed,
     options: fs.WatchOptions,
-    wanted?: (name: string) => boolean,
+    classify: (name: string | undefined) => (keyof Changed)[],
   ) => {
     try {
       watchers.push(
-        fs.watch(path, options, (_event, filename) => {
-          const name = filename?.toString()
-          if (wanted && name && !wanted(name)) return
-          schedule(kind)
-        }),
+        fs.watch(path, options, (_event, filename) => schedule(...classify(filename?.toString()))),
       )
     } catch {
       // best-effort: this path just goes unwatched
     }
   }
 
-  watch(root, 'tree', { recursive: true }, name => !UNWATCHED.test(name))
+  watch(root, { recursive: true }, name => {
+    if (!name) return ['tree']
+    if (UNWATCHED.test(name)) return []
+    // A dependency write is a tree write as well: the file tree lists
+    // node_modules like any other directory, and it has just appeared.
+    return DEPENDENCIES.test(name) ? ['tree', 'deps'] : ['tree']
+  })
 
   /*
    * Two more watchers, because the recursive one above cannot cover this. A commit
@@ -95,8 +113,8 @@ export function watchTree(root: string, onChange: (changed: Changed) => void): (
    * pack-refs — and, verified, nothing that reading status does.
    */
   const gitDir = join(root, '.git')
-  watch(join(gitDir, 'HEAD'), 'git', {})
-  watch(join(gitDir, 'refs'), 'git', { recursive: true })
+  watch(join(gitDir, 'HEAD'), {}, () => ['git'])
+  watch(join(gitDir, 'refs'), { recursive: true }, () => ['git'])
 
   return () => {
     if (timer) clearTimeout(timer)

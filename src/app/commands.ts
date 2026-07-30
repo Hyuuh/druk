@@ -63,6 +63,7 @@ export interface CommandActions {
   problemsList: () => void
   problemsNext: () => void
   problemsPrev: () => void
+  restartLsp: () => void
   gitDiffFile: () => void
   gitCompareBranches: () => void
   gitDiffBase: () => void
@@ -201,6 +202,11 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         { id: 'problems.list', label: 'List problems', run: actions.problemsList },
         { id: 'problems.next', label: 'Next problem', run: actions.problemsNext },
         { id: 'problems.prev', label: 'Previous problem', run: actions.problemsPrev },
+        {
+          id: 'problems.restart',
+          label: 'Restart language servers',
+          run: actions.restartLsp,
+        },
       ],
     },
     {

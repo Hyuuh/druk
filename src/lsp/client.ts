@@ -10,7 +10,13 @@ import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
-import type { CompletionItem, Diagnostic, PublishDiagnosticsParams, RpcMessage } from './protocol'
+import type {
+  CompletionItem,
+  Diagnostic,
+  DiagnosticReport,
+  PublishDiagnosticsParams,
+  RpcMessage,
+} from './protocol'
 import { createDecoder, encodeMessage } from './transport'
 
 /**
@@ -75,6 +81,14 @@ export function spawnLspClient(options: LspClientOptions) {
   let disposed = false
   /** From the initialize reply: whether `completionItem/resolve` may be sent at all. */
   let resolveProvider = false
+  /**
+   * From the initialize reply: the server publishes nothing and answers
+   * `textDocument/diagnostic` instead. TypeScript 7's server is the one druk
+   * meets — a client that only listens would show an empty file forever.
+   */
+  let pullProvider = false
+  /** Documents whose pull was asked for before the handshake finished. */
+  const pendingPulls = new Set<string>()
   let nextId = 1
   const pending = new Map<
     number,
@@ -99,6 +113,25 @@ export function spawnLspClient(options: LspClientOptions) {
     const message: RpcMessage = { jsonrpc: '2.0', method, params }
     if (state === 'starting') queued.push(message)
     else if (state === 'ready') send(message)
+  }
+
+  /**
+   * Ask for a document's diagnostics, for the servers that answer instead of
+   * publishing. A no-op for the rest, so callers may call it unconditionally.
+   * A pull asked for during the handshake is remembered, not dropped.
+   */
+  const pullDiagnostics = (path: string) => {
+    if (state === 'starting') return void pendingPulls.add(path)
+    if (state !== 'ready' || !pullProvider) return
+    const uri = pathToFileURL(path).href
+    void request('textDocument/diagnostic', { textDocument: { uri } })
+      .then(result => {
+        // `unchanged` means the last report still holds; replacing it with an
+        // empty list is how a file's problems would silently disappear.
+        const report = result as DiagnosticReport | null
+        if (report?.kind === 'full') options.onDiagnostics(uri, report.items ?? [])
+      })
+      .catch(() => {}) // a refused or cancelled pull leaves the last report standing
   }
 
   const die = (reason: string | null, missing = false) => {
@@ -177,6 +210,10 @@ export function spawnLspClient(options: LspClientOptions) {
       textDocument: {
         synchronization: { didSave: true },
         publishDiagnostics: {},
+        // Both models are declared: a server picks one, and typescript-go's
+        // only answers pulls. Related documents are declined — druk asks per
+        // open document, and the extra reports would have nowhere to go.
+        diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
         completion: {
           completionItem: {
             // Snippets are declined — a terminal caret cannot tab through
@@ -198,13 +235,23 @@ export function spawnLspClient(options: LspClientOptions) {
     .then(result => {
       if (state !== 'starting') return
       const capabilities = (
-        result as { capabilities?: { completionProvider?: { resolveProvider?: boolean } } } | null
+        result as {
+          capabilities?: {
+            completionProvider?: { resolveProvider?: boolean }
+            diagnosticProvider?: unknown
+          }
+        } | null
       )?.capabilities
       resolveProvider = capabilities?.completionProvider?.resolveProvider === true
+      pullProvider = capabilities?.diagnosticProvider != null
       send({ jsonrpc: '2.0', method: 'initialized', params: {} })
       state = 'ready'
       for (const message of queued) send(message)
       queued.length = 0
+      // After the didOpens above, or the server would answer about a document
+      // it has not been told about.
+      for (const path of pendingPulls) pullDiagnostics(path)
+      pendingPulls.clear()
     })
     .catch((error: unknown) => {
       // A rejection from `die` (process error/exit, dispose) is already handled —
@@ -217,6 +264,8 @@ export function spawnLspClient(options: LspClientOptions) {
   return {
     /** True once the handshake finished and false again when the server dies. */
     ready: () => state === 'ready',
+
+    pullDiagnostics,
 
     openDocument(path: string, languageId: string, text: string) {
       const uri = pathToFileURL(path).href

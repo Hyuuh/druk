@@ -56,6 +56,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'problems.list': actions.problemsList,
     'problems.next': actions.problemsNext,
     'problems.prev': actions.problemsPrev,
+    'problems.restart': actions.restartLsp,
     'settings': actions.openSettings,
     'help': actions.showHelp,
     'quit': prompts.quit,

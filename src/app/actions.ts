@@ -187,6 +187,11 @@ export function createCommands(ctx: AppContext) {
     },
     problemsNext: () => jumpProblem(1),
     problemsPrev: () => jumpProblem(-1),
+    restartLsp: () => {
+      if (!settings.config.lsp) return say('LSP is off', 'warn')
+      ctx.lsp.restart()
+      say('Restarted language servers')
+    },
     showDiff,
     gitCompareBranches: () => {
       ctx.workspace.setDiff(null)

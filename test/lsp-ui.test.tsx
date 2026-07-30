@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
@@ -18,6 +18,7 @@ import {
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
 const MARKER = join(import.meta.dir, 'fixtures', 'marker-lsp.ts')
 const INIT = join(import.meta.dir, 'fixtures', 'init-lsp.ts')
+const PULL = join(import.meta.dir, 'fixtures', 'pull-lsp.ts')
 
 /** Diagnostics cross a process boundary; give the fake server room to start. */
 const LSP_WAIT = 15_000
@@ -190,4 +191,68 @@ test('a problem far below the viewport is marked on the track', async () => {
   // Near the bottom of the track, where line 380 of 400 belongs — seeing that
   // without scrolling is the whole point of the column.
   expect(marked[0]!).toBeGreaterThan(frame.length * 0.8)
+}, 30_000)
+
+/** Lines in the marker file: one per spawn of the server. */
+const spawns = (marker: string) =>
+  existsSync(marker) ? readFileSync(marker, 'utf8').trim().split('\n').length : 0
+
+test('the restart command spawns the servers again and re-opens the documents', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const marker = join(dir, 'spawn-marker')
+  const t = await launch(
+    dir,
+    { lsp: true, lspServers: { typescript: [process.execPath, MARKER, marker] } },
+    {},
+    { openFile: join(dir, 'a.ts') },
+  )
+  await until(t, () => spawns(marker) === 1, LSP_WAIT)
+
+  await runCommand(t, 'Restart language servers')
+  await untilFrame(t, 'Restarted language servers')
+  await until(t, () => spawns(marker) === 2, LSP_WAIT)
+
+  // The typed text only reaches the new server if the document was opened into
+  // it: a restart that forgot to re-open would leave this diagnostic unreported.
+  await press(t, input => void input.typeText('oops'))
+  await untilFrame(t, '● 1', LSP_WAIT)
+}, 30_000)
+
+test('installing dependencies restarts the servers by itself', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const marker = join(dir, 'spawn-marker')
+  const t = await launch(
+    dir,
+    { lsp: true, lspServers: { typescript: [process.execPath, MARKER, marker] } },
+    {},
+    { openFile: join(dir, 'a.ts') },
+  )
+  await until(t, () => spawns(marker) === 1, LSP_WAIT)
+
+  // What `bun install` looks like from the watcher's side. A server started
+  // before this resolved every import against a tree that did not exist.
+  mkdirSync(join(dir, 'node_modules', 'left-pad'), { recursive: true })
+  writeFileSync(join(dir, 'node_modules', 'left-pad', 'index.js'), 'module.exports = 1\n')
+
+  await until(t, () => spawns(marker) === 2, LSP_WAIT)
+  expect(t.captureCharFrame()).toContain('Dependencies changed')
+}, 30_000)
+
+test('a server that only answers pulls still fills the gutter and the list', async () => {
+  const dir = fixture({ 'a.ts': 'const oops = 1\n' })
+  const t = await launch(
+    dir,
+    { lsp: true, lspServers: { typescript: [process.execPath, PULL] } },
+    {},
+    { openFile: join(dir, 'a.ts') },
+  )
+
+  // Nothing was published: this diagnostic exists only because druk asked for
+  // it after the didOpen.
+  await untilFrame(t, 'pulled oops', LSP_WAIT)
+  expect(t.captureCharFrame()).toContain('● 1')
+
+  // And it asks again after an edit, or the marks would describe older text.
+  await press(t, input => void input.typeText('oops '))
+  await untilFrame(t, '● 2', LSP_WAIT)
 }, 30_000)

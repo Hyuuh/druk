@@ -9,6 +9,7 @@ import type { LspClient } from '../lsp/client'
 import { normalizeCompletion } from '../lsp/completion'
 import type { CompletionReply } from '../lsp/completion'
 import { hasNodeRuntime, installServer, installedCommand, SERVER_ROOT } from '../lsp/install'
+import { projectCommand } from '../lsp/project'
 import { isUnnecessary, severityOf } from '../lsp/protocol'
 import type { CompletionItem, Diagnostic, ProblemSeverity } from '../lsp/protocol'
 import { installHint, resolveServer } from '../lsp/servers'
@@ -39,6 +40,14 @@ export interface Problem {
  */
 const CHANGE_DEBOUNCE_MS = 150
 
+/**
+ * How long the dependency directories must sit still before the servers are
+ * restarted. An install writes for as long as it takes, and a server spawned
+ * into a half-written `node_modules` is the stale-diagnostics problem again —
+ * so the wait is for the writing to stop, not for the first event.
+ */
+const DEPENDENCY_QUIET_MS = 2_000
+
 /** Language servers: one per language, diagnostics per open file. */
 export function createLsp(deps: {
   rootDir: string
@@ -57,6 +66,11 @@ export function createLsp(deps: {
    * missing — nothing else in that effect changes when a server comes back.
    */
   const [generation, setGeneration] = createSignal(0)
+  /**
+   * Bumped by `restart`. `wireLspEffects` watches it to forget which documents
+   * are open, which is what makes the fresh servers receive them all again.
+   */
+  const [restarts, setRestarts] = createSignal(0)
   /** Server ids already offered this session, so a decline is not re-asked. */
   const offered = new Set<string>()
 
@@ -138,11 +152,15 @@ export function createLsp(deps: {
     if (!resolved) return null
     const known = clients.get(resolved.id)
     if (known !== undefined) return known
-    // A copy druk installed is used as-is; PATH is consulted only when there is
-    // none, so a user's own install wins from the moment they make one.
-    const local = installedCommand(resolved.command)
+    // The project's own server first — for TypeScript it is the only one that
+    // can serve a 7.x project at all. Then a copy druk installed; PATH is
+    // consulted only when there is neither, so a user's own install wins from
+    // the moment they make one.
+    const project = projectCommand(resolved.id, resolved.command, rootDir)
+    const fetched = project ? null : installedCommand(resolved.command)
+    const command = project ?? fetched ?? resolved.command
     const client = spawnLspClient({
-      command: local ?? resolved.command,
+      command,
       rootDir,
       initializationOptions: initializationOptionsFor(resolved.id),
       onDiagnostics,
@@ -153,9 +171,11 @@ export function createLsp(deps: {
           // A copy druk fetched can be broken in ways the user cannot see and did
           // not cause — a dependency that moved on, most of all. Naming the
           // directory is what makes that repairable without reading the source.
-          local
-            ? `LSP: ${resolved.command[0]} ${reason} — delete ${SERVER_ROOT} to reinstall it`
-            : `LSP: ${resolved.command[0]} ${reason}`,
+          // The project's own copy gets no such advice: deleting druk's would
+          // not touch it.
+          fetched
+            ? `LSP: ${command[0]} ${reason} — delete ${SERVER_ROOT} to reinstall it`
+            : `LSP: ${command[0]} ${reason}`,
           'warn',
         )
       },
@@ -173,6 +193,12 @@ export function createLsp(deps: {
     status.say(`Installing ${name}…`)
     const error = await installServer(packages)
     if (error) return status.say(`Could not install ${name}: ${error}`, 'error')
+    // npm can exit 0 having produced no binary — a package whose bin moved, or
+    // one installed for another platform. Saying "installed" then would send
+    // the user round the same prompt on every launch with nothing to show why.
+    if (!installedCommand([name])) {
+      return status.say(`Installed ${name}, but no ${name} appeared in ${SERVER_ROOT}`, 'error')
+    }
     clients.delete(id)
     setGeneration(generation() + 1)
     status.say(`Installed ${name}`)
@@ -188,6 +214,35 @@ export function createLsp(deps: {
     clients.clear()
     for (const path of Object.keys(problems)) clearProblems(path)
   }
+
+  /**
+   * Kill the servers and let the open documents spawn them again. The only cure
+   * for a server whose view of the project is stale: druk registers no watched
+   * files, so nothing else tells one that `node_modules` — or a config it read
+   * at startup — has changed under it.
+   */
+  const restart = () => {
+    const running = clients.size > 0
+    dispose()
+    setRestarts(restarts() + 1)
+    return running
+  }
+
+  let depsTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** The watcher saw a dependency directory written. */
+  const dependenciesChanged = () => {
+    if (!settings.config.lsp) return
+    if (depsTimer) clearTimeout(depsTimer)
+    depsTimer = setTimeout(() => {
+      depsTimer = null
+      // Nothing spawned yet: the next `clientFor` reads the new tree anyway, and
+      // saying so about servers the user never started would be noise.
+      if (restart()) status.say('Dependencies changed — restarted language servers')
+    }, DEPENDENCY_QUIET_MS)
+  }
+
+  onCleanup(() => clearTimeout(depsTimer ?? undefined))
 
   /** Set by `wireLspEffects`: push the debounced didChange for `path` out now. */
   let flushEdits: ((path: string) => void) | null = null
@@ -236,6 +291,9 @@ export function createLsp(deps: {
     onFlushNeeded,
     install,
     generation,
+    restart,
+    restarts,
+    dependenciesChanged,
     dispose,
   }
 }
@@ -260,6 +318,7 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
   const synced = new Map<string, Synced>()
   const pendingEdits = new Map<string, { entry: Synced; text: string }>()
   let flushTimer: ReturnType<typeof setTimeout> | null = null
+  let lastRestart = lsp.restarts()
 
   const flushEdit = (path: string) => {
     const edit = pendingEdits.get(path)
@@ -267,6 +326,9 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
     pendingEdits.delete(path)
     edit.entry.client.changeDocument(path, edit.text)
     edit.entry.text = edit.text
+    // Pull servers report nothing on their own: every sync is followed by the
+    // question, or the marks would stay on the text they were computed for.
+    edit.entry.client.pullDiagnostics(path)
   }
 
   lsp.onFlushNeeded(flushEdit)
@@ -290,6 +352,15 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
     // Tracked for its side effect on `clientFor`: a server just installed can
     // now spawn, and the documents it should have opened are already open.
     lsp.generation()
+
+    const restarts = lsp.restarts()
+    if (restarts !== lastRestart) {
+      lastRestart = restarts
+      // `restart` has already killed the servers; forgetting what they knew is
+      // what makes the loop below open every document into the fresh ones.
+      pendingEdits.clear()
+      synced.clear()
+    }
 
     const open = workspace.tabs()
     const openSet = new Set(open)
@@ -316,6 +387,7 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
         const client = lsp.clientFor(path)
         if (!client) continue
         client.openDocument(path, filetypeForPath(path) ?? 'plaintext', text)
+        client.pullDiagnostics(path)
         synced.set(path, { client, text, dirty })
         continue
       }
@@ -329,6 +401,9 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
         // didSave refers to the text that was actually written.
         flushEdit(path)
         known.client.saveDocument(path)
+        // A formatter may have rewritten the file, and a save is when a pull
+        // server's project-wide errors are worth asking about again.
+        known.client.pullDiagnostics(path)
       }
       known.dirty = dirty
     }

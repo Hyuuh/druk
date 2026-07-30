@@ -8,6 +8,7 @@ import type { Problem } from '../src/app/lsp'
 import { styleIdForGroup } from '../src/languages/highlight'
 import { spawnLspClient } from '../src/lsp/client'
 import { installServer, installedCommand } from '../src/lsp/install'
+import { projectCommand, typescriptMajor } from '../src/lsp/project'
 import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
 import { isUnnecessary, severityOf } from '../src/lsp/protocol'
 import { installHint, resolveServer } from '../src/lsp/servers'
@@ -157,6 +158,61 @@ describe('installed servers', () => {
       process.env.PATH = path
     }
   }, 20_000)
+})
+
+describe('the project’s own server', () => {
+  const project = (files: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), 'druk-project-'))
+    for (const [name, content] of Object.entries(files)) {
+      const path = join(dir, name)
+      mkdirSync(join(path, '..'), { recursive: true })
+      writeFileSync(path, content)
+    }
+    return dir
+  }
+  const TLS = ['typescript-language-server', '--stdio']
+
+  test('a project with nothing installed leaves the choice to the caller', () => {
+    expect(projectCommand('typescript', TLS, project({}))).toBeNull()
+    expect(typescriptMajor(project({}))).toBeNull()
+  })
+
+  test('a server in the project’s node_modules wins over anything global', () => {
+    const dir = project({
+      'node_modules/.bin/typescript-language-server': '',
+      'node_modules/typescript/package.json': '{"version":"5.9.2"}',
+    })
+    expect(typescriptMajor(dir)).toBe(5)
+    expect(projectCommand('typescript', TLS, dir)).toEqual([
+      join(dir, 'node_modules', '.bin', 'typescript-language-server'),
+      '--stdio',
+    ])
+  })
+
+  test('TypeScript 7 is served by the compiler itself, not by tsserver', () => {
+    // 7.x is the Go port: a platform binary and no tsserver.js, so
+    // typescript-language-server cannot serve the project at all — and `tsc`
+    // speaks LSP. Preferred even where the older server is also installed.
+    const dir = project({
+      'node_modules/.bin/tsc': '',
+      'node_modules/.bin/typescript-language-server': '',
+      'node_modules/typescript/package.json': '{"version":"7.0.2"}',
+    })
+    expect(typescriptMajor(dir)).toBe(7)
+    expect(projectCommand('typescript', TLS, dir)).toEqual([
+      join(dir, 'node_modules', '.bin', 'tsc'),
+      '--lsp',
+      '--stdio',
+    ])
+  })
+
+  test('TypeScript 5’s tsc is never used as a server: it has no --lsp', () => {
+    const dir = project({
+      'node_modules/.bin/tsc': '',
+      'node_modules/typescript/package.json': '{"version":"5.9.2"}',
+    })
+    expect(projectCommand('typescript', TLS, dir)).toBeNull()
+  })
 })
 
 describe('problemFrom', () => {

@@ -5,7 +5,8 @@ import { join } from 'node:path'
 
 import { buildCommands, flattenCommands } from '../src/app/commands'
 import type { CommandActions } from '../src/app/commands'
-import { readFile } from '../src/core/fs'
+import { readFile, watchTree } from '../src/core/fs'
+import type { Changed } from '../src/core/fs'
 import { searchProject, searchText } from '../src/core/search'
 import { isNewer } from '../src/core/update'
 import { THEMES } from '../src/themes'
@@ -42,6 +43,26 @@ describe('files', () => {
     const dir = mkdtempSync(join(tmpdir(), 'druk-'))
     writeFileSync(join(dir, 'bin'), Buffer.from([0x89, 0x50, 0x00, 0x01]))
     expect(() => readFile(join(dir, 'bin'))).toThrow('binary file')
+  })
+
+  test('an install is reported as a dependency change, and a source edit is not', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'druk-deps-'))
+    const seen: Changed[] = []
+    const stop = watchTree(dir, changed => void seen.push(changed))
+    try {
+      writeFileSync(join(dir, 'a.ts'), 'const a = 1\n')
+      await new Promise(resolve => setTimeout(resolve, 300))
+      expect(seen.at(-1)).toEqual({ tree: true, git: false, deps: false })
+
+      mkdirSync(join(dir, 'node_modules', 'left-pad'), { recursive: true })
+      writeFileSync(join(dir, 'node_modules', 'left-pad', 'index.js'), 'module.exports = 1\n')
+      await new Promise(resolve => setTimeout(resolve, 300))
+      // Still a tree change too: the file tree lists node_modules like any other
+      // directory, and it has just appeared.
+      expect(seen.at(-1)).toEqual({ tree: true, git: false, deps: true })
+    } finally {
+      stop()
+    }
   })
 })
 
