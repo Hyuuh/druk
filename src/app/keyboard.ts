@@ -27,6 +27,8 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'open': () => overlays.setPicker('files'),
     'save': workspace.saveActive,
     'goto': () => prompts.setPrompt({ kind: 'gotoLine' }),
+    'goto.definition': actions.gotoDefinition,
+    'goto.file': actions.openFileUnderCursor,
     'find.file': () => overlays.setSearch({ scope: 'file' }),
     'find.project': () => overlays.setSearch({ scope: 'project' }),
     'find.replace': actions.replaceInFile,

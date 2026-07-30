@@ -50,6 +50,8 @@ scripts/
     image.ts         PNG/JPEG decode + scaling onto half-block cells, for the viewer
     git.ts           queries, mutations, and async branch-comparison metadata/blob reads
     diff.ts          Myers line diff between two texts, emitted as a unified patch
+    imports.ts       the path token under the cursor, and where it resolves —
+                     relative, project-root, or through tsconfig/jsconfig aliases
     bulk.ts          delete/copy/move in the background, reporting progress
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
     session.ts       per-project open tabs + expanded folders, keyed by path
@@ -67,6 +69,8 @@ scripts/
     client.ts        one language server: spawn, handshake, document sync, dispose
     completion.ts    the pure half of autocomplete: normalize, fuzzy filter, snippet
                      strip, edit application
+    definition.ts    the pure half of go-to-definition: any of the reply's three
+                     shapes as one file position
     servers.ts       filetype → server command  ← add a language server here
   themes/
     index.ts         theme registry  ← add a theme here
@@ -512,6 +516,17 @@ is just a diff against the empty tree.
   dropped by generation counter. `ui/CompletionMenu.tsx` only paints. The global Esc
   handler consults `editor.completionOpen()` so dismissing the menu does not also
   move focus to the tree.
+- **Navigation is two commands, and only one of them needs a server.** Go to
+  definition is the language server's answer and nothing else. Open the file under
+  the cursor tries the filesystem first — the token's own folder, then the project
+  root, then the aliases `core/imports.ts` reads out of `tsconfig.json` /
+  `jsconfig.json` — and asks the server only when none of that places the
+  specifier. That order is what keeps a relative import working with LSP off,
+  while `@/thing`, a bare package and an alias declared somewhere druk does not
+  read still land: the server resolves those the way the project's own toolchain
+  does. Both jump through `openAt` in `app/actions.ts`, which drops any page over
+  the editor slot and skips the goto when the file refused to open — a goto sent
+  anyway would aim at whatever is still on screen.
 - **Inline problem text measures the buffer, not the string.** The message after a
   line's end (`lspInline`) is an absolutely-positioned overlay in `EditorPane`,
   placed with `lineInfo` — the line's *last* visual row and that row's used display

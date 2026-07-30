@@ -210,6 +210,10 @@ export function spawnLspClient(options: LspClientOptions) {
       textDocument: {
         synchronization: { didSave: true },
         publishDiagnostics: {},
+        // linkSupport lets a server answer with LocationLink, whose selection
+        // range names the symbol rather than the whole declaration — a jump
+        // that lands on the name instead of the doc comment above it.
+        definition: { linkSupport: true },
         // Both models are declared: a server picks one, and typescript-go's
         // only answers pulls. Related documents are declined — druk asks per
         // open document, and the extra reports would have nowhere to go.
@@ -292,6 +296,19 @@ export function spawnLspClient(options: LspClientOptions) {
     complete(path: string, position: { line: number; character: number }): Promise<unknown> {
       if (state !== 'ready') return Promise.resolve(null)
       return request('textDocument/completion', {
+        textDocument: { uri: pathToFileURL(path).href },
+        position,
+      }).catch(() => null)
+    },
+
+    /**
+     * Where the symbol at `position` is defined. Null while the server is
+     * starting or once it is dead, and on an error reply — servers answer one
+     * for "nothing here", which is not worth a message over a keypress.
+     */
+    definition(path: string, position: { line: number; character: number }): Promise<unknown> {
+      if (state !== 'ready') return Promise.resolve(null)
+      return request('textDocument/definition', {
         textDocument: { uri: pathToFileURL(path).href },
         position,
       }).catch(() => null)

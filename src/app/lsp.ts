@@ -8,6 +8,8 @@ import { spawnLspClient } from '../lsp/client'
 import type { LspClient } from '../lsp/client'
 import { normalizeCompletion } from '../lsp/completion'
 import type { CompletionReply } from '../lsp/completion'
+import { normalizeDefinition } from '../lsp/definition'
+import type { Target } from '../lsp/definition'
 import { hasNodeRuntime, installServer, installedCommand, SERVER_ROOT } from '../lsp/install'
 import { projectCommand } from '../lsp/project'
 import { isUnnecessary, severityOf } from '../lsp/protocol'
@@ -268,6 +270,19 @@ export function createLsp(deps: {
   }
 
   /**
+   * Where the symbol at a buffer position is defined. The pending didChange
+   * goes out first, for the reason completion flushes it: a server answering
+   * against text 150ms stale would name a line that has since moved.
+   */
+  const definition = async (path: string, line: number, col: number): Promise<Target | null> => {
+    if (!settings.config.lsp) return null
+    const client = clientFor(path)
+    if (!client?.ready()) return null
+    flushEdits?.(path)
+    return normalizeDefinition(await client.definition(path, { line, character: col }))
+  }
+
+  /**
    * Ask `path`'s server to fill in a chosen item's withheld fields — the
    * auto-import edits most servers leave off the list. Null means "insert the
    * item as it came".
@@ -287,6 +302,7 @@ export function createLsp(deps: {
     clearProblems,
     clientFor,
     complete,
+    definition,
     resolveCompletion,
     onFlushNeeded,
     install,

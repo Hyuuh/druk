@@ -1,8 +1,9 @@
 /**
  * A minimal language server for tests: speaks the stdio protocol, answers the
  * handshake, publishes one error diagnostic wherever a document says "oops",
- * and answers completion with a fixed list (one item carrying an auto-import
- * style additionalTextEdit, so the whole insertion path is exercised).
+ * answers completion with a fixed list (one item carrying an auto-import
+ * style additionalTextEdit, so the whole insertion path is exercised), and
+ * sends every definition query to `def.ts` in the project root.
  * Run with `bun test/fixtures/fake-lsp.ts` — the tests point `lspServers` at it.
  */
 import type { CompletionItem, Diagnostic } from '../../src/lsp/protocol'
@@ -45,10 +46,14 @@ const COMPLETIONS: CompletionItem[] = [
   { label: 'drukLazy', kind: 7, detail: 'resolve-import' },
 ]
 
+/** Where the definition answers point — the project root, from the handshake. */
+let rootUri = ''
+
 process.stdin.on(
   'data',
   createDecoder(message => {
     if (message.method === 'initialize') {
+      rootUri = (message.params as { rootUri?: string }).rootUri ?? ''
       send({
         jsonrpc: '2.0',
         id: message.id,
@@ -56,8 +61,26 @@ process.stdin.on(
           capabilities: {
             textDocumentSync: 1,
             completionProvider: { triggerCharacters: ['.'], resolveProvider: true },
+            definitionProvider: true,
           },
         },
+      })
+    } else if (message.method === 'textDocument/definition') {
+      // A LocationLink rather than a Location: it is the shape linkSupport asks
+      // for, and the one whose selection range the client has to prefer.
+      send({
+        jsonrpc: '2.0',
+        id: message.id,
+        result: [
+          {
+            targetUri: `${rootUri}/def.ts`,
+            targetRange: { start: { line: 0, character: 0 }, end: { line: 2, character: 0 } },
+            targetSelectionRange: {
+              start: { line: 1, character: 6 },
+              end: { line: 1, character: 12 },
+            },
+          },
+        ],
       })
     } else if (message.method === 'textDocument/completion') {
       send({ jsonrpc: '2.0', id: message.id, result: { isIncomplete: false, items: COMPLETIONS } })

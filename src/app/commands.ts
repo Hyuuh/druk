@@ -33,6 +33,8 @@ export interface CommandActions {
   closeOthers: () => void
   closeAll: () => void
   gotoLine: () => void
+  gotoDefinition: () => void
+  openFileUnderCursor: () => void
   undo: () => void
   redo: () => void
   findInFile: () => void
@@ -275,6 +277,20 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       id: 'editor',
       label: 'Editor',
       children: [
+        // Under Editor rather than at the root: the root list is as long as the
+        // palette can draw, and typing finds a leaf at any level anyway.
+        {
+          id: 'goto.definition',
+          label: 'Go to definition',
+          hint: 'F12',
+          run: actions.gotoDefinition,
+        },
+        {
+          id: 'goto.file',
+          label: 'Open file under cursor',
+          hint: `Ctrl+${ALT}+O`,
+          run: actions.openFileUnderCursor,
+        },
         // Also commands because the chords are not always sendable: some layouts
         // have no byte for Ctrl+/ at all.
         {

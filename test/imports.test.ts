@@ -1,0 +1,122 @@
+import { describe, expect, test } from 'bun:test'
+import { join } from 'node:path'
+
+import { pathTokenAt, resolveImportPath } from '../src/core/imports'
+import { normalizeDefinition } from '../src/lsp/definition'
+import { fixture } from './helpers'
+
+describe('the token under the cursor', () => {
+  test('a quoted specifier wins wherever in it the cursor sits', () => {
+    const line = "import { a } from './core/fs'"
+    for (const col of [19, 22, 28]) expect(pathTokenAt(line, col)).toBe('./core/fs')
+    // Including on either quote: the caret sits before its character.
+    expect(pathTokenAt(line, 18)).toBe('./core/fs')
+  })
+
+  test('an unquoted path is read out of prose', () => {
+    const line = 'see src/core/fs.ts for the guard.'
+    expect(pathTokenAt(line, 8)).toBe('src/core/fs.ts')
+    // The full stop belongs to the sentence, not to the path.
+    expect(pathTokenAt('read src/app/lsp.ts.', 12)).toBe('src/app/lsp.ts')
+  })
+
+  test('nothing under the cursor is nothing', () => {
+    expect(pathTokenAt('   ', 1)).toBeNull()
+    expect(pathTokenAt('', 0)).toBeNull()
+  })
+})
+
+describe('where a specifier resolves', () => {
+  const project = () =>
+    fixture({
+      'tsconfig.json': `{
+        // A comment and a trailing comma: what a real tsconfig holds.
+        "compilerOptions": {
+          "baseUrl": ".",
+          "paths": { "@/*": ["src/*"], "~lib": ["src/lib/index.ts"], },
+        },
+      }`,
+      'src/a.ts': 'export const a = 1\n',
+      'src/nested/b.tsx': 'export const b = 2\n',
+      'src/deep/index.ts': 'export const deep = 3\n',
+      'src/lib/index.ts': 'export const lib = 4\n',
+      'notes.md': 'see src/a.ts\n',
+    })
+
+  test('relative, extensionless and index specifiers', () => {
+    const root = project()
+    const from = join(root, 'src')
+    expect(resolveImportPath('./nested/b', from, root)).toBe(join(root, 'src/nested/b.tsx'))
+    expect(resolveImportPath('./a.ts', from, root)).toBe(join(root, 'src/a.ts'))
+    expect(resolveImportPath('../src/deep', from, root)).toBe(join(root, 'src/deep/index.ts'))
+    expect(resolveImportPath('./missing', from, root)).toBeNull()
+  })
+
+  test('a path written against the project root', () => {
+    const root = project()
+    // The file it is written in is elsewhere; a path in prose is usually
+    // relative to the repository, not to the note holding it.
+    expect(resolveImportPath('src/a.ts', root, root)).toBe(join(root, 'src/a.ts'))
+  })
+
+  test('tsconfig aliases, comments and trailing commas included', () => {
+    const root = project()
+    const from = join(root, 'src/nested')
+    expect(resolveImportPath('@/a', from, root)).toBe(join(root, 'src/a.ts'))
+    expect(resolveImportPath('@/deep', from, root)).toBe(join(root, 'src/deep/index.ts'))
+    // A pattern with no star maps one specifier onto one file.
+    expect(resolveImportPath('~lib', from, root)).toBe(join(root, 'src/lib/index.ts'))
+    // baseUrl alone makes every path under it importable by name.
+    expect(resolveImportPath('src/nested/b', from, root)).toBe(join(root, 'src/nested/b.tsx'))
+    expect(resolveImportPath('@/nope', from, root)).toBeNull()
+  })
+
+  test('an alias declared in an extended config still resolves', () => {
+    const root = fixture({
+      'tsconfig.base.json': '{ "compilerOptions": { "paths": { "#/*": ["./lib/*"] } } }',
+      'tsconfig.json': '{ "extends": "./tsconfig.base" }',
+      'lib/thing.ts': 'export const thing = 1\n',
+    })
+    expect(resolveImportPath('#/thing', root, root)).toBe(join(root, 'lib/thing.ts'))
+  })
+
+  test('what is not a file on disk', () => {
+    const root = project()
+    expect(resolveImportPath('https://example.com/x.ts', root, root)).toBeNull()
+    // A package: the language server resolves these, not this module.
+    expect(resolveImportPath('solid-js', root, root)).toBeNull()
+    expect(resolveImportPath('   ', root, root)).toBeNull()
+  })
+})
+
+describe('a definition reply', () => {
+  const uri = 'file:///tmp/druk/def.ts'
+  const range = { start: { line: 3, character: 5 }, end: { line: 3, character: 9 } }
+
+  test('every shape the spec allows becomes one target', () => {
+    const target = { path: '/tmp/druk/def.ts', line: 3, col: 5 }
+    expect(normalizeDefinition({ uri, range })).toEqual(target)
+    expect(normalizeDefinition([{ uri, range }])).toEqual(target)
+    expect(
+      normalizeDefinition([{ targetUri: uri, targetRange: range, targetSelectionRange: range }]),
+    ).toEqual(target)
+  })
+
+  test('the selection range wins over the declaration range', () => {
+    // targetRange starts at the doc comment above the symbol; landing there
+    // would put the cursor on a comment rather than on the name.
+    const declaration = { start: { line: 1, character: 0 }, end: { line: 6, character: 1 } }
+    expect(
+      normalizeDefinition([
+        { targetUri: uri, targetRange: declaration, targetSelectionRange: range },
+      ]),
+    ).toEqual({ path: '/tmp/druk/def.ts', line: 3, col: 5 })
+  })
+
+  test('nothing, an empty answer, and a scheme that is not a file', () => {
+    expect(normalizeDefinition(null)).toBeNull()
+    expect(normalizeDefinition([])).toBeNull()
+    expect(normalizeDefinition({ uri: 'jdt://contents/rt.jar', range })).toBeNull()
+    expect(normalizeDefinition({ range })).toBeNull()
+  })
+})

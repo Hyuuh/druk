@@ -65,6 +65,23 @@ export interface TextEdit {
   newText: string
 }
 
+export interface Location {
+  uri: string
+  range: Range
+}
+
+/**
+ * The other shape a definition may come back as, when the client declared
+ * `linkSupport`. `targetRange` covers the whole declaration; `targetSelectionRange`
+ * is just its name, which is where a jump should land.
+ */
+export interface LocationLink {
+  targetUri: string
+  targetRange: Range
+  targetSelectionRange?: Range
+  originSelectionRange?: Range
+}
+
 export interface CompletionItem {
   label: string
   /** CompletionItemKind, 1–25. Absent renders as plain text. */

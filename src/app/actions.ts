@@ -1,4 +1,4 @@
-import { relative } from 'node:path'
+import { dirname, relative } from 'node:path'
 
 import { createMemo } from 'solid-js'
 
@@ -17,6 +17,7 @@ import {
   statusMap,
 } from '../core/git'
 import type { FileStatus } from '../core/git'
+import { pathTokenAt, resolveImportPath } from '../core/imports'
 import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
@@ -111,6 +112,27 @@ export function createCommands(ctx: AppContext) {
     if (target?.kind === 'dir') git.toggleCollapsed(target.rel)
   }
 
+  /**
+   * Land on a position in a file, from wherever the editor slot was. A page
+   * gives way to it — `openFile` closes one, but a jump inside the file already
+   * open never calls it — and a file that would not open leaves the goto unsent,
+   * or it would aim at the file still on screen.
+   */
+  const openAt = (path: string, line: number, col: number) => {
+    workspace.setDiff(null)
+    workspace.setSettingsPage(false)
+    if (path !== workspace.activePath()) workspace.openFile(path)
+    if (workspace.activePath() !== path) return
+    editor.requestGoto(line, col)
+    panes.setFocus('editor')
+  }
+
+  /** The line the cursor is on, as the buffer holds it. */
+  const cursorLine = (path: string): string => {
+    const at = editor.cursor()
+    return workspace.buffers[path]?.content.split('\n')[at.line] ?? ''
+  }
+
   /** Jump to the neighbouring problem and read it out in the status bar. */
   const jumpProblem = (direction: 1 | -1) => {
     const path = workspace.activePath()
@@ -140,6 +162,36 @@ export function createCommands(ctx: AppContext) {
     gotoLine: () => ctx.prompts.setPrompt({ kind: 'gotoLine' }),
     undo: () => editor.requestHistory('undo'),
     redo: () => editor.requestHistory('redo'),
+    gotoDefinition: () => {
+      const path = workspace.activePath()
+      if (!path) return say('No file open', 'warn')
+      if (!config.lsp) return say('LSP is off — go to definition needs a language server', 'warn')
+      const at = editor.cursor()
+      void ctx.lsp.definition(path, at.line, at.col).then(target => {
+        if (!target) return say('No definition found')
+        openAt(target.path, target.line, target.col)
+      })
+    },
+    /**
+     * Open the file the path under the cursor names. Disk first — a relative
+     * import is placed without asking anyone — and the language server second,
+     * for the specifiers no amount of path joining resolves: an alias declared
+     * somewhere this cannot read, a bundler's own map, a package in
+     * `node_modules`. The server resolves those the way the project does.
+     */
+    openFileUnderCursor: () => {
+      const path = workspace.activePath()
+      if (!path) return say('No file open', 'warn')
+      const at = editor.cursor()
+      const token = pathTokenAt(cursorLine(path), at.col)
+      if (!token) return say('No path under the cursor', 'warn')
+      const found = resolveImportPath(token, dirname(path), rootDir)
+      if (found) return openAt(found, 0, 0)
+      void ctx.lsp.definition(path, at.line, at.col).then(target => {
+        if (!target) return say(`Cannot find "${token}"`, 'warn')
+        openAt(target.path, target.line, target.col)
+      })
+    },
     findInFile: () => ctx.overlays.setSearch({ scope: 'file' }),
     findInProject: () => ctx.overlays.setSearch({ scope: 'project' }),
     replaceInFile: () => ctx.overlays.setSearch({ scope: 'file', replacing: true }),

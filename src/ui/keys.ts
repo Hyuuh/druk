@@ -69,6 +69,16 @@ export const KEYS: KeyInfo[] = [
     welcome: { label: 'Open a file by name', rank: 1, key: 'Ctrl+P' },
   },
   { key: 'Ctrl+G', label: 'Go to line', section: 'General', where: 'all', ids: ['goto'] },
+  // One row for the pair, not two: the table is as tall as the terminals people
+  // have, and `test/help-scroll.test.tsx` measures how tall one has to be for
+  // the whole of it — every row added costs a row there.
+  {
+    key: `F12 / Ctrl+${ALT}+O`,
+    label: 'Definition / file under cursor',
+    section: 'General',
+    where: 'editor',
+    ids: ['goto.definition', 'goto.file'],
+  },
   { key: 'Ctrl+Q', label: 'Quit', section: 'General', where: 'all', ids: ['quit'] },
 
   { key: 'Ctrl+S', label: 'Save file', section: 'Editing', where: 'editor', ids: ['save'] },

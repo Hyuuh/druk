@@ -69,11 +69,19 @@ dependency directory settles after an install, since druk registers no watched
 files and a server otherwise resolves imports against the `node_modules` it saw
 at startup forever), LSP autocomplete (a fuzzy-filtered menu that opens as you
 type or on Ctrl+Space, applies auto-import edits, and is toggled by
-`lspCompletion`), format on save through the user's own commands (`formatOnSave`
+`lspCompletion`), go to definition (F12, the server's answer in whichever of the
+protocol's three shapes it comes) and open the file under the cursor
+(`Ctrl+Opt+O` — the path or import specifier the cursor is in, resolved on disk
+relative to the file and to the project root, then through the aliases
+`tsconfig.json`/`jsconfig.json` declares, and only then handed to the language
+server, which is what places a bare package or an alias druk cannot read),
+format on save through the user's own commands (`formatOnSave`
 is the switch, `formatters` maps extensions to an in-place command — prettier,
 eslint --fix, oxfmt, gofmt — with the saved file's path appended, or put where a
-`{}` token sits, and edited on the settings page's Formatters row as much as in
-the config file), custom shortcuts (`keybindings` maps a
+`{}` token sits, the project's own `node_modules/.bin` copy preferred over
+anything global as it is for the language servers, and edited on the settings
+page's Formatters row — file types and command as two fields, Tab between them —
+as much as in the config file), custom shortcuts (`keybindings` maps a
 command id to one chord, replacing whatever it had — the settings page's Shortcuts
 row lists every bindable command with the key it answers to, refuses a chord another
 custom binding holds and names whatever default a rebind takes the key from, while a
