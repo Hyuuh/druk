@@ -15,6 +15,8 @@ import { filetypeForPath } from '../languages/highlight'
 import { SEVERITY_RANK } from '../lsp/protocol'
 import type { ProblemSeverity } from '../lsp/protocol'
 import { ui } from '../themes'
+import { ComparePanel } from '../ui/ComparePanel'
+import { ComparisonView } from '../ui/ComparisonView'
 import { DiffView } from '../ui/DiffView'
 import type { DiffFile } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
@@ -27,6 +29,7 @@ import { StatusBar } from '../ui/StatusBar'
 import { Tabs } from '../ui/Tabs'
 import { createCommands } from './actions'
 import { createBranches } from './branches'
+import { createComparison } from './comparison'
 import type { AppContext } from './context'
 import { createEditorBridge } from './editor'
 import { createFileOps } from './fileOps'
@@ -79,6 +82,7 @@ export function App(props: {
   )
   const panes = createPanes(tree, restored.sidebar)
   const git = createGit(rootDir, () => settings.config.gitPanelView)
+  const comparison = createComparison({ rootDir, git, status })
   const lsp = createLsp({ rootDir, settings, status })
   // Also on the quit path: the renderer tears the root down before exiting, and
   // a leaked server would outlive the editor (tests leak them per launch).
@@ -118,6 +122,7 @@ export function App(props: {
     workspace,
     git,
     branches,
+    comparison,
     panes,
     editor,
   })
@@ -133,6 +138,7 @@ export function App(props: {
     gitOp,
     lsp,
     branches,
+    comparison,
     workspace,
     fileOps,
     prompts: { ...promptState, ...promptHandlers },
@@ -153,7 +159,13 @@ export function App(props: {
   // It reads `gitStatus`, which `wireGitEffects` fills from the same three — and
   // does so first, since effects run in creation order and that call is above.
   createEffect(
-    on(() => [git.revision(), editor.reloadKey(), git.diffBase()] as const, actions.refreshDiff),
+    on(
+      () => [git.revision(), editor.reloadKey(), git.diffBase()] as const,
+      () => {
+        actions.refreshDiff()
+        comparison.refresh()
+      },
+    ),
   )
 
   const { config } = settings
@@ -197,6 +209,11 @@ export function App(props: {
   const activeImage = () => {
     const path = workspace.activePath()
     return path && isImagePath(path) ? path : null
+  }
+
+  const closeComparisonDetail = () => {
+    comparison.closeDetail()
+    panes.focusTree()
   }
 
   /** The diff was opened from the source-control panel, and the panel is still
@@ -351,19 +368,49 @@ export function App(props: {
                 />
               }
             >
-              <GitPanel
-                branch={git.branch()}
-                ahead={git.upstream()?.ahead ?? 0}
-                behind={git.upstream()?.behind ?? 0}
-                rows={git.rows()}
-                base={git.diffBase()}
-                cursor={panes.gitCursor()}
-                focused={panes.focus() === 'tree'}
-                width={settings.treeWidth()}
-                inRepo={git.inRepo()}
-                onFocus={() => panes.setFocus('tree')}
-                onActivate={actions.gitActivateRow}
-              />
+              <Show
+                when={comparison.active()}
+                fallback={
+                  <GitPanel
+                    branch={git.branch()}
+                    ahead={git.upstream()?.ahead ?? 0}
+                    behind={git.upstream()?.behind ?? 0}
+                    rows={git.rows()}
+                    base={git.diffBase()}
+                    cursor={panes.gitCursor()}
+                    focused={panes.focus() === 'tree'}
+                    width={settings.treeWidth()}
+                    inRepo={git.inRepo()}
+                    onFocus={() => panes.setFocus('tree')}
+                    onActivate={actions.gitActivateRow}
+                  />
+                }
+              >
+                <ComparePanel
+                  state={comparison.state()}
+                  comparison={comparison.result()}
+                  files={comparison.filteredFiles()}
+                  commits={comparison.filteredCommits()}
+                  mode={comparison.mode()}
+                  cursor={
+                    comparison.mode() === 'files'
+                      ? comparison.fileCursor()
+                      : comparison.commitCursor()
+                  }
+                  focused={panes.focus() === 'tree'}
+                  width={settings.treeWidth()}
+                  error={comparison.error()}
+                  onFocus={() => panes.setFocus('tree')}
+                  onActivate={index => {
+                    if (comparison.mode() === 'files') {
+                      comparison.move(index - comparison.fileCursor())
+                    } else {
+                      comparison.move(index - comparison.commitCursor())
+                    }
+                    comparison.openSelection()
+                  }}
+                />
+              </Show>
             </Show>
           </box>
           {/* Drag handle: the whole column is the grab target, but only a short
@@ -408,6 +455,7 @@ export function App(props: {
               panes.focus() === 'editor' &&
               !workspace.diff() &&
               !workspace.settingsPage() &&
+              !comparison.detailOpen() &&
               !activeImage()
             }
             theme={config.theme}
@@ -447,6 +495,7 @@ export function App(props: {
               overlays.overlay() ||
               workspace.diff() !== null ||
               workspace.settingsPage() ||
+              comparison.detailOpen() ||
               activeImage() !== null
             }
             onChange={workspace.onEditorChange}
@@ -503,6 +552,23 @@ export function App(props: {
                 />
               </box>
             )}
+          </Show>
+          <Show when={comparison.detailOpen()}>
+            <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={55}>
+              <ComparisonView
+                file={comparison.selectedFile()}
+                content={comparison.selectedContent()}
+                commit={comparison.selectedCommit()}
+                mode={config.diffView}
+                width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                focused={panes.focus() === 'editor'}
+                blocked={overlays.overlay()}
+                onFocus={() => panes.setFocus('editor')}
+                onMoveFile={comparison.moveDetail}
+                onToggleMode={settings.toggleDiffView}
+                onClose={closeComparisonDetail}
+              />
+            </box>
           </Show>
         </box>
       </box>

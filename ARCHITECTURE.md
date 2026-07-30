@@ -30,6 +30,7 @@ scripts/
     fileOps.ts       move/copy/delete batches and the x/c/p clipboard
     git.ts           git signals, the serialised mutation runner, refresh effects
     branches.ts      branch picker state + the switch/create/merge/rename/delete runs
+    comparison.ts    branch-comparison state and its OID-keyed caches
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
@@ -46,7 +47,7 @@ scripts/
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
     image.ts         PNG/JPEG decode + scaling onto half-block cells, for the viewer
-    git.ts           queries (diff hunks, status, branches, ahead/behind) + mutations
+    git.ts           queries, mutations, and async branch-comparison metadata/blob reads
     diff.ts          Myers line diff between two texts, emitted as a unified patch
     bulk.ts          delete/copy/move in the background, reporting progress
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
@@ -82,10 +83,10 @@ scripts/
     window.ts        visual rows -> logical lines, for the highlight window
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
-    EditorPane, FileTree, GitPanel, SidebarTabs, Tabs, StatusBar, CommandPalette,
-    FilePicker,
-    SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay,
-    TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
+    EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
+    SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
+    SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay, TextInput,
+    PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
 ```
 
 Dependency direction is one-way: `ui/` and feature folders never import from `app/`.
@@ -193,6 +194,22 @@ never both. Group related commands under a parent to keep the root list short �
 typing in the palette searches every leaf across all levels, so nesting never hides
 anything. Use the `check()` marker when a submenu reflects current state (themes,
 vim mode).
+
+### Add a branch-comparison ref source
+
+Resolve the source to a display name and commit OID before loading metadata, then pass a
+`ComparisonIdentity` to `loadResolvedComparison` in
+[`src/core/git.ts`](src/core/git.ts). The loader intentionally works from immutable OIDs:
+letting a tag, remote-tracking branch, or other moving ref reach the diff subprocesses
+would allow one comparison to mix two snapshots when the ref changes mid-load.
+
+The current controller constrains compare to the checked-out branch and gets base choices
+from `listBranches`. Add new picker choices in
+[`src/app/comparison.ts`](src/app/comparison.ts), but keep ref resolution in `core/` so
+the structured result remains usable without Solid or the TUI. Anything that resolves to a
+commit reuses `changedFiles`, and with it every rename, binary and unusual-path case —
+that shared helper is why commit detail needs no parser of its own, and why a root commit
+is just a diff against the empty tree.
 
 ## Things worth knowing
 
@@ -336,6 +353,21 @@ vim mode).
   push talks to the network and would freeze the TUI for its duration. `createGitOp`
   serialises them, and anything that rewrites the working tree passes `touchesTree` so
   open buffers are pulled back from disk rather than waiting for the watcher.
+- **Branch comparison is the one read-only query that runs off the render thread.** A
+  branch's worth of changed files is more than a frame's worth of subprocess, so its five
+  queries go through `gitAsync` rather than the synchronous `git` every other query uses.
+  All of them are NUL-delimited (`-z`), because a path may contain a tab or a newline and
+  the default output C-quotes it; a truncated record fails the whole read rather than
+  dropping a row, which would read as "this file did not change". Blobs are fetched by
+  object ID only once a row is opened. `app/comparison.ts` drops stale generations and
+  caches comparisons, commits and blobs by resolved OID, so changing a ref invalidates the
+  right result without making every cursor move call git.
+- **Comparison means merge-base to compare tip.** The base branch tip establishes
+  topology and ahead/behind counts, but the file list is
+  `git diff <merge-base>..<compare>`. This excludes work introduced only on the base side
+  after branches diverge. Default-base discovery follows a remote HEAD (preferring
+  `origin`) and then an existing `init.defaultBranch`; it deliberately never guesses
+  `main`, `master`, or the current branch.
 - **git output is not capped at 1 MB.** `spawnSync` truncates there by default and
   reports ENOBUFS, which every caller in `core/git.ts` reads as "no output" — `status` in a
   repository with thousands of changed files would silently become "nothing changed" and
@@ -365,6 +397,11 @@ vim mode).
   other way would be one the arrows could not move from. Inside the page the arrows scroll
   and Tab toggles the layout — the panel and the page each own their arrows, so neither
   needs a chord, and that split only holds while the panel keeps the focus.
+- **Branch comparison replaces the panel rather than sitting beside it.** `app/comparison.ts`
+  owns its own file, commit and commit-file cursors and its caches; uppercase `B` enters it
+  or picks a new base, lowercase `b` stays branch switching. Its detail page is layered over
+  the editor like the working-tree diff, and Esc closes that detail before it leaves
+  comparison.
 - **Destroyed natives outlive the ref.** Closing the last tab swaps the textarea for the
   placeholder and destroys the native buffer while `editor` still points at it. Both
   pending timers touch it, so they are cleared from the ref's own `onCleanup` — the pane's

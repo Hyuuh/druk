@@ -1,4 +1,5 @@
 import type { Branches } from './branches'
+import type { Comparison } from './comparison'
 import type { EditorBridge } from './editor'
 import type { FileOps } from './fileOps'
 import type { Git, GitOp } from './git'
@@ -23,6 +24,7 @@ export interface AppContext {
   gitOp: GitOp
   lsp: Lsp
   branches: Branches
+  comparison: Comparison
   workspace: Workspace
   fileOps: FileOps
   prompts: PromptState & PromptHandlers

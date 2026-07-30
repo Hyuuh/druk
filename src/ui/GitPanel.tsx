@@ -185,7 +185,11 @@ export function GitPanel(props: GitPanelProps) {
       </Show>
       <Show when={props.inRepo}>
         <box height={1} backgroundColor={ui.panelBg} paddingLeft={1}>
-          <text fg={ui.faint} bg={ui.panelBg} content="↑↓ diff · →← fold · c commit · p push" />
+          <text
+            fg={ui.faint}
+            bg={ui.panelBg}
+            content="↑↓ diff · →← fold · c commit · p push · B compare"
+          />
         </box>
       </Show>
     </box>

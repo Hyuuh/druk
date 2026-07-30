@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js'
 
 import { unifiedDiff } from '../core/diff'
-import type { FileStatus } from '../core/git'
+import type { ComparisonFileStatus, FileStatus } from '../core/git'
 import {
   computeHighlights,
   filetypeForPath,
@@ -16,12 +16,14 @@ import { ui } from '../themes'
 import { MARKS, statusColor } from './FileTree'
 
 export type DiffMode = 'inline' | 'split'
+export type DiffFileStatus = FileStatus | ComparisonFileStatus
 
 export interface DiffFile {
   path: string
   /** Shown to the user; `path` keys the workspace. */
   rel: string
-  status: FileStatus
+  oldPath?: string | null
+  status: DiffFileStatus
   oldText: string
   newText: string
 }
@@ -41,8 +43,25 @@ export interface DiffViewProps {
   onToggleMode: () => void
   /** Esc: closes the page, or hands the focus back to whatever opened it. */
   onClose: () => void
+  /** Commit detail pages through its files with ←/→; ordinary diffs leave them dead. */
+  onMoveFile?: (delta: number) => void
   /** What Esc does now, for the hint line — the caller owns the behaviour. */
   escLabel?: string
+}
+
+/** The panel and the page mark a comparison row the same way. */
+export function diffMark(status: DiffFileStatus): string {
+  if (status === 'renamed') return 'R'
+  if (status === 'copied') return 'C'
+  if (status === 'typeChanged') return 'T'
+  return MARKS[status]
+}
+
+export function diffStatusColor(status: DiffFileStatus): string {
+  if (status === 'added' || status === 'deleted' || status === 'modified') {
+    return statusColor(status)
+  }
+  return statusColor('modified')
 }
 
 /**
@@ -331,13 +350,17 @@ export function DiffView(props: DiffViewProps) {
     // panel — one pane owns each meaning, so neither has to be a chord.
     if (k === 'up' || k === 'k') scroll(-1)
     else if (k === 'down' || k === 'j') scroll(1)
+    // Commit detail is the only caller with more than one file to show, and ←/→
+    // are the only keys here that scrolling does not already own.
+    else if (k === 'left' && props.onMoveFile) props.onMoveFile(-1)
+    else if (k === 'right' && props.onMoveFile) props.onMoveFile(1)
     // Ctrl+U / Ctrl+D as well as the page keys, which MacBook keyboards lack —
     // the editor takes the same pair (see EditorPane's page move).
     else if (k === 'pageup' || (key.ctrl && k === 'u')) scroll(-page())
     else if (k === 'pagedown' || k === 'space' || (key.ctrl && k === 'd')) scroll(page())
     else if (k === 'end' || (k === 'g' && key.shift)) scrollTo(Number.MAX_SAFE_INTEGER)
     else if (k === 'home' || k === 'g') scrollTo(0)
-    else if (k === 'tab' || k === 's') props.onToggleMode()
+    else if (k === 'tab' || k === 's' || k === 'd') props.onToggleMode()
     else if (k === 'escape' || k === 'q') props.onClose()
     else return
     key.preventDefault()
@@ -360,9 +383,12 @@ export function DiffView(props: DiffViewProps) {
     const d = diff()
     const tail = ` · +${d.adds} −${d.dels}`
     const room = Math.max(8, props.width - hints().length - tail.length - 3)
-    let rel = props.file.rel
+    let rel =
+      props.file.oldPath && props.file.oldPath !== props.file.rel
+        ? `${props.file.oldPath} → ${props.file.rel}`
+        : props.file.rel
     if (rel.length > room) rel = `…${rel.slice(rel.length - room + 1)}`
-    return ` ${MARKS[props.file.status]} ${rel}${tail}`
+    return ` ${diffMark(props.file.status)} ${rel}${tail}`
   }
 
   return (
@@ -374,7 +400,12 @@ export function DiffView(props: DiffViewProps) {
       onMouseDown={() => props.onFocus()}
     >
       <box flexDirection="row" backgroundColor={ui.barBg}>
-        <text fg={statusColor(props.file.status)} bg={ui.barBg} flexShrink={0} content={header()} />
+        <text
+          fg={diffStatusColor(props.file.status)}
+          bg={ui.barBg}
+          flexShrink={0}
+          content={header()}
+        />
         <box flexGrow={1} backgroundColor={ui.barBg} />
         <text fg={ui.dim} bg={ui.barBg} flexShrink={0} content={hints()} />
       </box>

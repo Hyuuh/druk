@@ -57,6 +57,7 @@ export interface CommandActions {
   problemsNext: () => void
   problemsPrev: () => void
   gitDiffFile: () => void
+  gitCompareBranches: () => void
   gitDiffBase: () => void
   gitTogglePanelView: () => void
   gitDiffBaseReset: () => void
@@ -146,6 +147,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           id: 'git.diffBaseReset',
           label: 'Compare against HEAD',
           run: actions.gitDiffBaseReset,
+        },
+        {
+          id: 'git.compare',
+          label: 'Compare branches',
+          hint: 'B in source control',
+          run: actions.gitCompareBranches,
         },
         {
           id: 'git.panelView',

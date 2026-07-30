@@ -25,7 +25,19 @@ import { problemFrom } from './lsp'
 
 /** Wire the palette's command tree to the controllers that carry the actions out. */
 export function createCommands(ctx: AppContext) {
-  const { rootDir, status, settings, tree, panes, editor, git, gitOp, workspace, fileOps } = ctx
+  const {
+    rootDir,
+    status,
+    settings,
+    tree,
+    panes,
+    editor,
+    git,
+    gitOp,
+    comparison,
+    workspace,
+    fileOps,
+  } = ctx
   const { say } = status
   const { config } = settings
 
@@ -167,6 +179,11 @@ export function createCommands(ctx: AppContext) {
     problemsNext: () => jumpProblem(1),
     problemsPrev: () => jumpProblem(-1),
     showDiff,
+    gitCompareBranches: () => {
+      ctx.workspace.setDiff(null)
+      panes.showView('git')
+      comparison.open()
+    },
     gitMoveTo,
     gitActivateRow,
     gitTogglePanelView: settings.toggleGitPanelView,
