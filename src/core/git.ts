@@ -1,7 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { StringDecoder } from 'node:string_decoder'
 
 export type LineChange = 'added' | 'modified' | 'deleted'
 export type FileStatus = 'untracked' | 'added' | 'modified' | 'deleted'
@@ -35,13 +34,12 @@ interface AsyncGit {
   overflow: boolean
 }
 
-interface AsyncGitOptions {
-  timeout?: number
-  collectStdout?: boolean
-  onStdout?: (chunk: Buffer) => void
-}
-
-function gitAsync(cwd: string, args: string[], options: AsyncGitOptions = {}): Promise<AsyncGit> {
+/**
+ * `git` off the render thread, for the comparison queries — the synchronous
+ * `git` above would stall a frame for as long as the subprocess takes, which on
+ * a branch's worth of files is not a frame's worth of time.
+ */
+function gitAsync(cwd: string, args: string[], timeout = 10_000): Promise<AsyncGit> {
   return new Promise(resolve => {
     const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
     const stdout: Buffer[] = []
@@ -50,6 +48,8 @@ function gitAsync(cwd: string, args: string[], options: AsyncGitOptions = {}): P
     let timedOut = false
     let overflow = false
     let finished = false
+    // Declared before `finish`, which clears it: the timer's own callback is one
+    // of the ways the process ends, so the two have to close over each other.
     let timer: ReturnType<typeof setTimeout>
 
     const finish = (status: number | null) => {
@@ -76,19 +76,9 @@ function gitAsync(cwd: string, args: string[], options: AsyncGitOptions = {}): P
     timer = setTimeout(() => {
       timedOut = true
       child.kill()
-    }, options.timeout ?? 10_000)
+    }, timeout)
 
-    child.stdout.on('data', (chunk: Buffer) => {
-      options.onStdout?.(chunk)
-      if (options.collectStdout !== false) collect(stdout, chunk)
-      else {
-        outputSize += chunk.length
-        if (outputSize > MAX_OUTPUT) {
-          overflow = true
-          child.kill()
-        }
-      }
-    })
+    child.stdout.on('data', (chunk: Buffer) => collect(stdout, chunk))
     child.stderr.on('data', (chunk: Buffer) => collect(stderr, chunk))
     child.on('error', () => finish(null))
     child.on('close', finish)
@@ -225,20 +215,6 @@ export interface ComparisonIdentity {
   mergeBase: string
   ahead: number
   behind: number
-}
-
-export interface ComparisonFileDraft extends Omit<
-  ComparisonFile,
-  'binary' | 'additions' | 'deletions'
-> {
-  binary: boolean | undefined
-  additions: number | null | undefined
-  deletions: number | null | undefined
-}
-
-export interface ComparisonProgress {
-  changes: ComparisonFileDraft[]
-  stats: ComparisonStats
 }
 
 export type ComparisonContent =
@@ -416,239 +392,201 @@ function comparisonKey(oldPath: string | null, path: string): string {
   return `${oldPath ?? ''}\0${path}`
 }
 
-function nulStream(onToken: (token: string) => void) {
-  const decoder = new StringDecoder('utf8')
-  let tail = ''
-  const consume = (text: string) => {
-    const tokens = `${tail}${text}`.split('\0')
-    tail = tokens.pop() ?? ''
-    for (const token of tokens) onToken(token)
-  }
-  return {
-    write: (chunk: Buffer) => consume(decoder.write(chunk)),
-    end: () => {
-      consume(decoder.end())
-      if (tail.length > 0) onToken(tail)
-      tail = ''
-    },
-  }
-}
-
 function parseCount(value: string): number | null {
   return value === '-' ? null : Number(value)
 }
 
-function comparisonCommit(fields: string[], at = 0): ComparisonCommit {
+const COMMIT_FORMAT = '%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P'
+const COMMIT_FIELDS = 7
+
+/** `git log -z --format=COMMIT_FORMAT` output: seven NUL-separated fields each. */
+function parseCommits(text: string): ComparisonCommit[] | null {
+  const fields = text.split('\0')
+  if (fields.at(-1) === '') fields.pop()
+  if (fields.length % COMMIT_FIELDS !== 0) return null
+  const commits: ComparisonCommit[] = []
+  for (let at = 0; at < fields.length; at += COMMIT_FIELDS) {
+    commits.push({
+      oid: fields[at]!,
+      shortOid: fields[at + 1]!,
+      subject: fields[at + 2]!,
+      authorName: fields[at + 3]!,
+      authorEmail: fields[at + 4]!,
+      authoredAt: fields[at + 5]!,
+      parents: fields[at + 6]!.split(' ').filter(Boolean),
+    })
+  }
+  return commits
+}
+
+/** git's own name for "nothing", so a root commit needs no special case. */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+
+/** Both halves of `changedFiles` need these, and must agree on them. */
+const RENAMES = ['--find-renames', '--find-copies']
+
+interface LineTotals {
+  binary: boolean
+  additions: number | null
+  deletions: number | null
+}
+
+/** All-zero is git's "this side does not exist", not an object to read. */
+function blobOid(field: string | undefined): string | null {
+  return field && !/^0+$/.test(field) ? field : null
+}
+
+/**
+ * `--numstat -z` totals, keyed by path pair. A record is `adds\tdels\tpath`,
+ * except for a rename or a copy, whose path field is empty and whose two paths
+ * follow as records of their own. Null if a record is truncated — every parse
+ * here refuses partial output rather than dropping a row, because a dropped row
+ * would read as "this file did not change".
+ */
+function parseNumstat(text: string): Map<string, LineTotals> | null {
+  const totals = new Map<string, LineTotals>()
+  const records = text.split('\0')
+  if (records.at(-1) === '') records.pop()
+  for (let at = 0; at < records.length; at++) {
+    const record = records[at]!
+    const firstTab = record.indexOf('\t')
+    const secondTab = firstTab < 0 ? -1 : record.indexOf('\t', firstTab + 1)
+    if (secondTab < 0) return null
+    const inlinePath = record.slice(secondTab + 1)
+    let oldPath: string | null = null
+    let path = inlinePath
+    if (inlinePath.length === 0) {
+      if (at + 2 >= records.length) return null
+      oldPath = records[at + 1]!
+      path = records[at + 2]!
+      at += 2
+    }
+    const additions = parseCount(record.slice(0, firstTab))
+    const deletions = parseCount(record.slice(firstTab + 1, secondTab))
+    totals.set(comparisonKey(oldPath, path), {
+      // git spends a `-` on each count of a file it will not diff as text.
+      binary: additions === null || deletions === null,
+      additions,
+      deletions,
+    })
+  }
+  return totals
+}
+
+type RawFile = Omit<ComparisonFile, keyof LineTotals>
+
+/**
+ * `--raw -z` records: `:oldMode newMode oldOid newOid STATUS`, then the path —
+ * or two paths when the status is a rename or a copy. `-z` is what keeps a path
+ * containing a tab, a newline or a non-ASCII byte intact; the default output
+ * C-quotes those, and unquoting them by hand loses the original spelling.
+ */
+function parseRaw(text: string): RawFile[] | null {
+  const files: RawFile[] = []
+  const tokens = text.split('\0')
+  if (tokens.at(-1) === '') tokens.pop()
+  for (let at = 0; at < tokens.length; at++) {
+    const header = tokens[at]!
+    if (!header.startsWith(':')) return null
+    const fields = header.slice(1).split(' ')
+    const spec = fields[4] ?? ''
+    const status = COMPARISON_STATUS[spec[0] ?? '']
+    if (!status) return null
+    const pathCount = status === 'renamed' || status === 'copied' ? 2 : 1
+    if (at + pathCount > tokens.length - 1) return null
+    const paths = tokens.slice(at + 1, at + 1 + pathCount)
+    at += pathCount
+    files.push({
+      path: paths.at(-1)!,
+      oldPath: pathCount === 2 ? paths[0]! : null,
+      status,
+      // `R100`, `C75`: how much of the old file the new one still is.
+      similarity: spec.length > 1 ? Number(spec.slice(1)) : null,
+      oldOid: blobOid(fields[2]),
+      newOid: blobOid(fields[3]),
+    })
+  }
+  return files
+}
+
+/**
+ * The files that differ between two commit-ish, with their line totals. Two
+ * passes because no single git command carries both: `--raw` has the status,
+ * the paths and the blob OIDs a lazy diff needs, `--numstat` has the counts.
+ * Both are given the same rename flags, so they agree on which pairs exist.
+ */
+async function changedFiles(
+  cwd: string,
+  from: string,
+  to: string,
+): Promise<ComparisonResult<{ files: ComparisonFile[]; stats: ComparisonStats }>> {
+  const [rawRun, numstatRun] = await Promise.all([
+    gitAsync(cwd, ['diff', '--raw', '-z', '--abbrev=64', ...RENAMES, from, to]),
+    gitAsync(cwd, ['diff', '--numstat', '-z', ...RENAMES, from, to]),
+  ])
+  if (rawRun.status !== 0) return asyncFailure(rawRun, 'Could not read changed files')
+  if (numstatRun.status !== 0) return asyncFailure(numstatRun, 'Could not read line totals')
+
+  const raw = parseRaw(rawRun.stdout)
+  const totals = parseNumstat(numstatRun.stdout)
+  if (!raw || !totals) {
+    return comparisonFailure('gitError', 'Git returned incomplete comparison metadata')
+  }
+
+  const files: ComparisonFile[] = []
+  const stats: ComparisonStats = { files: 0, additions: 0, deletions: 0, binaryFiles: 0 }
+  for (const file of raw) {
+    const total = totals.get(comparisonKey(file.oldPath, file.path))
+    if (!total) return comparisonFailure('gitError', `Git reported no line totals for ${file.path}`)
+    files.push({ ...file, ...total })
+    stats.files++
+    if (total.binary) stats.binaryFiles++
+    else {
+      stats.additions += total.additions ?? 0
+      stats.deletions += total.deletions ?? 0
+    }
+  }
   return {
-    oid: fields[at]!,
-    shortOid: fields[at + 1]!,
-    subject: fields[at + 2]!,
-    authorName: fields[at + 3]!,
-    authorEmail: fields[at + 4]!,
-    authoredAt: fields[at + 5]!,
-    parents: fields[at + 6]!.split(' ').filter(Boolean),
+    ok: true,
+    value: { files: files.toSorted((a, b) => a.path.localeCompare(b.path)), stats },
   }
 }
 
 /**
- * Load all cheap comparison metadata while progressively publishing file rows.
- * The two resolved OIDs make this a stable snapshot; file contents stay lazy.
+ * A resolved comparison's files and commits. Contents stay unread: the OIDs in
+ * `identity` make this a snapshot, so a blob can be fetched when its row is
+ * opened without the list underneath having moved.
  */
 export async function loadResolvedComparison(
   cwd: string,
   identity: ComparisonIdentity,
-  onProgress?: (progress: ComparisonProgress) => void,
 ): Promise<ComparisonResult<BranchComparison>> {
-  const files = new Map<string, ComparisonFileDraft>()
-  const numstats = new Map<
-    string,
-    { binary: boolean; additions: number | null; deletions: number | null }
-  >()
-  const statsApplied = new Set<string>()
-  const stats: ComparisonStats = { files: 0, additions: 0, deletions: 0, binaryFiles: 0 }
-  let pending: ComparisonFileDraft[] = []
-
-  const emit = (force = false) => {
-    if (!onProgress || pending.length === 0 || (!force && pending.length < 256)) return
-    const changes = pending
-    pending = []
-    onProgress({ changes, stats: { ...stats } })
-  }
-  const publish = (file: ComparisonFileDraft) => {
-    pending.push(file)
-    emit()
-  }
-  const applyNumstat = (
-    key: string,
-    file: ComparisonFileDraft,
-    numstat: { binary: boolean; additions: number | null; deletions: number | null },
-  ) => {
-    const complete: ComparisonFileDraft = { ...file, ...numstat }
-    files.set(key, complete)
-    if (!statsApplied.has(key)) {
-      statsApplied.add(key)
-      if (numstat.binary) stats.binaryFiles++
-      else {
-        stats.additions += numstat.additions ?? 0
-        stats.deletions += numstat.deletions ?? 0
-      }
-    }
-    publish(complete)
-  }
-
-  const rawTokens: string[] = []
-  const drainRaw = () => {
-    while (rawTokens.length > 0) {
-      const header = rawTokens[0]
-      if (!header?.startsWith(':')) return
-      const fields = header.slice(1).split(' ')
-      const statusSpec = fields[4] ?? ''
-      const code = statusSpec[0] ?? ''
-      const status = COMPARISON_STATUS[code]
-      if (!status) {
-        rawTokens.shift()
-        continue
-      }
-      const pathCount = code === 'R' || code === 'C' ? 2 : 1
-      if (rawTokens.length < pathCount + 1) return
-      rawTokens.shift()
-      const paths = rawTokens.splice(0, pathCount)
-      const oldPath = pathCount === 2 ? paths[0]! : null
-      const path = paths.at(-1)!
-      const key = comparisonKey(oldPath, path)
-      const draft: ComparisonFileDraft = {
-        path,
-        oldPath,
-        status,
-        similarity: statusSpec.length > 1 ? Number(statusSpec.slice(1)) : null,
-        binary: undefined,
-        additions: undefined,
-        deletions: undefined,
-        oldOid: /^0+$/.test(fields[2] ?? '') ? null : (fields[2] ?? null),
-        newOid: /^0+$/.test(fields[3] ?? '') ? null : (fields[3] ?? null),
-      }
-      files.set(key, draft)
-      stats.files++
-      publish(draft)
-      const known = numstats.get(key)
-      if (known) applyNumstat(key, draft, known)
-    }
-  }
-
-  const numstatTokens: string[] = []
-  const drainNumstats = () => {
-    while (numstatTokens.length > 0) {
-      const record = numstatTokens[0]!
-      const firstTab = record.indexOf('\t')
-      const secondTab = firstTab < 0 ? -1 : record.indexOf('\t', firstTab + 1)
-      if (firstTab < 0 || secondTab < 0) {
-        numstatTokens.shift()
-        continue
-      }
-      const inlinePath = record.slice(secondTab + 1)
-      const renamed = inlinePath.length === 0
-      if (renamed && numstatTokens.length < 3) return
-      numstatTokens.shift()
-      const oldPath = renamed ? numstatTokens.shift()! : null
-      const path = renamed ? numstatTokens.shift()! : inlinePath
-      const additions = parseCount(record.slice(0, firstTab))
-      const deletions = parseCount(record.slice(firstTab + 1, secondTab))
-      const value = {
-        binary: additions === null || deletions === null,
-        additions,
-        deletions,
-      }
-      const key = comparisonKey(oldPath, path)
-      numstats.set(key, value)
-      const draft = files.get(key)
-      if (draft) applyNumstat(key, draft, value)
-    }
-  }
-
-  const rawStream = nulStream(token => {
-    rawTokens.push(token)
-    drainRaw()
-  })
-  const numstatStream = nulStream(token => {
-    numstatTokens.push(token)
-    drainNumstats()
-  })
-  const range = `${identity.mergeBase}..${identity.compare.oid}`
-  const [rawRun, numstatRun, logRun] = await Promise.all([
-    gitAsync(
-      cwd,
-      ['diff', '--raw', '-z', '--abbrev=64', '--find-renames', '--find-copies', range],
-      { collectStdout: false, onStdout: rawStream.write },
-    ),
-    gitAsync(cwd, ['diff', '--numstat', '-z', '--find-renames', '--find-copies', range], {
-      collectStdout: false,
-      onStdout: numstatStream.write,
-    }),
+  // `mergeBase..compare` for the files and `base..compare` for the commits: both
+  // leave out what only the base has, which is what makes this the branch's own
+  // work rather than a tip-to-tip diff.
+  const [changed, logRun] = await Promise.all([
+    changedFiles(cwd, identity.mergeBase, identity.compare.oid),
     gitAsync(cwd, [
       'log',
       '-z',
-      '--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P',
+      `--format=${COMMIT_FORMAT}`,
       `${identity.base.oid}..${identity.compare.oid}`,
     ]),
   ])
-  rawStream.end()
-  numstatStream.end()
-  drainRaw()
-  drainNumstats()
-  emit(true)
-
-  if (rawRun.status !== 0) return asyncFailure(rawRun, 'Could not read changed files')
-  if (numstatRun.status !== 0) return asyncFailure(numstatRun, 'Could not read line totals')
+  if (!changed.ok) return changed
   if (logRun.status !== 0) return asyncFailure(logRun, 'Could not read comparison commits')
-  if (rawTokens.length > 0 || numstatTokens.length > 0) {
-    return comparisonFailure('gitError', 'Git returned incomplete comparison metadata')
-  }
-  if (
-    files.size !== numstats.size ||
-    [...files.values()].some(
-      file =>
-        file.binary === undefined || file.additions === undefined || file.deletions === undefined,
-    )
-  ) {
-    return comparisonFailure('gitError', 'Git returned inconsistent comparison metadata')
-  }
-
-  const commitFields = logRun.stdout.split('\0')
-  if (commitFields.at(-1) === '') commitFields.pop()
-  if (commitFields.length % 7 !== 0) {
-    return comparisonFailure('gitError', 'Git returned incomplete commit metadata')
-  }
-  const commits: ComparisonCommit[] = []
-  for (let at = 0; at < commitFields.length; at += 7) {
-    commits.push(comparisonCommit(commitFields, at))
-  }
-
-  return {
-    ok: true,
-    value: {
-      ...identity,
-      files: [...files.values()]
-        .map(file => ({
-          ...file,
-          binary: file.binary!,
-          additions: file.additions!,
-          deletions: file.deletions!,
-        }))
-        .toSorted((a, b) => a.path.localeCompare(b.path)),
-      commits,
-      stats,
-    },
-  }
+  const commits = parseCommits(logRun.stdout)
+  if (!commits) return comparisonFailure('gitError', 'Git returned incomplete commit metadata')
+  return { ok: true, value: { ...identity, ...changed.value, commits } }
 }
 
 export async function loadBranchComparison(
   cwd: string,
   baseName: string,
   compareName?: string,
-  onProgress?: (progress: ComparisonProgress) => void,
 ): Promise<ComparisonResult<BranchComparison>> {
   const identity = await resolveComparison(cwd, baseName, compareName)
-  return identity.ok ? loadResolvedComparison(cwd, identity.value, onProgress) : identity
+  return identity.ok ? loadResolvedComparison(cwd, identity.value) : identity
 }
 
 /** The two textual sides of one comparison row, fetched only when it is opened. */
@@ -665,108 +603,26 @@ export async function comparisonFileContent(
   if (newRun && newRun.status !== 0) return asyncFailure(newRun, `Could not read ${file.path}`)
   return {
     ok: true,
-    value: {
-      binary: false,
-      oldText: oldRun?.stdout ?? '',
-      newText: newRun?.stdout ?? '',
-    },
+    value: { binary: false, oldText: oldRun?.stdout ?? '', newText: newRun?.stdout ?? '' },
   }
 }
 
-async function rootCommitFiles(
-  cwd: string,
-  oid: string,
-): Promise<ComparisonResult<{ files: ComparisonFile[]; stats: ComparisonStats }>> {
-  const [treeRun, numstatRun] = await Promise.all([
-    gitAsync(cwd, ['ls-tree', '-r', '-z', '--full-tree', oid]),
-    gitAsync(cwd, ['diff-tree', '--root', '--no-commit-id', '--numstat', '-z', '-r', oid]),
-  ])
-  if (treeRun.status !== 0) return asyncFailure(treeRun, 'Could not read the root commit tree')
-  if (numstatRun.status !== 0) {
-    return asyncFailure(numstatRun, 'Could not read the root commit line totals')
-  }
-
-  const oids = new Map<string, string>()
-  for (const record of treeRun.stdout.split('\0')) {
-    if (!record) continue
-    const tab = record.indexOf('\t')
-    const header = tab < 0 ? [] : record.slice(0, tab).split(' ')
-    if (header.length >= 3) oids.set(record.slice(tab + 1), header[2]!)
-  }
-
-  const files: ComparisonFile[] = []
-  const stats: ComparisonStats = { files: 0, additions: 0, deletions: 0, binaryFiles: 0 }
-  for (const record of numstatRun.stdout.split('\0')) {
-    if (!record) continue
-    const firstTab = record.indexOf('\t')
-    const secondTab = firstTab < 0 ? -1 : record.indexOf('\t', firstTab + 1)
-    if (firstTab < 0 || secondTab < 0) {
-      return comparisonFailure('gitError', 'Git returned incomplete root commit metadata')
-    }
-    const path = record.slice(secondTab + 1)
-    const additions = parseCount(record.slice(0, firstTab))
-    const deletions = parseCount(record.slice(firstTab + 1, secondTab))
-    const binary = additions === null || deletions === null
-    files.push({
-      path,
-      oldPath: null,
-      status: 'added',
-      similarity: null,
-      binary,
-      additions,
-      deletions,
-      oldOid: null,
-      newOid: oids.get(path) ?? null,
-    })
-    stats.files++
-    if (binary) stats.binaryFiles++
-    else {
-      stats.additions += additions ?? 0
-      stats.deletions += deletions ?? 0
-    }
-  }
-  return {
-    ok: true,
-    value: { files: files.toSorted((a, b) => a.path.localeCompare(b.path)), stats },
-  }
-}
-
-/**
- * Metadata and first-parent file changes for one commit. Reusing the branch
- * loader for ordinary commits keeps rename/binary/path parsing in one place;
- * only a root commit needs its empty-tree special case.
- */
+/** Metadata and first-parent file changes for one commit. */
 export async function comparisonCommitDetail(
   cwd: string,
   oid: string,
 ): Promise<ComparisonResult<ComparisonCommitDetail>> {
-  const metadata = await gitAsync(cwd, [
-    'log',
-    '-1',
-    '-z',
-    '--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%P',
-    oid,
-  ])
+  const metadata = await gitAsync(cwd, ['log', '-1', '-z', `--format=${COMMIT_FORMAT}`, oid])
   if (metadata.status !== 0) return asyncFailure(metadata, 'Could not read commit metadata')
-  const fields = metadata.stdout.split('\0')
-  if (fields.at(-1) === '') fields.pop()
-  if (fields.length !== 7) {
-    return comparisonFailure('invalidCompare', `Commit "${oid}" does not exist`)
-  }
-  const commit = comparisonCommit(fields)
-  const parent = commit.parents[0]
-  if (!parent) {
-    const root = await rootCommitFiles(cwd, commit.oid)
-    return root.ok ? { ok: true, value: { commit, ...root.value } } : root
-  }
+  const commits = parseCommits(metadata.stdout)
+  const commit = commits?.length === 1 ? commits[0]! : null
+  if (!commit) return comparisonFailure('invalidCompare', `Commit "${oid}" does not exist`)
 
-  const comparison = await loadBranchComparison(cwd, parent, commit.oid)
-  return comparison.ok
-    ? {
-        ok: true,
-        value: { commit, files: comparison.value.files, stats: comparison.value.stats },
-      }
-    : comparison
+  // First parent for a merge, as `git show` reads one — a combined diff is not
+  // something the diff renderer can draw. The empty tree stands in for the
+  // parent a root commit does not have.
+  const changed = await changedFiles(cwd, commit.parents[0] ?? EMPTY_TREE, commit.oid)
+  return changed.ok ? { ok: true, value: { commit, ...changed.value } } : changed
 }
 
 const STATUS_BY_CODE: Record<string, FileStatus> = {

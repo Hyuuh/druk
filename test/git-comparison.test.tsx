@@ -249,28 +249,6 @@ test('comparison preserves paths that porcelain output would quote', async () =>
   expect(result.value.files.map(file => file.path).toSorted()).toEqual(paths.toSorted())
 })
 
-test('comparison publishes bounded drafts while a thousands-file diff is still loading', async () => {
-  const { dir, git } = repo('trunk')
-  git('switch', '-q', '-c', 'feature')
-  for (let index = 0; index < 2000; index++) {
-    writeFileSync(join(dir, `file-${index.toString().padStart(4, '0')}.txt`), `${index}\n`)
-  }
-  git('add', '.')
-  git('commit', '-q', '-m', 'many files')
-  const progress: Parameters<NonNullable<Parameters<typeof loadBranchComparison>[3]>>[0][] = []
-
-  const result = await loadBranchComparison(dir, 'trunk', 'feature', update =>
-    progress.push(update),
-  )
-
-  expect(result.ok).toBe(true)
-  if (!result.ok) return
-  expect(progress.length).toBeGreaterThan(1)
-  expect(progress.some(update => update.changes.some(file => file.binary === undefined))).toBe(true)
-  expect(Math.max(...progress.map(update => update.changes.length))).toBeLessThanOrEqual(256)
-  expect(result.value.files).toHaveLength(2000)
-}, 10_000)
-
 test('comparison file content loads the exact object sides for every status', async () => {
   const { dir, git } = repo('trunk')
   const oldName = 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n'

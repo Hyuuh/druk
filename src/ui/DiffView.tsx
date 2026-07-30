@@ -43,20 +43,21 @@ export interface DiffViewProps {
   onToggleMode: () => void
   /** Esc: closes the page, or hands the focus back to whatever opened it. */
   onClose: () => void
-  /** Commit detail owns ↑/↓ as a file pager; ordinary diffs leave them scrolling. */
+  /** Commit detail pages through its files with ←/→; ordinary diffs leave them dead. */
   onMoveFile?: (delta: number) => void
   /** What Esc does now, for the hint line — the caller owns the behaviour. */
   escLabel?: string
 }
 
-function diffMark(status: DiffFileStatus): string {
+/** The panel and the page mark a comparison row the same way. */
+export function diffMark(status: DiffFileStatus): string {
   if (status === 'renamed') return 'R'
   if (status === 'copied') return 'C'
   if (status === 'typeChanged') return 'T'
   return MARKS[status]
 }
 
-function diffStatusColor(status: DiffFileStatus): string {
+export function diffStatusColor(status: DiffFileStatus): string {
   if (status === 'added' || status === 'deleted' || status === 'modified') {
     return statusColor(status)
   }
@@ -347,13 +348,13 @@ export function DiffView(props: DiffViewProps) {
     const k = key.name
     // The arrows scroll here and page through the changes in the source-control
     // panel — one pane owns each meaning, so neither has to be a chord.
-    if (k === 'up' || k === 'k') {
-      if (props.onMoveFile) props.onMoveFile(-1)
-      else scroll(-1)
-    } else if (k === 'down' || k === 'j') {
-      if (props.onMoveFile) props.onMoveFile(1)
-      else scroll(1)
-    } else if (k === 'pageup') scroll(-page())
+    if (k === 'up' || k === 'k') scroll(-1)
+    else if (k === 'down' || k === 'j') scroll(1)
+    // Commit detail is the only caller with more than one file to show, and ←/→
+    // are the only keys here that scrolling does not already own.
+    else if (k === 'left' && props.onMoveFile) props.onMoveFile(-1)
+    else if (k === 'right' && props.onMoveFile) props.onMoveFile(1)
+    else if (k === 'pageup') scroll(-page())
     else if (k === 'pagedown' || k === 'space') scroll(page())
     else if (k === 'end' || (k === 'g' && key.shift)) scrollTo(Number.MAX_SAFE_INTEGER)
     else if (k === 'home' || k === 'g') scrollTo(0)

@@ -30,7 +30,7 @@ scripts/
     fileOps.ts       move/copy/delete batches and the x/c/p clipboard
     git.ts           git signals, the serialised mutation runner, refresh effects
     branches.ts      branch picker state + the switch/create/merge/rename/delete runs
-    comparison.ts    branch-comparison state, progressive loading and OID-keyed caches
+    comparison.ts    branch-comparison state and its OID-keyed caches
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
@@ -78,8 +78,8 @@ scripts/
     window.ts        visual rows -> logical lines, for the highlight window
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
-    EditorPane, FileTree, GitPanel, ComparePanel, CommitView, ComparisonBinaryView,
-    SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker, CompareFilter,
+    EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
+    SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
     SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay, TextInput,
     PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
 ```
@@ -201,10 +201,10 @@ would allow one comparison to mix two snapshots when the ref changes mid-load.
 The current controller constrains compare to the checked-out branch and gets base choices
 from `listBranches`. Add new picker choices in
 [`src/app/comparison.ts`](src/app/comparison.ts), but keep ref resolution in `core/` so
-the structured result remains usable without Solid or the TUI. Commit-like sources can
-reuse `BranchComparison`, merge-base scoping, caches, and detail views unchanged.
-Working-tree or index sources need a separate snapshot resolver because they have no
-stable commit OID; they may still reuse the file model, filtering, and rendering.
+the structured result remains usable without Solid or the TUI. Anything that resolves to a
+commit reuses `changedFiles`, and with it every rename, binary and unusual-path case —
+that shared helper is why commit detail needs no parser of its own, and why a root commit
+is just a diff against the empty tree.
 
 ## Things worth knowing
 
@@ -348,13 +348,15 @@ stable commit OID; they may still reuse the file model, filtering, and rendering
   push talks to the network and would freeze the TUI for its duration. `createGitOp`
   serialises them, and anything that rewrites the working tree passes `touchesTree` so
   open buffers are pulled back from disk rather than waiting for the watcher.
-- **Branch comparison is the read-only async exception.** A large repository can return
-  thousands of paths, so comparison identity, raw status, numstat and commit metadata use
-  bounded asynchronous subprocesses. Raw and numstat output is NUL-delimited and streamed
-  into batches of at most 256 changes; blob contents are fetched by object ID only after a
-  row is opened. `app/comparison.ts` drops stale generations and caches comparisons,
-  commits and blobs by resolved OID, so changing a ref invalidates the right result
-  without making every cursor move call Git.
+- **Branch comparison is the one read-only query that runs off the render thread.** A
+  branch's worth of changed files is more than a frame's worth of subprocess, so its five
+  queries go through `gitAsync` rather than the synchronous `git` every other query uses.
+  All of them are NUL-delimited (`-z`), because a path may contain a tab or a newline and
+  the default output C-quotes it; a truncated record fails the whole read rather than
+  dropping a row, which would read as "this file did not change". Blobs are fetched by
+  object ID only once a row is opened. `app/comparison.ts` drops stale generations and
+  caches comparisons, commits and blobs by resolved OID, so changing a ref invalidates the
+  right result without making every cursor move call git.
 - **Comparison means merge-base to compare tip.** The base branch tip establishes
   topology and ahead/behind counts, but the file list is
   `git diff <merge-base>..<compare>`. This excludes work introduced only on the base side

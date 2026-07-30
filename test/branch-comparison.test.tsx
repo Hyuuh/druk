@@ -119,7 +119,8 @@ test('commit mode opens metadata, changed files and the first file diff', async 
   expect(frame).toContain('Test <test@example.com>')
   expect(frame).toContain('2 files')
 
-  await press(t, input => input.pressArrow('down'))
+  // ←→ page through the commit's files; ↑↓ stay the diff's own scroll.
+  await press(t, input => input.pressArrow('right'))
   await untilFrame(t, '+ export const session = true')
   expect(t.captureCharFrame()).toContain('session.ts')
 })

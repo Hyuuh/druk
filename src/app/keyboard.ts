@@ -85,7 +85,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         // A page is the frontmost "tab": close it before any file tab.
         if (workspace.settingsPage()) return workspace.setSettingsPage(false)
         if (workspace.diff()) return workspace.setDiff(null)
-        if (comparison.selectedFile()) return comparison.closeDetail()
+        if (comparison.detailOpen()) return comparison.closeDetail()
         if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
       })
     }
@@ -110,7 +110,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       // With a page up, Esc belongs to it (it closes the page) — moving
       // focus to the tree here would take the key away before it ever arrives.
       const pageUp =
-        workspace.diff() !== null || workspace.settingsPage() || comparison.selectedFile() !== null
+        workspace.diff() !== null || workspace.settingsPage() || comparison.detailOpen()
       if (k === 'escape' && panes.sidebar() && !vimOwnsEscape && !pageUp) {
         panes.focusTree()
       }
@@ -154,12 +154,12 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
             comparison.openSelection()
             break
           case 'tab':
-            if (comparison.selectedFile()) panes.setFocus('editor')
+            if (comparison.detailOpen()) panes.setFocus('editor')
             break
           case 'escape':
             // The detail sits on top of the panel: Esc dismisses that first, or
             // the comparison would close and leave the page it opened behind.
-            if (comparison.selectedFile()) comparison.closeDetail()
+            if (comparison.detailOpen()) comparison.closeDetail()
             else comparison.close()
             break
           case '[':

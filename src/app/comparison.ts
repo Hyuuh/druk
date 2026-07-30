@@ -15,7 +15,6 @@ import type {
   ComparisonCommitDetail,
   ComparisonContent,
   ComparisonFile,
-  ComparisonFileDraft,
 } from '../core/git'
 import { fuzzyScore } from '../core/search'
 import type { Git } from './git'
@@ -30,9 +29,6 @@ function remember<K, V>(cache: Map<K, V>, key: K, value: V, limit: number) {
   if (cache.size > limit) cache.delete(cache.keys().next().value!)
 }
 
-const fileKey = (file: Pick<ComparisonFileDraft, 'oldPath' | 'path'>) =>
-  `${file.oldPath ?? ''}\0${file.path}`
-
 const contentKey = (file: ComparisonFile) => `${file.oldOid ?? ''}:${file.newOid ?? ''}`
 
 /** Read-only branch comparison state, independent from working-tree git state. */
@@ -41,7 +37,6 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
   const [active, setActive] = createSignal(false)
   const [state, setState] = createSignal<ComparisonLoadState>('idle')
   const [result, setResult] = createSignal<BranchComparison | null>(null)
-  const [drafts, setDrafts] = createSignal<ComparisonFileDraft[]>([])
   const [error, setError] = createSignal('')
   const [mode, setMode] = createSignal<ComparisonListMode>('files')
   const [filter, setFilterValue] = createSignal('')
@@ -63,7 +58,7 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
 
   const filteredFiles = createMemo(() => {
     const query = filter().trim()
-    const source = result()?.files ?? drafts()
+    const source = result()?.files ?? []
     if (!query) return source
     return source.filter(
       file =>
@@ -92,7 +87,6 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
 
   const show = (comparison: BranchComparison) => {
     setResult(comparison)
-    setDrafts(comparison.files)
     setState(comparison.files.length === 0 && comparison.commits.length === 0 ? 'empty' : 'ready')
     setError('')
     setFileCursor(0)
@@ -104,7 +98,6 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     setState('loading')
     setError('')
     setResult(null)
-    setDrafts([])
     const compare = git.branch() ?? currentBranch(rootDir) ?? undefined
     const identity = await resolveComparison(rootDir, base, compare)
     if (generation !== requestGeneration) return
@@ -118,12 +111,7 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
       return
     }
 
-    const byPath = new Map<string, ComparisonFileDraft>()
-    const loaded = await loadResolvedComparison(rootDir, identity.value, progress => {
-      if (generation !== requestGeneration) return
-      for (const change of progress.changes) byPath.set(fileKey(change), change)
-      setDrafts([...byPath.values()].toSorted((a, b) => a.path.localeCompare(b.path)))
-    })
+    const loaded = await loadResolvedComparison(rootDir, identity.value)
     if (generation !== requestGeneration) return
     if (!loaded.ok) return fail(loaded.detail)
     remember(comparisons, key, loaded.value, 8)
@@ -141,7 +129,9 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     setFilterValue('')
     setFilterOpen(false)
     closeDetail()
-    const base = chosenBase() ?? defaultBranch(rootDir)
+    // The editor-wide comparison base, when one is set, is the branch the user
+    // has already said they are working against.
+    const base = chosenBase() ?? git.diffBase() ?? defaultBranch(rootDir)
     if (base) {
       void load(base)
       return
@@ -185,12 +175,6 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     closeDetail()
   }
 
-  const showCommits = () => {
-    setMode('commits')
-    setCommitCursor(0)
-    closeDetail()
-  }
-
   const move = (delta: number) => {
     if (mode() === 'files') {
       const last = Math.max(0, filteredFiles().length - 1)
@@ -221,11 +205,11 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     setSelectedContent(null)
     if (mode() === 'files') {
       const file = filteredFiles()[fileCursor()]
-      if (!file || file.binary === undefined) return
+      if (!file) return
       setSelectedCommit(null)
       setDetailFileCursor(0)
-      setSelectedFile(file as ComparisonFile)
-      void loadContent(file as ComparisonFile, generation)
+      setSelectedFile(file)
+      void loadContent(file, generation)
       return
     }
 
@@ -290,11 +274,15 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     })()
   }
 
+  /** A detail page is up. A commit with an empty first-parent diff has no file,
+   * and still owns the editor slot and Esc. */
+  const detailOpen = () => selectedFile() !== null || selectedCommit() !== null
+
   return {
     active,
+    detailOpen,
     state,
     result,
-    drafts,
     error,
     mode,
     filter,
@@ -320,7 +308,6 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     },
     setFilter,
     toggleMode,
-    showCommits,
     move,
     openSelection,
     closeDetail,

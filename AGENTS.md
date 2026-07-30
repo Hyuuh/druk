@@ -148,7 +148,7 @@ dependency rule, and recipes for the extension points:
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | handler in `src/app/keyboard.ts` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Alt+/ peek and the welcome screen) |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
-| branch-comparison behavior | Git queries and models in `src/core/git.ts`, state/caches in `src/app/comparison.ts`, and rows/details in `ComparePanel`, `CommitView`, `ComparisonBinaryView`, and `DiffView` |
+| branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 

@@ -2,19 +2,14 @@ import { TextAttributes } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 
-import type {
-  BranchComparison,
-  ComparisonCommit,
-  ComparisonFileDraft,
-  ComparisonFileStatus,
-} from '../core/git'
+import type { BranchComparison, ComparisonCommit, ComparisonFile } from '../core/git'
 import { ui } from '../themes'
-import { statusColor } from './FileTree'
+import { diffMark, diffStatusColor } from './DiffView'
 
 export interface ComparePanelProps {
   state: 'idle' | 'loading' | 'ready' | 'empty' | 'error'
   comparison: BranchComparison | null
-  files: ComparisonFileDraft[]
+  files: ComparisonFile[]
   commits: ComparisonCommit[]
   mode: 'files' | 'commits'
   cursor: number
@@ -25,29 +20,13 @@ export interface ComparePanelProps {
   onActivate: (index: number) => void
 }
 
-const MARKS: Record<ComparisonFileStatus, string> = {
-  added: 'A',
-  modified: 'M',
-  deleted: 'D',
-  renamed: 'R',
-  copied: 'C',
-  typeChanged: 'T',
-}
-
-const color = (status: ComparisonFileStatus) =>
-  status === 'added'
-    ? statusColor('added')
-    : status === 'deleted'
-      ? statusColor('deleted')
-      : statusColor('modified')
-
 /** Branch-comparison mode inside the existing source-control sidebar. */
 export function ComparePanel(props: ComparePanelProps) {
   const dimensions = useTerminalDimensions()
   const rows = () => (props.mode === 'files' ? props.files : props.commits)
   const cursor = () => Math.max(0, Math.min(props.cursor, rows().length - 1))
-  // Sidebar tabs + six header rows + footer + tabs/status chrome.
-  const pageRows = () => Math.max(3, dimensions().height - 11)
+  // Sidebar tabs + five header rows + footer + tabs/status chrome.
+  const pageRows = () => Math.max(3, dimensions().height - 10)
   const [top, setTop] = createSignal(0)
 
   createEffect(() => {
@@ -66,9 +45,10 @@ export function ComparePanel(props: ComparePanelProps) {
   const visibleCommits = createMemo(() => props.commits.slice(top(), top() + pageRows()))
   const summary = () => {
     const comparison = props.comparison
-    if (!comparison) return `${props.files.length} files`
+    if (!comparison) return ''
     const behind = comparison.behind > 0 ? ` ↓${comparison.behind}` : ''
-    return `↑${comparison.ahead}${behind} ${comparison.stats.files} files`
+    const { files, additions, deletions } = comparison.stats
+    return `↑${comparison.ahead}${behind} · ${files} files · +${additions} −${deletions}`
   }
 
   return (
@@ -81,7 +61,7 @@ export function ComparePanel(props: ComparePanelProps) {
       flexBasis={0}
       onMouseDown={() => props.onFocus()}
     >
-      <box height={6} flexDirection="column" backgroundColor={ui.panelBg} paddingLeft={2}>
+      <box height={5} flexDirection="column" backgroundColor={ui.panelBg} paddingLeft={2}>
         <text
           fg={props.focused ? ui.text : ui.dim}
           bg={ui.panelBg}
@@ -95,15 +75,6 @@ export function ComparePanel(props: ComparePanelProps) {
           content={`base  ${props.comparison?.base.name ?? 'loading…'}`}
         />
         <text fg={ui.dim} bg={ui.panelBg} content={summary()} />
-        <text
-          fg={ui.dim}
-          bg={ui.panelBg}
-          content={
-            props.comparison
-              ? `+${props.comparison.stats.additions} −${props.comparison.stats.deletions}`
-              : ''
-          }
-        />
         <text
           fg={ui.accent}
           bg={ui.panelBg}
@@ -165,11 +136,7 @@ export function ComparePanel(props: ComparePanelProps) {
                 const bg = () =>
                   selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.panelBg
                 const totals = () =>
-                  file.binary === true
-                    ? 'binary'
-                    : file.additions === undefined || file.deletions === undefined
-                      ? '…'
-                      : `+${file.additions} −${file.deletions}`
+                  file.binary ? 'binary' : `+${file.additions} −${file.deletions}`
                 return (
                   <box
                     height={1}
@@ -180,9 +147,9 @@ export function ComparePanel(props: ComparePanelProps) {
                     <text fg={ui.text} bg={bg()} content={` ${file.path}`} flexGrow={1} />
                     <text fg={ui.faint} bg={bg()} content={`${totals()} `} flexShrink={0} />
                     <text
-                      fg={color(file.status)}
+                      fg={diffStatusColor(file.status)}
                       bg={bg()}
-                      content={`${MARKS[file.status]} `}
+                      content={`${diffMark(file.status)} `}
                       flexShrink={0}
                     />
                   </box>
@@ -193,7 +160,11 @@ export function ComparePanel(props: ComparePanelProps) {
         </box>
       </Show>
       <box height={1} backgroundColor={ui.panelBg} paddingLeft={1}>
-        <text fg={ui.faint} bg={ui.panelBg} content="↑↓ open · c commits · B base · Esc back" />
+        <text
+          fg={ui.faint}
+          bg={ui.panelBg}
+          content="↑↓ open · c commits · / filter · B base · Esc"
+        />
       </box>
     </box>
   )

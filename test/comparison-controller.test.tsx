@@ -166,7 +166,7 @@ test('controller opens commit metadata and its first file diff lazily', async ()
 
   root.comparison.open()
   await until(() => root.comparison.state() === 'ready')
-  root.comparison.showCommits()
+  root.comparison.toggleMode()
   root.comparison.openSelection()
   await until(
     () => root.comparison.selectedCommit() !== null && root.comparison.selectedContent() !== null,

@@ -3,12 +3,10 @@ import { basename } from 'node:path'
 import type { MouseEvent } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
-import type { Accessor } from 'solid-js'
 
 import { CONFIG_FILE } from '../core/config'
 import type { Config } from '../core/config'
 import { watchTree } from '../core/fs'
-import type { ComparisonCommitDetail, ComparisonContent } from '../core/git'
 import { isImagePath } from '../core/image'
 import { checkForUpdate, currentVersion } from '../core/update'
 import { languageLabel } from '../languages'
@@ -16,9 +14,8 @@ import { filetypeForPath } from '../languages/highlight'
 import { SEVERITY_RANK } from '../lsp/protocol'
 import type { ProblemSeverity } from '../lsp/protocol'
 import { ui } from '../themes'
-import { CommitView } from '../ui/CommitView'
 import { ComparePanel } from '../ui/ComparePanel'
-import { ComparisonBinaryView } from '../ui/ComparisonBinaryView'
+import { ComparisonView } from '../ui/ComparisonView'
 import { DiffView } from '../ui/DiffView'
 import type { DiffFile } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
@@ -438,7 +435,7 @@ export function App(props: {
               panes.focus() === 'editor' &&
               !workspace.diff() &&
               !workspace.settingsPage() &&
-              !comparison.selectedFile() &&
+              !comparison.detailOpen() &&
               !activeImage()
             }
             theme={config.theme}
@@ -458,7 +455,7 @@ export function App(props: {
               overlays.overlay() ||
               workspace.diff() !== null ||
               workspace.settingsPage() ||
-              comparison.selectedFile() !== null ||
+              comparison.detailOpen() ||
               activeImage() !== null
             }
             onChange={workspace.onEditorChange}
@@ -516,69 +513,22 @@ export function App(props: {
               </box>
             )}
           </Show>
-          <Show when={comparison.selectedFile()}>
-            {(file: () => NonNullable<ReturnType<typeof comparison.selectedFile>>) => (
-              <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={55}>
-                <Show
-                  when={comparison.selectedCommit()}
-                  fallback={
-                    <Show
-                      when={comparison.selectedContent()}
-                      fallback={<text fg={ui.dim} bg={ui.bg} content="  loading diff…" />}
-                    >
-                      {(content: Accessor<ComparisonContent>) => {
-                        const value = content()
-                        return value.binary ? (
-                          <ComparisonBinaryView
-                            file={file()}
-                            focused={panes.focus() === 'editor'}
-                            blocked={overlays.overlay()}
-                            onFocus={() => panes.setFocus('editor')}
-                            onClose={closeComparisonDetail}
-                          />
-                        ) : (
-                          <DiffView
-                            file={{
-                              path: file().path,
-                              rel: file().path,
-                              oldPath: file().oldPath,
-                              status: file().status,
-                              oldText: value.oldText,
-                              newText: value.newText,
-                            }}
-                            mode={config.diffView}
-                            width={
-                              dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)
-                            }
-                            focused={panes.focus() === 'editor'}
-                            blocked={overlays.overlay()}
-                            onFocus={() => panes.setFocus('editor')}
-                            onToggleMode={settings.toggleDiffView}
-                            onClose={closeComparisonDetail}
-                          />
-                        )
-                      }}
-                    </Show>
-                  }
-                >
-                  {(detail: Accessor<ComparisonCommitDetail>) => (
-                    <CommitView
-                      detail={detail()}
-                      file={file()}
-                      content={comparison.selectedContent()}
-                      mode={config.diffView}
-                      width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
-                      focused={panes.focus() === 'editor'}
-                      blocked={overlays.overlay()}
-                      onFocus={() => panes.setFocus('editor')}
-                      onMoveFile={comparison.moveDetail}
-                      onToggleMode={settings.toggleDiffView}
-                      onClose={closeComparisonDetail}
-                    />
-                  )}
-                </Show>
-              </box>
-            )}
+          <Show when={comparison.detailOpen()}>
+            <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={55}>
+              <ComparisonView
+                file={comparison.selectedFile()}
+                content={comparison.selectedContent()}
+                commit={comparison.selectedCommit()}
+                mode={config.diffView}
+                width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                focused={panes.focus() === 'editor'}
+                blocked={overlays.overlay()}
+                onFocus={() => panes.setFocus('editor')}
+                onMoveFile={comparison.moveDetail}
+                onToggleMode={settings.toggleDiffView}
+                onClose={closeComparisonDetail}
+              />
+            </box>
           </Show>
         </box>
       </box>
