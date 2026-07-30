@@ -24,6 +24,13 @@ export function createEditorBridge(vim: boolean) {
     key: number
   } | null>(null)
   const [cursor, setCursor] = createSignal({ line: 0, col: 0 })
+  /** Palette-triggered "open the completion menu", same one-shot shape as lineOp. */
+  const [completion, setCompletion] = createSignal<{ key: number } | null>(null)
+  /**
+   * Whether EditorPane's completion menu is on screen. Global key handlers need
+   * it: Esc must close the menu, not move focus to the tree.
+   */
+  const [completionOpen, setCompletionOpen] = createSignal(false)
 
   const bumpReload = () => setReloadKey(k => k + 1)
   const requestHistory = (kind: 'undo' | 'redo') =>
@@ -34,6 +41,7 @@ export function createEditorBridge(vim: boolean) {
   const pushEdit = (content: string) => setEdit(prev => ({ content, key: (prev?.key ?? 0) + 1 }))
   const requestLineOp = (op: 'comment' | 'up' | 'down' | 'duplicate') =>
     setLineOp(prev => ({ op, key: (prev?.key ?? 0) + 1 }))
+  const requestCompletion = () => setCompletion(prev => ({ key: (prev?.key ?? 0) + 1 }))
 
   return {
     vimMode,
@@ -48,6 +56,10 @@ export function createEditorBridge(vim: boolean) {
     pushEdit,
     lineOp,
     requestLineOp,
+    completion,
+    requestCompletion,
+    completionOpen,
+    setCompletionOpen,
     cursor,
     setCursor,
   }

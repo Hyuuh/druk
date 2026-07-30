@@ -30,12 +30,37 @@ function registerVendoredParsers(client: TreeSitterClient): void {
 /** Cleared with the style table: the ids are only valid for the theme they came from. */
 const styleIdByGroup = new Map<string, number | null>()
 
+/** `#rrggbb` blend, `t` of the way from `base` toward `tint`. */
+export function mixColors(base: string, tint: string, t: number): string {
+  const channel = (at: number) => {
+    const a = Number.parseInt(base.slice(at, at + 2), 16)
+    const b = Number.parseInt(tint.slice(at, at + 2), 16)
+    return Math.round(a + (b - a) * t)
+      .toString(16)
+      .padStart(2, '0')
+  }
+  return `#${channel(1)}${channel(3)}${channel(5)}`
+}
+
 /** Shared style table used by every editor buffer (built from the active theme). */
 export function getSyntaxStyle(): SyntaxStyle {
   if (!syntaxStyle) {
     syntaxStyle = SyntaxStyle.fromStyles({
       ...syntaxTheme,
       [INDENT_GUIDE]: { bg: ui.indentGuide },
+      // Layered over the syntax highlights. No fg on purpose: the token keeps
+      // its syntax color. OpenTUI has no underline color — the line always
+      // takes the text's color — so the severity is carried by a tinted
+      // background instead, with the underline on top. Info and hint gain only
+      // the line. The names are druk's, not tree-sitter's.
+      'druk.problem.error': { bg: mixColors(ui.bg, ui.error, 0.28), underline: true },
+      'druk.problem.warning': { bg: mixColors(ui.bg, ui.dirty, 0.22), underline: true },
+      'druk.problem.info': { underline: true },
+      'druk.problem.hint': { underline: true },
+      // Unused code (LSP's Unnecessary tag) reads as absence, not as a fault:
+      // it fades toward the background and drops the line, whatever severity
+      // the server gave it.
+      'druk.problem.unnecessary': { fg: mixColors(ui.bg, ui.text, 0.4), underline: false },
     })
   }
   return syntaxStyle

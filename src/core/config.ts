@@ -41,6 +41,16 @@ export function sidebarColumns(width: number | 'auto', terminalWidth: number): n
 export interface Config {
   /** Color scheme id — see src/themes. */
   theme: ThemeName
+  /**
+   * Follow the OS light/dark appearance: `themeLight` and `themeDark` take over
+   * and `theme` becomes whichever of the two is on screen. Picking a theme by
+   * hand turns this off, since the poll would otherwise undo the pick.
+   */
+  themeSync: boolean
+  /** Theme used while the OS is light and `themeSync` is on. */
+  themeLight: ThemeName
+  /** Theme used while the OS is dark and `themeSync` is on. */
+  themeDark: ThemeName
   /** Modal editing (normal / insert / visual). */
   vim: boolean
   /**
@@ -59,6 +69,15 @@ export interface Config {
   skipUpdate: string
   /** On save: strip trailing spaces and end the file with one newline. */
   trimOnSave: boolean
+  /** On save: run the matching `formatters` command over the file just written. */
+  formatOnSave: boolean
+  /**
+   * Formatter commands keyed by comma-separated extensions (`"ts,tsx"`), or `"*"`
+   * for any file. The saved file's path is appended, and the command must rewrite
+   * the file in place — `["prettier", "--write"]`, `["eslint", "--fix"]`,
+   * `["oxfmt"]`. An empty array disables its entry.
+   */
+  formatters: Record<string, string[]>
   /** Save every dirty buffer when the terminal window loses focus. */
   autoSaveOnBlur: boolean
   /** How the diff view renders: one column of +/- rows, or two side by side. */
@@ -72,6 +91,10 @@ export interface Config {
   respectGitignore: boolean
   /** Language servers: spawn one per language as matching files open. */
   lsp: boolean
+  /** Draw the worst problem's message after the end of its line. */
+  lspInline: boolean
+  /** Completion menu while typing (and on Ctrl+Space). Needs `lsp` on too. */
+  lspCompletion: boolean
   /**
    * Per-server command override, keyed by server id — see src/lsp/servers.ts
    * for the ids and defaults. An empty array disables that server.
@@ -81,17 +104,24 @@ export interface Config {
 
 export const DEFAULTS: Config = {
   theme: 'dark',
+  themeSync: true,
+  themeLight: 'light',
+  themeDark: 'dark',
   vim: false,
   tabSize: 2,
   sidebarWidth: 'auto',
   skipUpdate: '',
   trimOnSave: false,
+  formatOnSave: false,
+  formatters: {},
   autoSaveOnBlur: true,
   diffView: 'inline',
   gitPanelView: 'tree',
   showDotfiles: true,
   respectGitignore: false,
   lsp: true,
+  lspInline: true,
+  lspCompletion: true,
   lspServers: {},
 }
 
@@ -99,6 +129,9 @@ function parse(raw: unknown): Config {
   const obj = (raw ?? {}) as Partial<Record<keyof Config, unknown>>
   return {
     theme: isThemeName(obj.theme) ? obj.theme : DEFAULTS.theme,
+    themeSync: typeof obj.themeSync === 'boolean' ? obj.themeSync : DEFAULTS.themeSync,
+    themeLight: isThemeName(obj.themeLight) ? obj.themeLight : DEFAULTS.themeLight,
+    themeDark: isThemeName(obj.themeDark) ? obj.themeDark : DEFAULTS.themeDark,
     vim: typeof obj.vim === 'boolean' ? obj.vim : DEFAULTS.vim,
     tabSize:
       typeof obj.tabSize === 'number' && obj.tabSize >= 1 && obj.tabSize <= 16
@@ -106,6 +139,8 @@ function parse(raw: unknown): Config {
         : DEFAULTS.tabSize,
     skipUpdate: typeof obj.skipUpdate === 'string' ? obj.skipUpdate : DEFAULTS.skipUpdate,
     trimOnSave: typeof obj.trimOnSave === 'boolean' ? obj.trimOnSave : DEFAULTS.trimOnSave,
+    formatOnSave: typeof obj.formatOnSave === 'boolean' ? obj.formatOnSave : DEFAULTS.formatOnSave,
+    formatters: parseCommands(obj.formatters),
     autoSaveOnBlur:
       typeof obj.autoSaveOnBlur === 'boolean' ? obj.autoSaveOnBlur : DEFAULTS.autoSaveOnBlur,
     diffView:
@@ -118,7 +153,10 @@ function parse(raw: unknown): Config {
     respectGitignore:
       typeof obj.respectGitignore === 'boolean' ? obj.respectGitignore : DEFAULTS.respectGitignore,
     lsp: typeof obj.lsp === 'boolean' ? obj.lsp : DEFAULTS.lsp,
-    lspServers: parseServers(obj.lspServers),
+    lspInline: typeof obj.lspInline === 'boolean' ? obj.lspInline : DEFAULTS.lspInline,
+    lspCompletion:
+      typeof obj.lspCompletion === 'boolean' ? obj.lspCompletion : DEFAULTS.lspCompletion,
+    lspServers: parseCommands(obj.lspServers),
     sidebarWidth:
       typeof obj.sidebarWidth === 'number' &&
       obj.sidebarWidth >= SIDEBAR_MIN &&
@@ -129,16 +167,17 @@ function parse(raw: unknown): Config {
   }
 }
 
-/** Only well-formed entries survive; a malformed one must not break startup. */
-function parseServers(raw: unknown): Record<string, string[]> {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return DEFAULTS.lspServers
-  const servers: Record<string, string[]> = {}
+/** A key → command-array map (`lspServers`, `formatters`). Only well-formed
+ * entries survive; a malformed one must not break startup. */
+function parseCommands(raw: unknown): Record<string, string[]> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+  const commands: Record<string, string[]> = {}
   for (const [id, command] of Object.entries(raw)) {
     if (Array.isArray(command) && command.every(part => typeof part === 'string')) {
-      servers[id] = command
+      commands[id] = command
     }
   }
-  return servers
+  return commands
 }
 
 /** Read the config file, falling back to defaults on any error or bad value. */

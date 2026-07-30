@@ -1,9 +1,21 @@
 import { expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press, runCommand, untilFrame, untilGone } from './helpers'
+import {
+  fixture,
+  launch,
+  openFile,
+  press,
+  runCommand,
+  settle,
+  until,
+  untilFrame,
+  untilGone,
+} from './helpers'
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
+const MARKER = join(import.meta.dir, 'fixtures', 'marker-lsp.ts')
 
 /** Diagnostics cross a process boundary; give the fake server room to start. */
 const LSP_WAIT = 15_000
@@ -21,6 +33,15 @@ test('diagnostics reach the status bar, the problems list, and next-problem', as
   // exercises the whole pipeline, not just the didOpen snapshot.
   await press(t, input => void input.typeText('oops'))
   await untilFrame(t, '● 1', LSP_WAIT)
+
+  // The message is drawn inline after the line's end, before any list opens —
+  // on the same row as the code it belongs to.
+  await untilFrame(t, 'found oops', LSP_WAIT)
+  const row = t
+    .captureCharFrame()
+    .split('\n')
+    .find(line => line.includes('oopsconst'))
+  expect(row).toContain('found oops')
 
   await runCommand(t, 'List problems')
   await untilFrame(t, 'found oops', LSP_WAIT)
@@ -44,5 +65,61 @@ test('the settings page shows the LSP rows and the master toggle flips', async (
 
   await runCommand(t, 'Settings')
   await untilFrame(t, 'LSP diagnostics')
+  expect(t.captureCharFrame()).toContain('Inline problem text')
   expect(t.captureCharFrame()).toMatch(/\d+\/\d+ enabled/)
 }, 15_000)
+
+test('a server spawns only once a file of its language opens', async () => {
+  const dir = fixture({ 'a.ts': 'const oops = 1\n', 'readme.md': 'hi\n' })
+  const marker = join(dir, 'spawn-marker')
+  const t = await launch(dir, {
+    lsp: true,
+    lspServers: { typescript: [process.execPath, MARKER, marker] },
+  })
+
+  // No file open: nothing may spawn, however long the editor sits there.
+  await settle(t, 400)
+  expect(existsSync(marker)).toBe(false)
+
+  // A file of another language does not wake the typescript server either.
+  await openFile(t, 'readme.md')
+  await settle(t, 400)
+  expect(existsSync(marker)).toBe(false)
+
+  await openFile(t, 'a.ts')
+  await until(t, () => existsSync(marker), LSP_WAIT)
+}, 30_000)
+
+test('inline text hides when the setting is off, the gutter dot stays', async () => {
+  const dir = fixture({ 'a.ts': 'const oops = 1\n' })
+  const t = await launch(
+    dir,
+    { lsp: true, lspInline: false, lspServers: { typescript: [process.execPath, FAKE] } },
+    {},
+    { openFile: join(dir, 'a.ts') },
+  )
+
+  await untilFrame(t, '● 1', LSP_WAIT)
+  expect(t.captureCharFrame()).not.toContain('found oops')
+}, 30_000)
+
+test('a problem far below the viewport is marked on the track', async () => {
+  const lines = Array.from({ length: 400 }, (_, index) => `const value${index} = ${index}`)
+  lines[380] = 'const oops = 1'
+  const dir = fixture({ 'big.ts': `${lines.join('\n')}\n` })
+  const t = await launch(
+    dir,
+    { lsp: true, lspServers: { typescript: [process.execPath, FAKE] } },
+    { width: 100, height: 24 },
+    { openFile: join(dir, 'big.ts') },
+  )
+
+  await untilFrame(t, '● 1', LSP_WAIT)
+  const frame = t.captureCharFrame().split('\n').filter(Boolean)
+  const marked = frame.flatMap((row, index) => (row.includes('•') ? [index] : []))
+
+  expect(marked).toHaveLength(1)
+  // Near the bottom of the track, where line 380 of 400 belongs — seeing that
+  // without scrolling is the whole point of the column.
+  expect(marked[0]!).toBeGreaterThan(frame.length * 0.8)
+}, 30_000)

@@ -4,6 +4,7 @@ import type { MouseEvent } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
 
+import { watchAppearance } from '../core/appearance'
 import { CONFIG_FILE } from '../core/config'
 import type { Config } from '../core/config'
 import { watchTree } from '../core/fs'
@@ -173,18 +174,24 @@ export function App(props: {
   /** True between grabbing the sidebar divider and letting go. */
   const [resizing, setResizing] = createSignal(false)
 
-  /** Worst problem per line of the active file, for the gutter. */
+  /** Worst problem per line of the active file: the gutter dot and inline text. */
   const problemLines = createMemo(() => {
-    const lines = new Map<number, ProblemSeverity>()
+    const lines = new Map<number, { severity: ProblemSeverity; message: string }>()
     const path = workspace.activePath()
     if (!path) return lines
     for (const problem of lsp.problems[path] ?? []) {
       const held = lines.get(problem.line)
-      if (!held || SEVERITY_RANK[problem.severity] < SEVERITY_RANK[held]) {
-        lines.set(problem.line, problem.severity)
+      if (!held || SEVERITY_RANK[problem.severity] < SEVERITY_RANK[held.severity]) {
+        lines.set(problem.line, { severity: problem.severity, message: problem.message })
       }
     }
     return lines
+  })
+
+  /** Every problem of the active file with its range, for the underlines. */
+  const problemRanges = createMemo(() => {
+    const path = workspace.activePath()
+    return (path ? lsp.problems[path] : undefined) ?? []
   })
 
   const problemCounts = createMemo(() => {
@@ -224,6 +231,19 @@ export function App(props: {
       editor.requestGoto(Math.min(line, total - 1), 0)
     }
   })
+
+  // Polling, not a subscription: no OS offers one portably. `watchAppearance`
+  // reports the current appearance straight away, so turning the setting on — and
+  // starting with it already on — paints the matching theme without waiting a tick.
+  createEffect(
+    on(
+      () => config.themeSync,
+      sync => {
+        if (!sync) return
+        onCleanup(watchAppearance(settings.applyAppearance))
+      },
+    ),
+  )
 
   onMount(() => {
     if (props.checkUpdates === false) return
@@ -448,6 +468,26 @@ export function App(props: {
             tabSize={config.tabSize}
             gitLines={git.gitLines()}
             problems={problemLines()}
+            problemRanges={problemRanges()}
+            problemText={config.lspInline}
+            complete={
+              config.lsp && config.lspCompletion
+                ? (line, col) => {
+                    const path = workspace.activePath()
+                    return path ? lsp.complete(path, line, col) : Promise.resolve(null)
+                  }
+                : null
+            }
+            resolveCompletion={
+              config.lsp && config.lspCompletion
+                ? item => {
+                    const path = workspace.activePath()
+                    return path ? lsp.resolveCompletion(path, item) : Promise.resolve(null)
+                  }
+                : null
+            }
+            completionRequest={editor.completion()}
+            onCompletionMenu={editor.setCompletionOpen}
             notice={workspace.notice()}
             // The diff is a page over this pane, not an overlay — but the hidden
             // textarea must still not eat keys meant for it.

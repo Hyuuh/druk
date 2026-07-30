@@ -1,5 +1,7 @@
 import { createStore, unwrap } from 'solid-js/store'
 
+import { APPEARANCE_ENV, detectAppearance } from '../core/appearance'
+import type { Appearance } from '../core/appearance'
 import { saveConfig, sidebarColumns, SIDEBAR_MIN, SIDEBAR_MAX } from '../core/config'
 import type { Config } from '../core/config'
 import { invalidateSyntaxStyle } from '../languages/highlight'
@@ -37,11 +39,56 @@ export function createSettings(deps: {
     saveConfig(unwrap(config))
   }
 
-  const applyTheme = (name: ThemeName) => {
+  /** Paint a theme, without touching which theme the config says to use. */
+  const paintTheme = (name: ThemeName) => {
     setTheme(name)
     invalidateSyntaxStyle()
+  }
+
+  /**
+   * A theme picked by hand. It has to outlive the next appearance poll, so the
+   * pick turns the sync off — and says so, since the user did not ask for that
+   * and the settings page is the only other place the change shows.
+   */
+  const applyTheme = (name: ThemeName) => {
+    const wasSyncing = config.themeSync
+    paintTheme(name)
+    patchConfig({ theme: name, themeSync: false })
+    status.say(
+      wasSyncing
+        ? `Theme: ${themeLabels[name]} — no longer following the OS appearance`
+        : `Theme: ${themeLabels[name]}`,
+    )
+  }
+
+  /** The OS said light or dark: paint that side's theme, quietly. */
+  const applyAppearance = (appearance: Appearance) => {
+    const name = appearance === 'dark' ? config.themeDark : config.themeLight
+    if (name === config.theme) return
+    paintTheme(name)
     patchConfig({ theme: name })
-    status.say(`Theme: ${themeLabels[name]}`)
+  }
+
+  const applySideTheme = (side: 'themeLight' | 'themeDark', name: ThemeName) => {
+    patchConfig(side === 'themeDark' ? { themeDark: name } : { themeLight: name })
+    status.say(`${side === 'themeDark' ? 'Dark' : 'Light'} theme: ${themeLabels[name]}`)
+    if (config.themeSync) applyAppearance(detectAppearance() ?? 'dark')
+  }
+
+  const toggleThemeSync = () => {
+    const enabled = !config.themeSync
+    patchConfig({ themeSync: enabled })
+    if (!enabled) {
+      status.say('Follow OS appearance off')
+      return
+    }
+    const appearance = detectAppearance()
+    if (!appearance) {
+      status.say(`Follow OS appearance on — this system reports none, set ${APPEARANCE_ENV}`)
+      return
+    }
+    applyAppearance(appearance)
+    status.say(`Following OS appearance (${appearance})`)
   }
 
   const applyTabSize = (size: number) => {
@@ -58,6 +105,17 @@ export function createSettings(deps: {
   const toggleTrim = () => {
     patchConfig({ trimOnSave: !config.trimOnSave })
     status.say(`Trim on save ${config.trimOnSave ? 'on' : 'off'}`)
+  }
+
+  const toggleFormatOnSave = () => {
+    patchConfig({ formatOnSave: !config.formatOnSave })
+    // Turning it on with nothing configured would silently do nothing on save —
+    // point at the config file, which is where the commands live.
+    status.say(
+      config.formatOnSave && Object.keys(config.formatters).length === 0
+        ? 'Format on save on — add commands to "formatters" in the config file'
+        : `Format on save ${onOff(config.formatOnSave)}`,
+    )
   }
 
   const toggleDiffView = () => {
@@ -79,6 +137,16 @@ export function createSettings(deps: {
   const toggleLsp = () => {
     patchConfig({ lsp: !config.lsp })
     status.say(`LSP diagnostics ${config.lsp ? 'on' : 'off'}`)
+  }
+
+  const toggleLspInline = () => {
+    patchConfig({ lspInline: !config.lspInline })
+    status.say(`Inline problem text ${config.lspInline ? 'on' : 'off'}`)
+  }
+
+  const toggleLspCompletion = () => {
+    patchConfig({ lspCompletion: !config.lspCompletion })
+    status.say(`Autocomplete ${config.lspCompletion ? 'on' : 'off'}`)
   }
 
   /**
@@ -155,6 +223,32 @@ export function createSettings(deps: {
       },
     },
     {
+      section: 'Appearance',
+      label: 'Follow OS appearance',
+      value: onOff(config.themeSync),
+      cycle: toggleThemeSync,
+    },
+    {
+      section: 'Appearance',
+      label: 'Light theme',
+      value: themeLabels[config.themeLight],
+      cycle: dir => applySideTheme('themeLight', step(THEME_NAMES, config.themeLight, dir)),
+      select: {
+        options: THEME_NAMES.map(name => themeLabels[name]),
+        pick: at => applySideTheme('themeLight', THEME_NAMES[at]!),
+      },
+    },
+    {
+      section: 'Appearance',
+      label: 'Dark theme',
+      value: themeLabels[config.themeDark],
+      cycle: dir => applySideTheme('themeDark', step(THEME_NAMES, config.themeDark, dir)),
+      select: {
+        options: THEME_NAMES.map(name => themeLabels[name]),
+        pick: at => applySideTheme('themeDark', THEME_NAMES[at]!),
+      },
+    },
+    {
       section: 'Editor',
       label: 'Vim mode',
       value: onOff(config.vim),
@@ -175,6 +269,12 @@ export function createSettings(deps: {
       label: 'Trim trailing whitespace on save',
       value: onOff(config.trimOnSave),
       cycle: toggleTrim,
+    },
+    {
+      section: 'Editor',
+      label: 'Format on save',
+      value: onOff(config.formatOnSave),
+      cycle: toggleFormatOnSave,
     },
     {
       section: 'Editor',
@@ -215,6 +315,18 @@ export function createSettings(deps: {
       cycle: toggleLsp,
     },
     {
+      section: 'Language servers',
+      label: 'Inline problem text',
+      value: onOff(config.lspInline),
+      cycle: toggleLspInline,
+    },
+    {
+      section: 'Language servers',
+      label: 'Autocomplete',
+      value: onOff(config.lspCompletion),
+      cycle: toggleLspCompletion,
+    },
+    {
       // One row, not fourteen: Enter lists every known server and picking one
       // flips it. Custom commands stay in the config file, which the page's
       // footer already points at.
@@ -233,15 +345,20 @@ export function createSettings(deps: {
     config,
     patchConfig,
     applyTheme,
+    applyAppearance,
+    toggleThemeSync,
     applyTabSize,
     applyVim,
     toggleTrim,
+    toggleFormatOnSave,
     toggleAutoSave,
     toggleDiffView,
     toggleGitPanelView,
     toggleDotfiles,
     toggleGitignored,
     toggleLsp,
+    toggleLspInline,
+    toggleLspCompletion,
     toggleServer,
     rows,
     treeWidth,

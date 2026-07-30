@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
-import type { Diagnostic, PublishDiagnosticsParams, RpcMessage } from './protocol'
+import type { CompletionItem, Diagnostic, PublishDiagnosticsParams, RpcMessage } from './protocol'
 import { createDecoder, encodeMessage } from './transport'
 
 /**
@@ -70,6 +70,8 @@ export function spawnLspClient(options: LspClientOptions) {
 
   let state: 'starting' | 'ready' | 'dead' = 'starting'
   let disposed = false
+  /** From the initialize reply: whether `completionItem/resolve` may be sent at all. */
+  let resolveProvider = false
   let nextId = 1
   const pending = new Map<
     number,
@@ -165,12 +167,29 @@ export function spawnLspClient(options: LspClientOptions) {
       textDocument: {
         synchronization: { didSave: true },
         publishDiagnostics: {},
+        completion: {
+          completionItem: {
+            // Snippets are declined — a terminal caret cannot tab through
+            // placeholders — but servers send `${1:}` syntax regardless, so the
+            // editor strips it on insert (see lsp/completion.ts).
+            snippetSupport: false,
+            insertReplaceSupport: true,
+            // Auto-import edits are costly to compute for every candidate, so
+            // servers withhold them from the list and only attach them when the
+            // client promises to ask again for the item it actually chose.
+            resolveSupport: { properties: ['additionalTextEdits'] },
+          },
+        },
       },
     },
     workspaceFolders: [{ uri: rootUri, name: 'workspace' }],
   })
-    .then(() => {
+    .then(result => {
       if (state !== 'starting') return
+      const capabilities = (
+        result as { capabilities?: { completionProvider?: { resolveProvider?: boolean } } } | null
+      )?.capabilities
+      resolveProvider = capabilities?.completionProvider?.resolveProvider === true
       send({ jsonrpc: '2.0', method: 'initialized', params: {} })
       state = 'ready'
       for (const message of queued) send(message)
@@ -203,6 +222,32 @@ export function spawnLspClient(options: LspClientOptions) {
         textDocument: { uri, version },
         contentChanges: [{ text }],
       })
+    },
+
+    /**
+     * Completion at a position. Null while the server is still starting or once
+     * it is dead — and on an error reply, which some servers use for "nothing
+     * here" and none of which is worth surfacing over a keystroke.
+     */
+    complete(path: string, position: { line: number; character: number }): Promise<unknown> {
+      if (state !== 'ready') return Promise.resolve(null)
+      return request('textDocument/completion', {
+        textDocument: { uri: pathToFileURL(path).href },
+        position,
+      }).catch(() => null)
+    },
+
+    /**
+     * Fill in what the server withheld from the completion list — auto-import
+     * edits, mostly. Null when the server never offered resolve, and on an
+     * error reply: the item is usable as it came, just without the extras.
+     */
+    resolveCompletion(item: CompletionItem): Promise<CompletionItem | null> {
+      if (state !== 'ready' || !resolveProvider) return Promise.resolve(null)
+      return request('completionItem/resolve', item).then(
+        result => result as CompletionItem | null,
+        () => null,
+      )
     },
 
     saveDocument(path: string) {

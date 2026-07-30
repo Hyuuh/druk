@@ -53,7 +53,7 @@ describe('Ctrl+C', () => {
 
   test('copies instead of quitting while text is selected', async () => {
     const t = await openedFile(fixture(FILE))
-    await t.mockMouse.drag(34, 1, 44, 1)
+    await t.mockMouse.drag(35, 1, 45, 1)
     await settle(t)
     expect(selectedText(t)).toBeTruthy()
 

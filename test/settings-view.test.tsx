@@ -7,6 +7,14 @@ import type { Harness } from './helpers'
 
 const PROJECT = { 'a.ts': 'const a = 1\n' }
 
+/**
+ * One flush per key: a burst of arrow sequences in one chunk is parsed as fewer
+ * keys than were sent, which would leave the selection above the wanted row.
+ */
+async function down(t: Harness, times: number) {
+  for (let step = 0; step < times; step++) await press(t, i => i.pressArrow('down'))
+}
+
 async function openA(t: Harness) {
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
@@ -19,7 +27,7 @@ test('the palette opens the settings page over the editor slot', async () => {
   expect(frame).toContain('Settings')
   expect(frame).toContain('Theme')
   expect(frame).toContain('Vim mode')
-  expect(frame).toContain('Diff layout')
+  expect(frame).toContain('Follow OS appearance')
   // The tree stays put beside the page.
   expect(frame).toContain('a.ts')
 })
@@ -27,7 +35,7 @@ test('the palette opens the settings page over the editor slot', async () => {
 test('Enter flips a boolean, the row and the config file follow', async () => {
   const t = await launch(fixture(PROJECT))
   await runCommand(t, 'Settings')
-  await press(t, i => i.pressArrow('down')) // Theme → Vim mode
+  await down(t, 4) // Theme, Follow OS appearance, Light theme, Dark theme → Vim mode
   await press(t, i => i.pressEnter())
   const row = t
     .captureCharFrame()
@@ -43,8 +51,7 @@ test('Enter flips a boolean, the row and the config file follow', async () => {
 test('arrows cycle a multi-value setting in both directions', async () => {
   const t = await launch(fixture(PROJECT))
   await runCommand(t, 'Settings')
-  await press(t, i => i.pressArrow('down'))
-  await press(t, i => i.pressArrow('down')) // Tab size
+  await down(t, 5) // Tab size
   const size = () =>
     t
       .captureCharFrame()
@@ -144,7 +151,7 @@ test('Esc backs out of the list to the page without changing anything', async ()
 test('booleans still flip on Enter without a list', async () => {
   const t = await launch(fixture(PROJECT))
   await runCommand(t, 'Settings')
-  await press(t, i => i.pressArrow('down')) // Vim mode
+  await down(t, 4) // Vim mode
   await press(t, i => i.pressEnter())
   expect(t.captureCharFrame()).not.toContain('Type to filter')
   expect(JSON.parse(readFileSync(CONFIG_FILE, 'utf8')).vim).toBe(true)
@@ -157,9 +164,7 @@ test('the page windows its rows and the selection carries the window down', asyn
   await runCommand(t, 'Settings')
   expect(t.captureCharFrame()).toContain('Settings')
 
-  // One flush per key: a burst of arrow sequences in one chunk is parsed as
-  // fewer keys than were sent, which would leave the selection near the top.
-  for (let step = 0; step < 10; step++) await press(t, i => i.pressArrow('down'))
+  await down(t, 16)
   const frame = t.captureCharFrame()
   expect(frame).toContain('Servers')
   expect(frame).toContain('Settings')

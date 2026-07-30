@@ -354,8 +354,10 @@ export function DiffView(props: DiffViewProps) {
     // are the only keys here that scrolling does not already own.
     else if (k === 'left' && props.onMoveFile) props.onMoveFile(-1)
     else if (k === 'right' && props.onMoveFile) props.onMoveFile(1)
-    else if (k === 'pageup') scroll(-page())
-    else if (k === 'pagedown' || k === 'space') scroll(page())
+    // Ctrl+U / Ctrl+D as well as the page keys, which MacBook keyboards lack —
+    // the editor takes the same pair (see EditorPane's page move).
+    else if (k === 'pageup' || (key.ctrl && k === 'u')) scroll(-page())
+    else if (k === 'pagedown' || k === 'space' || (key.ctrl && k === 'd')) scroll(page())
     else if (k === 'end' || (k === 'g' && key.shift)) scrollTo(Number.MAX_SAFE_INTEGER)
     else if (k === 'home' || k === 'g') scrollTo(0)
     else if (k === 'tab' || k === 's' || k === 'd') props.onToggleMode()

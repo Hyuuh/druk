@@ -49,7 +49,9 @@ export interface CommandActions {
   toggleSidebar: () => void
   toggleGitView: () => void
   setTheme: (name: ThemeName) => void
+  toggleThemeSync: () => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
+  triggerCompletion: () => void
   openSettings: () => void
   problemsList: () => void
   problemsNext: () => void
@@ -86,6 +88,7 @@ export interface CommandActions {
 
 export interface CommandContext {
   activeTheme: ThemeName
+  themeSync: boolean
 }
 
 /** Marks the entry matching the current setting, so submenus show state. */
@@ -245,11 +248,19 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
     {
       id: 'themes',
       label: 'Themes',
-      children: (Object.keys(THEMES) as ThemeName[]).map(name => ({
-        id: `themes.${name}`,
-        label: `${check(ctx.activeTheme === name)}${themeLabels[name]}`,
-        run: () => actions.setTheme(name),
-      })),
+      children: [
+        {
+          id: 'themes.sync',
+          label: `${check(ctx.themeSync)}Follow OS appearance`,
+          hint: 'light / dark themes in Settings',
+          run: actions.toggleThemeSync,
+        },
+        ...(Object.keys(THEMES) as ThemeName[]).map(name => ({
+          id: `themes.${name}`,
+          label: `${check(ctx.activeTheme === name)}${themeLabels[name]}`,
+          run: () => actions.setTheme(name),
+        })),
+      ],
     },
     {
       id: 'editor',
@@ -280,6 +291,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           label: 'Duplicate line',
           hint: `${ALT}+Shift+↓`,
           run: () => actions.lineOp('duplicate'),
+        },
+        {
+          id: 'editor.complete',
+          label: 'Trigger autocomplete',
+          hint: 'Ctrl+Space',
+          run: actions.triggerCompletion,
         },
       ],
     },

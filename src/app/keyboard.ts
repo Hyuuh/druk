@@ -109,9 +109,16 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       const vimOwnsEscape = config.vim && editor.vimMode() !== 'normal'
       // With a page up, Esc belongs to it (it closes the page) — moving
       // focus to the tree here would take the key away before it ever arrives.
+      // Same when the completion menu is open: Esc dismisses it in EditorPane.
       const pageUp =
         workspace.diff() !== null || workspace.settingsPage() || comparison.detailOpen()
-      if (k === 'escape' && panes.sidebar() && !vimOwnsEscape && !pageUp) {
+      if (
+        k === 'escape' &&
+        panes.sidebar() &&
+        !vimOwnsEscape &&
+        !pageUp &&
+        !editor.completionOpen()
+      ) {
         panes.focusTree()
       }
       return // everything else belongs to the textarea

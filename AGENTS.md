@@ -25,10 +25,22 @@ HEAD (palette → Git → Compare against branch…), branch comparison against 
 repository's default branch or any selected base (palette → Git → Compare branches, or
 `B` in the panel) with merge-base file scoping, a commit list and lazily loaded diffs,
 an image viewer (PNG/JPEG as half-block
-cells), a settings page (palette → Settings) that edits and persists every option
-live, with a filterable value list per option, LSP diagnostics from the user's own
-language servers (gutter marks, status-bar counts, a problems list in the palette;
-the settings page toggles LSP and each server), file watching with conflict prompts,
+cells), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
+`themeLight` / `themeDark` picked separately and defaulting to the GitHub pair —
+polled, since no OS offers a portable subscription; `DRUK_OS_APPEARANCE=dark|light`
+forces the answer on a desktop none of the probes can read), a settings page
+(palette → Settings) that edits and persists every option live, with a filterable
+value list per option, LSP diagnostics from the user's own
+language servers (gutter marks, dots on a track beside the scrollbar — errors
+and warnings only, left of the git track and deliberately a different glyph —
+inline message text after the line, status-bar
+counts, a problems list in the palette, spans underlined except where the server
+tagged them Unnecessary — unused code fades toward the background instead; the
+settings page toggles LSP, the inline text and each server), LSP autocomplete (a fuzzy-filtered menu that opens as you
+type or on Ctrl+Space, applies auto-import edits, and is toggled by
+`lspCompletion`), format on save through the user's own commands (`formatOnSave`
+is the switch, `formatters` maps extensions to an in-place command — prettier,
+eslint --fix, oxfmt, gofmt), file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
 ## Runtime and tooling

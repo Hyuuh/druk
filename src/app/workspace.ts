@@ -3,6 +3,7 @@ import { basename } from 'node:path'
 import { createEffect, createSignal, on } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
+import { formatterFor, runFormatter } from '../core/format'
 import { BinaryFileError, exists, mtimeOf, readFile, writeFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import { isImagePath } from '../core/image'
@@ -304,6 +305,40 @@ export function createWorkspace(deps: {
     editor.pushEdit(next)
   }
 
+  /**
+   * Save-then-format: the formatter rewrites the file in place, and the result
+   * comes back into the buffer only if nothing typed over it while the tool ran
+   * — a keystroke during the run wins, and the next save reformats anyway. The
+   * mtime is re-synced in every branch, so the formatter's own write is never
+   * mistaken for an outside edit by the next save's conflict check.
+   */
+  const formatAfterSave = (path: string, saved: string, command: string[]) => {
+    void runFormatter(command, path, rootDir).then(error => {
+      if (error) return say(`Format failed: ${error}`, 'error')
+      if (!buffers[path]) return // closed while the formatter ran
+      let disk: string
+      try {
+        disk = readFile(path)
+      } catch {
+        return // unreadable now — the watcher's sync will report it
+      }
+      const buffer = buffers[path]!
+      // A keystroke while the tool ran wins; the next save reformats anyway.
+      if (buffer.dirty) return setBuffers(path, 'mtime', mtimeOf(path))
+      if (disk === buffer.content) {
+        // Nothing to pull in: the formatter changed nothing, or the watcher's
+        // sync raced this callback and already applied its write.
+        setBuffers(path, 'mtime', mtimeOf(path))
+        if (disk !== saved) say(`Formatted ${basename(path)}`)
+        return
+      }
+      setBuffers(path, { content: disk, dirty: false, mtime: mtimeOf(path) })
+      if (path === activePath()) editor.pushEdit(disk)
+      git.bump()
+      say(`Formatted ${basename(path)}`)
+    })
+  }
+
   /** Write the buffer to disk unconditionally and re-sync its mtime. */
   const writeBuffer = (path: string, content: string): boolean => {
     const final = config.trimOnSave ? trimTrailing(content) : content
@@ -318,6 +353,10 @@ export function createWorkspace(deps: {
     if (final !== content && path === activePath()) editor.pushEdit(final)
     git.bump()
     say(`Saved ${basename(path)}`)
+    if (config.formatOnSave) {
+      const command = formatterFor(path, config.formatters)
+      if (command) formatAfterSave(path, final, command)
+    }
     return true
   }
 

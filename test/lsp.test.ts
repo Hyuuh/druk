@@ -5,9 +5,10 @@ import { join } from 'node:path'
 
 import { problemFrom } from '../src/app/lsp'
 import type { Problem } from '../src/app/lsp'
+import { styleIdForGroup } from '../src/languages/highlight'
 import { spawnLspClient } from '../src/lsp/client'
 import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
-import { severityOf } from '../src/lsp/protocol'
+import { isUnnecessary, severityOf } from '../src/lsp/protocol'
 import { resolveServer } from '../src/lsp/servers'
 import { createDecoder, encodeMessage } from '../src/lsp/transport'
 
@@ -83,6 +84,21 @@ describe('protocol mapping', () => {
     expect(severityOf({ ...at(0, 0), severity: 4 })).toBe('hint')
   })
 
+  test('the underline styles are registered for every severity', () => {
+    for (const severity of ['error', 'warning', 'info', 'hint']) {
+      expect(styleIdForGroup(`druk.problem.${severity}`)).not.toBeNull()
+    }
+    expect(styleIdForGroup('druk.problem.unnecessary')).not.toBeNull()
+  })
+
+  test('the Unnecessary tag is recognised, and other tags are not', () => {
+    expect(isUnnecessary(at(0, 0))).toBe(false)
+    expect(isUnnecessary({ ...at(0, 0), tags: [] })).toBe(false)
+    expect(isUnnecessary({ ...at(0, 0), tags: [2] })).toBe(false)
+    expect(isUnnecessary({ ...at(0, 0), tags: [1] })).toBe(true)
+    expect(isUnnecessary({ ...at(0, 0), tags: [2, 1] })).toBe(true)
+  })
+
   test('overrides replace a server command, and an empty one disables it', () => {
     expect(resolveServer('typescript', {})?.command[0]).toBe('typescript-language-server')
     expect(resolveServer('typescript', { typescript: ['deno', 'lsp'] })?.command).toEqual([
@@ -100,7 +116,10 @@ describe('problemFrom', () => {
     path: '/p',
     line,
     col,
+    endLine: line,
+    endCol: col,
     severity: 'error',
+    unnecessary: false,
     message: 'm',
   })
   const list = [problem(1, 4), problem(5, 0), problem(5, 9)]

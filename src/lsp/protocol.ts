@@ -33,13 +33,47 @@ export interface Diagnostic {
   range: Range
   /** 1 error, 2 warning, 3 info, 4 hint. Absent means error, as VS Code reads it. */
   severity?: number
+  /** 1 unnecessary (unused code), 2 deprecated. */
+  tags?: number[]
   message: string
   source?: string
+}
+
+const TAG_UNNECESSARY = 1
+
+export function isUnnecessary(diagnostic: Diagnostic): boolean {
+  return diagnostic.tags?.includes(TAG_UNNECESSARY) ?? false
 }
 
 export interface PublishDiagnosticsParams {
   uri: string
   diagnostics: Diagnostic[]
+}
+
+export interface TextEdit {
+  range: Range
+  newText: string
+}
+
+export interface CompletionItem {
+  label: string
+  /** CompletionItemKind, 1–25. Absent renders as plain text. */
+  kind?: number
+  detail?: string
+  /** 1 plain text, 2 snippet (`${1:x}` placeholders — stripped before insert). */
+  insertTextFormat?: number
+  insertText?: string
+  filterText?: string
+  sortText?: string
+  /** Either a plain edit or the newer insert/replace pair; both carry newText. */
+  textEdit?: TextEdit | { newText: string; insert: Range; replace: Range }
+  /** Extra edits elsewhere in the file — auto-imports, mostly. */
+  additionalTextEdits?: TextEdit[]
+}
+
+export interface CompletionList {
+  isIncomplete: boolean
+  items: CompletionItem[]
 }
 
 export type ProblemSeverity = 'error' | 'warning' | 'info' | 'hint'

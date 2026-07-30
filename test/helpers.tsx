@@ -48,8 +48,10 @@ export async function launch(
         openFile: options.openFile ?? null,
         openLine: options.openLine ?? null,
         // LSP is off unless a test opts in: the default would spawn whatever
-        // real language server the machine has on PATH, per launch.
-        initialConfig: { ...DEFAULTS, lsp: false, ...config },
+        // real language server the machine has on PATH, per launch. Theme sync is
+        // off for the same reason — on, the machine's own light/dark setting would
+        // decide which theme every test renders in.
+        initialConfig: { ...DEFAULTS, lsp: false, themeSync: false, ...config },
         // Off by default: the real check is unconditional, and without this every
         // launch in the suite would hit the npm registry.
         checkUpdates: options.checkUpdates ?? false,

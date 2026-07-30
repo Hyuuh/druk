@@ -34,7 +34,8 @@ scripts/
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
-    lsp.ts           language servers: spawn per language, sync buffers, diagnostics
+    lsp.ts           language servers: spawn per language, sync buffers, diagnostics,
+                     completion requests (flushing the didChange debounce first)
     settings.ts      config store, the actions that patch and persist it, and the
                      settings page's rows
     status.ts        status-bar message + the one busy/progress slot
@@ -42,6 +43,7 @@ scripts/
   core/
     cli.ts           argv -> project directory + optional single file
     config.ts        user settings, persisted to ~/.config/druk/config.json
+    format.ts        format on save: extension -> user command, run over the saved file
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
     image.ts         PNG/JPEG decode + scaling onto half-block cells, for the viewer
@@ -62,6 +64,8 @@ scripts/
     protocol.ts      the slice of LSP druk speaks, hand-written (a dozen shapes)
     transport.ts     JSON-RPC stdio framing (Content-Length frames over Buffers)
     client.ts        one language server: spawn, handshake, document sync, dispose
+    completion.ts    the pure half of autocomplete: normalize, fuzzy filter, snippet
+                     strip, edit application
     servers.ts       filetype → server command  ← add a language server here
   themes/
     index.ts         theme registry  ← add a theme here
@@ -75,6 +79,7 @@ scripts/
     vim.ts           modal editing state machine (normal / insert / visual)
     history.ts       undo/redo, coalesced per edit burst
     changes.ts       git changes per track row, for the column by the scrollbar
+    problems.ts      LSP problems per track row, its own column beside that one
     window.ts        visual rows -> logical lines, for the highlight window
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
@@ -442,3 +447,19 @@ is just a diff against the empty tree.
   shared so a dozen servers never trip Node's max-listeners warning mid-frame — and a
   server that never answers `initialize` is killed after a bounded wait instead of
   queueing notifications forever.
+- **Completion is pure computation plus one popup.** `src/lsp/completion.ts` holds
+  everything testable without a terminal — normalizing the wire reply, the fuzzy
+  filter, snippet stripping, and edit application (the primary `textEdit` plus
+  `additionalTextEdits`, applied back-to-front against the pre-edit document as the
+  spec demands). `EditorPane` owns the state machine: printable keys are remembered
+  and judged on the cursor-sync tick (after the buffer settled), the request flushes
+  the didChange debounce first so the server answers against what is on screen, and
+  a stale reply — a newer request, a changed file, a cursor that left the line — is
+  dropped by generation counter. `ui/CompletionMenu.tsx` only paints. The global Esc
+  handler consults `editor.completionOpen()` so dismissing the menu does not also
+  move focus to the tree.
+- **Inline problem text measures the buffer, not the string.** The message after a
+  line's end (`lspInline`) is an absolutely-positioned overlay in `EditorPane`,
+  placed with `lineInfo` — the line's *last* visual row and that row's used display
+  columns — because wrapping makes both unknowable from the text alone. It re-reads
+  on the textarea's `line-info-change`, the one event that fires after a re-wrap.
