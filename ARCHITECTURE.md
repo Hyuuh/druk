@@ -36,13 +36,14 @@ scripts/
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
     lsp.ts           language servers: spawn per language, sync buffers, diagnostics,
                      completion requests (flushing the didChange debounce first)
-    settings.ts      config store, the actions that patch and persist it, and the
-                     settings page's rows
+    settings.ts      the two config layers (user / project) resolved into one store,
+                     the actions that patch and persist either, and the page's rows
     status.ts        status-bar message + the one busy/progress slot
     types.ts         shared app types (FileBuffer, Prompt, Conflict…)
   core/
     cli.ts           argv -> project directory + optional single file
-    config.ts        user settings, persisted to ~/.config/druk/config.json
+    config.ts        settings in two layers: ~/.config/druk/config.json, with
+                     <project>/.druk/settings.json overriding it key by key
     format.ts        format on save: extension -> user command ({} or an appended path)
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
@@ -176,9 +177,26 @@ that syntax highlights use.
 
 ### Add a setting
 
-Add the field to `Config`, a value to `DEFAULTS`, and validation to `parse()` in
-[`src/core/config.ts`](src/core/config.ts). Unknown or malformed values fall back to
-defaults, so a hand-edited config can never break startup.
+Add the field to `Config`, a value to `DEFAULTS`, and a validator to `VALIDATORS` in
+[`src/core/config.ts`](src/core/config.ts) — the mapped type there fails to compile
+until the key has one. Unknown or malformed values fall back to defaults, so a
+hand-edited config can never break startup. Then add a row to `specs()` in
+[`src/app/settings.ts`](src/app/settings.ts), with the `key` it edits: that key is
+how the page knows the row is overridden by the project and can reset it.
+
+### Settings in two layers
+
+`~/.config/druk/config.json` holds every setting and is rewritten whole;
+`<project>/.druk/settings.json` holds only what that project overrides, and wins.
+`resolveConfig` merges them into the store the rest of the editor reads
+(`settings.config`), while `settings.scope()` decides which file the page shows and
+writes — `view()` is that scope's own value, `config` is what is in force. The three
+settings that are also live state elsewhere (theme, transparency, vim mode) are pushed
+from `patchLayer` against the effective config, so a user-scope write the project
+shadows changes nothing on screen and a cleared override takes effect at once.
+
+Object-valued settings (`formatters`, `lspServers`) override whole rather than merge
+per entry: a project that sets `formatters` replaces the user's map, as VS Code does.
 
 ### Add a command
 
@@ -186,8 +204,44 @@ Add an action to `CommandActions` and an entry to `buildCommands` in
 [`src/app/commands.ts`](src/app/commands.ts), then bind it in
 [`src/app/actions.ts`](src/app/actions.ts) — the implementation itself belongs in
 whichever controller owns that state (`workspace.ts`, `fileOps.ts`, `git.ts`, …).
-For a keybinding, also add a case to the handler in
-[`src/app/keyboard.ts`](src/app/keyboard.ts) and set the command's `hint`.
+For a keybinding, add the command to `BINDABLE` in
+[`src/app/keymap.ts`](src/app/keymap.ts) with its default chords, a handler under the
+same id in [`src/app/keyboard.ts`](src/app/keyboard.ts), and set the command's `hint`.
+
+### Add a keybinding
+
+The global keymap is data, not a chain of `if`s: `BINDABLE` in
+[`src/app/keymap.ts`](src/app/keymap.ts) says which commands a key can run and what
+chords each has by default, `handlers` in [`src/app/keyboard.ts`](src/app/keyboard.ts)
+says what they do, and `test/keymap.test.ts` fails if either side gains an entry the
+other lacks. `defaults` are the chords a menu advertises; `also` holds the spellings a
+terminal needs that nobody would look for in one (`Ctrl+PgUp` for the previous tab).
+
+The `keybindings` setting replaces a command's chords, so resolution has to settle
+clashes rather than let two commands answer to one key. `resolveKeymap` gives a custom
+binding precedence over any default — that is what rebinding means — and between two
+custom bindings the one listed first in `BINDABLE` keeps the key. Both outcomes are
+reported: the loser appears in `conflicts`, `App` warns about a rejected one on startup,
+and the settings page refuses a chord another custom binding already holds instead of
+quietly taking it. A value that is not a chord lands in `invalid` and the default stays,
+so a hand-edited config cannot cost the editor a key.
+
+`bindingProblem` in [`src/core/keybindings.ts`](src/core/keybindings.ts) is what keeps a
+binding from breaking the editor: a chord without Ctrl (or a function key) would be
+typing the textarea never sees, and the chords whose byte belongs to another key —
+Ctrl+I is Tab, Ctrl+[ is Esc — are reserved outright.
+
+Keys that belong to one pane (the tree's `a`/`r`/`d`, the source-control panel's
+`c`/`p`/`b`) are not in this table: they are bare letters, so they can only be read
+after the global chords have had their turn, and they stay `switch` cases in
+`keyboard.ts`. Not rebindable, deliberately.
+
+What the help overlay, peek strip and footer hints say still comes from `KEYS` in
+[`src/ui/keys.ts`](src/ui/keys.ts) — a row names the commands it spells out in `ids`, and
+`settings.ts` pushes the effective spellings in with `setKeyOverrides`, since nothing in
+`ui/` may reach into `app/`. A row keeps its own hand-written spelling until one of its
+commands is rebound; `test/keymap.test.ts` holds the two tables to each other, so a
+default cannot drift from what is advertised.
 
 Commands form a tree: an entry either runs (`run`) or opens a submenu (`children`),
 never both. Group related commands under a parent to keep the root list short —

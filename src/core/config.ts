@@ -1,10 +1,18 @@
 /**
- * User settings, persisted as JSON at `$XDG_CONFIG_HOME/druk/config.json`
- * (default `~/.config/druk/config.json`).
+ * Settings in two layers, as VS Code has them: the user's own, persisted at
+ * `$XDG_CONFIG_HOME/druk/config.json` (default `~/.config/druk/config.json`),
+ * and per-project overrides in `<project>/.druk/settings.json`.
  *
  * To add a setting: add the field to `Config`, give it a value in `DEFAULTS`,
- * and validate it in `parse()`. Anything missing or invalid falls back to the
+ * and validate it in `VALIDATORS`. Anything missing or invalid falls back to the
  * default, so a hand-edited config can never break startup.
+ *
+ * A missing key means different things in the two files, and that is the whole
+ * reason validation is a per-key table rather than one `parse`. The user file
+ * holds every setting and is rewritten whole; the project file holds only what it
+ * overrides, so `parsePartial` has to leave an unmentioned key *absent* instead of
+ * filling in the default — the user's value is what fills that gap, in
+ * `resolveConfig`.
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -18,6 +26,15 @@ export const CONFIG_FILE = join(
   'druk',
   'config.json',
 )
+
+/** Which of the two files a setting is read from or written to. */
+export type ConfigScope = 'user' | 'project'
+
+/** Project overrides live beside the project, the way `.vscode/` does. */
+export const PROJECT_CONFIG_DIR = '.druk'
+
+export const projectConfigFile = (rootDir: string): string =>
+  join(rootDir, PROJECT_CONFIG_DIR, 'settings.json')
 
 /** Narrow enough to still show a name, wide enough to leave the editor usable. */
 export const SIDEBAR_MIN = 15
@@ -107,6 +124,13 @@ export interface Config {
    * for the ids and defaults. An empty array disables that server.
    */
   lspServers: Record<string, string[]>
+  /**
+   * Custom shortcuts: command id → the one chord that runs it, replacing whatever
+   * it had by default (`"Ctrl+Opt+K"`). An empty value, or `"none"`, leaves the
+   * command with no key at all. The bindable ids and their defaults are in
+   * src/app/keymap.ts, and the settings page edits this without the ids.
+   */
+  keybindings: Record<string, string>
 }
 
 export const DEFAULTS: Config = {
@@ -131,62 +155,103 @@ export const DEFAULTS: Config = {
   lspInline: true,
   lspCompletion: true,
   lspServers: {},
+  keybindings: {},
 }
 
-function parse(raw: unknown): Config {
-  const obj = (raw ?? {}) as Partial<Record<keyof Config, unknown>>
-  return {
-    theme: isThemeName(obj.theme) ? obj.theme : DEFAULTS.theme,
-    themeSync: typeof obj.themeSync === 'boolean' ? obj.themeSync : DEFAULTS.themeSync,
-    themeLight: isThemeName(obj.themeLight) ? obj.themeLight : DEFAULTS.themeLight,
-    themeDark: isThemeName(obj.themeDark) ? obj.themeDark : DEFAULTS.themeDark,
-    transparent: typeof obj.transparent === 'boolean' ? obj.transparent : DEFAULTS.transparent,
-    vim: typeof obj.vim === 'boolean' ? obj.vim : DEFAULTS.vim,
-    tabSize:
-      typeof obj.tabSize === 'number' && obj.tabSize >= 1 && obj.tabSize <= 16
-        ? Math.floor(obj.tabSize)
-        : DEFAULTS.tabSize,
-    skipUpdate: typeof obj.skipUpdate === 'string' ? obj.skipUpdate : DEFAULTS.skipUpdate,
-    trimOnSave: typeof obj.trimOnSave === 'boolean' ? obj.trimOnSave : DEFAULTS.trimOnSave,
-    formatOnSave: typeof obj.formatOnSave === 'boolean' ? obj.formatOnSave : DEFAULTS.formatOnSave,
-    formatters: parseCommands(obj.formatters),
-    autoSaveOnBlur:
-      typeof obj.autoSaveOnBlur === 'boolean' ? obj.autoSaveOnBlur : DEFAULTS.autoSaveOnBlur,
-    diffView:
-      obj.diffView === 'split' || obj.diffView === 'inline' ? obj.diffView : DEFAULTS.diffView,
-    gitPanelView:
-      obj.gitPanelView === 'list' || obj.gitPanelView === 'tree'
-        ? obj.gitPanelView
-        : DEFAULTS.gitPanelView,
-    showDotfiles: typeof obj.showDotfiles === 'boolean' ? obj.showDotfiles : DEFAULTS.showDotfiles,
-    respectGitignore:
-      typeof obj.respectGitignore === 'boolean' ? obj.respectGitignore : DEFAULTS.respectGitignore,
-    lsp: typeof obj.lsp === 'boolean' ? obj.lsp : DEFAULTS.lsp,
-    lspInline: typeof obj.lspInline === 'boolean' ? obj.lspInline : DEFAULTS.lspInline,
-    lspCompletion:
-      typeof obj.lspCompletion === 'boolean' ? obj.lspCompletion : DEFAULTS.lspCompletion,
-    lspServers: parseCommands(obj.lspServers),
-    sidebarWidth:
-      typeof obj.sidebarWidth === 'number' &&
-      obj.sidebarWidth >= SIDEBAR_MIN &&
-      obj.sidebarWidth <= SIDEBAR_MAX
-        ? Math.floor(obj.sidebarWidth)
-        : // Anything else, `'auto'` included, is the default.
-          DEFAULTS.sidebarWidth,
-  }
-}
+/** Reads one setting out of parsed JSON; `undefined` for absent or invalid. */
+type Validator<K extends keyof Config> = (raw: unknown) => Config[K] | undefined
+
+const bool = (raw: unknown) => (typeof raw === 'boolean' ? raw : undefined)
+const theme = (raw: unknown) => (isThemeName(raw) ? raw : undefined)
+const text = (raw: unknown) => (typeof raw === 'string' ? raw : undefined)
+
+/** One of a fixed set of strings — the settings whose type is a small union. */
+const among =
+  <T extends string>(...values: T[]) =>
+  (raw: unknown): T | undefined =>
+    typeof raw === 'string' ? values.find(value => value === raw) : undefined
 
 /** A key → command-array map (`lspServers`, `formatters`). Only well-formed
  * entries survive; a malformed one must not break startup. */
-function parseCommands(raw: unknown): Record<string, string[]> {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
-  const commands: Record<string, string[]> = {}
+const commands = (raw: unknown): Record<string, string[]> | undefined => {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined
+  const parsed: Record<string, string[]> = {}
   for (const [id, command] of Object.entries(raw)) {
     if (Array.isArray(command) && command.every(part => typeof part === 'string')) {
-      commands[id] = command
+      parsed[id] = command
     }
   }
-  return commands
+  return parsed
+}
+
+/** A key → text map (`keybindings`). Malformed entries are dropped, not fatal. */
+const strings = (raw: unknown): Record<string, string> | undefined => {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined
+  const parsed: Record<string, string> = {}
+  for (const [id, value] of Object.entries(raw)) {
+    if (typeof value === 'string') parsed[id] = value
+  }
+  return parsed
+}
+
+const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
+  theme,
+  themeSync: bool,
+  themeLight: theme,
+  themeDark: theme,
+  transparent: bool,
+  vim: bool,
+  tabSize: raw => (typeof raw === 'number' && raw >= 1 && raw <= 16 ? Math.floor(raw) : undefined),
+  sidebarWidth: raw => {
+    if (raw === 'auto') return 'auto'
+    return typeof raw === 'number' && raw >= SIDEBAR_MIN && raw <= SIDEBAR_MAX
+      ? Math.floor(raw)
+      : undefined
+  },
+  skipUpdate: text,
+  trimOnSave: bool,
+  formatOnSave: bool,
+  formatters: commands,
+  autoSaveOnBlur: bool,
+  diffView: among('inline', 'split'),
+  gitPanelView: among('tree', 'list'),
+  showDotfiles: bool,
+  respectGitignore: bool,
+  lsp: bool,
+  lspInline: bool,
+  lspCompletion: bool,
+  lspServers: commands,
+  keybindings: strings,
+}
+
+const isConfigKey = (key: string): key is keyof Config => key in VALIDATORS
+
+/** Only the settings the JSON actually carries — the shape the project file has. */
+export function parsePartial(raw: unknown): Partial<Config> {
+  const config: Partial<Config> = {}
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return config
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isConfigKey(key)) continue
+    const parsed = VALIDATORS[key](value)
+    if (parsed !== undefined) Object.assign(config, { [key]: parsed })
+  }
+  return config
+}
+
+const parse = (raw: unknown): Config => ({ ...DEFAULTS, ...parsePartial(raw) })
+
+/**
+ * The config the editor runs on: the user's, with the project's overrides on top.
+ * A key the project leaves out keeps the user's value — and a key the settings
+ * page has just reset is still present, holding `undefined`, so one spread is not
+ * enough to drop it.
+ */
+export function resolveConfig(user: Config, project: Partial<Config>): Config {
+  const config = { ...user }
+  for (const [key, value] of Object.entries(project)) {
+    if (value !== undefined) Object.assign(config, { [key]: value })
+  }
+  return config
 }
 
 /** Read the config file, falling back to defaults on any error or bad value. */
@@ -198,11 +263,36 @@ export function loadConfig(): Config {
   }
 }
 
-export function saveConfig(config: Config): void {
+/** The project's own overrides — nothing at all when it has no settings file. */
+export function loadProjectConfig(rootDir: string): Partial<Config> {
+  try {
+    return parsePartial(JSON.parse(fs.readFileSync(projectConfigFile(rootDir), 'utf8')))
+  } catch {
+    return {}
+  }
+}
+
+export function saveUserConfig(config: Config): void {
   try {
     fs.mkdirSync(dirname(CONFIG_FILE), { recursive: true })
     fs.writeFileSync(CONFIG_FILE, `${JSON.stringify(config, null, 2)}\n`, 'utf8')
   } catch {
     // best-effort — running without a writable home just means no persistence
+  }
+}
+
+/**
+ * Write the project file with the overridden keys and nothing else. Writing a
+ * whole `Config` here would pin every setting on everyone who opens the project,
+ * which is the one thing this file must not do.
+ */
+export function saveProjectConfig(rootDir: string, overrides: Partial<Config>): void {
+  const kept = Object.entries(overrides).filter(([, value]) => value !== undefined)
+  try {
+    const file = projectConfigFile(rootDir)
+    fs.mkdirSync(dirname(file), { recursive: true })
+    fs.writeFileSync(file, `${JSON.stringify(Object.fromEntries(kept), null, 2)}\n`, 'utf8')
+  } catch {
+    // best-effort — a read-only project just means no project-level persistence
   }
 }

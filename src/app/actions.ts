@@ -161,13 +161,19 @@ export function createCommands(ctx: AppContext) {
     toggleFocus: () => (panes.focus() === 'tree' ? panes.setFocus('editor') : panes.focusTree()),
     toggleSidebar: panes.toggleSidebar,
     toggleGitView: panes.toggleGitView,
+    toggleMarkdown: workspace.toggleRendered,
     setTheme: settings.applyTheme,
-    toggleTransparent: settings.toggleTransparent,
-    toggleThemeSync: settings.toggleThemeSync,
     lineOp: editor.requestLineOp,
     triggerCompletion: editor.requestCompletion,
     openSettings: () => {
+      settings.setScope('user')
       // One page at a time: the slot under the settings page is the editor's.
+      ctx.workspace.setDiff(null)
+      ctx.workspace.setSettingsPage(true)
+      panes.setFocus('editor')
+    },
+    openProjectSettings: () => {
+      settings.setScope('project')
       ctx.workspace.setDiff(null)
       ctx.workspace.setSettingsPage(true)
       panes.setFocus('editor')
@@ -187,7 +193,6 @@ export function createCommands(ctx: AppContext) {
     },
     gitMoveTo,
     gitActivateRow,
-    gitTogglePanelView: settings.toggleGitPanelView,
     /**
      * "Diff current file" — the palette's way into the panel: it opens the
      * source-control view with the cursor on the file being edited, so the
@@ -288,11 +293,7 @@ export function createCommands(ctx: AppContext) {
   }
 
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, {
-      activeTheme: config.theme,
-      themeSync: config.themeSync,
-      transparent: config.transparent,
-    }),
+    buildCommands(actions, { activeTheme: config.theme }),
   )
 
   return { commands, actions }

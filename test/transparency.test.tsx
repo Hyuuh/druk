@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { invalidateSyntaxStyle } from '../src/languages/highlight'
 import { setTheme, setTransparency, THEMES } from '../src/themes'
-import { fixture, launch, openDiff, openFile, openPalette, runCommand, settle } from './helpers'
+import { fixture, launch, openDiff, openFile, openPalette, settle, toggleSetting } from './helpers'
 import type { Harness } from './helpers'
 
 interface Span {
@@ -54,12 +54,12 @@ test('transparency never empties a floating panel', async () => {
   expect(bgAlpha(t, 'Open file')).toBe(255)
 })
 
-test('the palette toggles transparency, and a launch starts from its own config', async () => {
+test('the settings page toggles transparency, and a launch starts from its own config', async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   const t = await launch(dir)
   await openFile(t, 'a.ts')
 
-  await runCommand(t, 'Transparent background')
+  await toggleSetting(t, 'Transparent')
   expect(bgAlpha(t, 'const')).toBe(0)
 
   // The theme store outlives a harness, so a launch that says "off" has to undo

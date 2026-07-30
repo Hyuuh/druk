@@ -340,7 +340,7 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             update={info()}
             onClose={() => overlays.setUpdate(null)}
             onSkip={() => {
-              settings.patchConfig({ skipUpdate: info().latest })
+              settings.patchUserConfig({ skipUpdate: info().latest })
               overlays.setUpdate(null)
             }}
           />

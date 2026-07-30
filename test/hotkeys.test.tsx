@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { ROWS } from '../src/ui/keys'
+import { helpRows } from '../src/ui/keys'
 import { F1, fixture, launch, openFile, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
@@ -157,11 +157,12 @@ test('every advertised hotkey does something', async () => {
 }, 120000)
 
 test('the help table does not list one key twice with different meanings', () => {
-  const keys = ROWS.map(([key]) => key)
+  const rows = helpRows()
+  const keys = rows.map(([key]) => key)
   expect(new Set(keys).size).toBe(keys.length)
 
   // Ctrl+C both copies and quits; the row has to say so, or it reads as a bug
   // when the editor exits. This is the row that misled once already.
-  const copyRow = ROWS.find(([key]) => key.includes('Ctrl+C'))!
+  const copyRow = rows.find(([key]) => key.includes('Ctrl+C'))!
   expect(copyRow[1].toLowerCase()).toContain('quit')
 })

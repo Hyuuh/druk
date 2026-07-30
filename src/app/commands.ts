@@ -48,18 +48,18 @@ export interface CommandActions {
   toggleFocus: () => void
   toggleSidebar: () => void
   toggleGitView: () => void
+  toggleMarkdown: () => void
   setTheme: (name: ThemeName) => void
-  toggleThemeSync: () => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   triggerCompletion: () => void
   openSettings: () => void
+  openProjectSettings: () => void
   problemsList: () => void
   problemsNext: () => void
   problemsPrev: () => void
   gitDiffFile: () => void
   gitCompareBranches: () => void
   gitDiffBase: () => void
-  gitTogglePanelView: () => void
   gitDiffBaseReset: () => void
   /** Not a command: the panel's cursor is what opens a diff, and this is it. */
   showDiff: (path: string) => void
@@ -82,15 +82,12 @@ export interface CommandActions {
   gitRenameBranch: () => void
   gitDeleteBranch: () => void
   gitDeleteBranchForce: () => void
-  toggleTransparent: () => void
   showHelp: () => void
   quit: () => void
 }
 
 export interface CommandContext {
   activeTheme: ThemeName
-  themeSync: boolean
-  transparent: boolean
 }
 
 /** Marks the entry matching the current setting, so submenus show state. */
@@ -155,11 +152,6 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           label: 'Compare branches',
           hint: 'B in source control',
           run: actions.gitCompareBranches,
-        },
-        {
-          id: 'git.panelView',
-          label: 'Changes as tree / flat list',
-          run: actions.gitTogglePanelView,
         },
         { id: 'git.commit', label: 'Commit…', run: actions.gitCommit },
         { id: 'git.undo', label: 'Undo last commit', run: actions.gitUndoCommit },
@@ -240,6 +232,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           run: actions.toggleGitView,
         },
         {
+          id: 'view.markdown',
+          label: 'Markdown: rendered / source',
+          hint: `Ctrl+${ALT}+M`,
+          run: actions.toggleMarkdown,
+        },
+        {
           id: 'view.focus',
           label: 'Focus tree / editor',
           hint: 'Tab in · Esc out',
@@ -250,25 +248,14 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
     {
       id: 'themes',
       label: 'Themes',
-      children: [
-        {
-          id: 'themes.sync',
-          label: `${check(ctx.themeSync)}Follow OS appearance`,
-          hint: 'light / dark themes in Settings',
-          run: actions.toggleThemeSync,
-        },
-        {
-          id: 'themes.transparent',
-          label: `${check(ctx.transparent)}Transparent background`,
-          hint: 'terminal shows through',
-          run: actions.toggleTransparent,
-        },
-        ...(Object.keys(THEMES) as ThemeName[]).map(name => ({
-          id: `themes.${name}`,
-          label: `${check(ctx.activeTheme === name)}${themeLabels[name]}`,
-          run: () => actions.setTheme(name),
-        })),
-      ],
+      // Only the picker: following the OS appearance, the light and dark slots
+      // and the transparent background are set once, so they live on the settings
+      // page. This list stays for the arrow-through live preview.
+      children: (Object.keys(THEMES) as ThemeName[]).map(name => ({
+        id: `themes.${name}`,
+        label: `${check(ctx.activeTheme === name)}${themeLabels[name]}`,
+        run: () => actions.setTheme(name),
+      })),
     },
     {
       id: 'editor',
@@ -312,6 +299,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
     // the palette carries features, not configuration. Themes stay above for
     // the arrow-through live preview.
     { id: 'settings', label: 'Settings', run: actions.openSettings },
+    // The same page on its other file — the one that stays with the project.
+    {
+      id: 'settings-project',
+      label: 'Settings: this project',
+      run: actions.openProjectSettings,
+    },
     { id: 'help', label: 'Keyboard shortcuts', run: actions.showHelp },
     { id: 'quit', label: 'Quit', hint: 'Ctrl+Q', run: actions.quit },
   ]

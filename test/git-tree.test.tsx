@@ -2,7 +2,15 @@ import { expect, test } from 'bun:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press, pressTimes, runCommand, untilFrame } from './helpers'
+import {
+  fixture,
+  launch,
+  press,
+  pressTimes,
+  runCommand,
+  toggleSetting,
+  untilFrame,
+} from './helpers'
 import type { Harness } from './helpers'
 
 const git = (dir: string, ...args: string[]) => {
@@ -109,7 +117,8 @@ test('Enter folds the folder under the cursor and diffs a file', async () => {
 test('the flat list is one command away, and shows whole paths again', async () => {
   const t = await launch(repo())
   await openPanel(t)
-  await runCommand(t, 'Changes as tree / flat list')
+  // The flip lives on the settings page's Git section, not in the palette.
+  await toggleSetting(t, 'Changed files')
 
   const rows = panelRows(t)
   expect(rows.some(row => row.includes('src/app/actions.ts'))).toBe(true)

@@ -75,6 +75,8 @@ status bar with the branch, unsaved state and cursor position.
 - `Ctrl+P` opens any file in the project (fuzzy), as in VS Code.
 - `Ctrl+K` peeks: a strip over the status bar listing every key that works right now,
   gone again on the next keypress.
+- The mouse works throughout: click tabs, tree rows and the editor, drag the sidebar's
+  edge to resize it, and scroll any pane.
 
 ## Shortcuts
 
@@ -100,6 +102,7 @@ status bar with the branch, unsaved state and cursor position.
 | `Ctrl+Opt+T` | Reopen closed tab |
 | `Ctrl+Opt+←` / `→` | Previous / next tab |
 | `Ctrl+Opt+G` | Source control panel (commit / push) |
+| `Ctrl+Opt+M` | Markdown: rendered / source |
 
 In the tree: `a` new file, `A` new folder, `r` rename, `d` delete, `x` cut, `c` copy,
 `p` paste here, `Shift+↑`/`↓` select several rows, `[` / `]` resize the sidebar.
@@ -116,6 +119,15 @@ druk names the key for your OS: `Opt` (Option, ⌥) on macOS, `Alt` everywhere e
 Every shortcut works in a stock terminal — nothing to configure. The line commands are
 also in the palette (`F1`). Some terminals (macOS Terminal.app among them) cannot
 send `Ctrl+/` at all — that is why *Toggle comment* also answers to `Ctrl+L`.
+
+## Markdown
+
+`Ctrl+Opt+M` reads a `.md` file as the document it is — headings, lists, tables, links,
+quotes and syntax-lit code blocks — and the same key puts the text back. It is one tab in
+two views, not two tabs: the strip marks the rendered one `¶ name`, and what it renders is
+the buffer, so unsaved edits show up without saving first. `Tab` or `Esc` goes back to the
+source; `↑` `↓`, `PgUp` / `PgDn` and `Ctrl+U` / `Ctrl+D` scroll it. Each file remembers
+which of the two it was left in.
 
 ## Search
 

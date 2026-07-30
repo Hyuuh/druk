@@ -2,6 +2,7 @@ import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 
+import type { ConfigScope } from '../core/config'
 import { fuzzyScore } from '../core/search'
 import { ui } from '../themes'
 import { listRows, modalWidth, PAD } from './modal'
@@ -39,10 +40,17 @@ export interface SettingRow {
   select?: { options: string[]; pick: (index: number) => void | SettingEdit }
   /** When set, Enter opens this edit directly. Takes precedence over `select`. */
   edit?: SettingEdit
+  /** The project's own settings file is what supplies this value. */
+  local?: boolean
+  /** Drop that project override — offered only where there is one to drop. */
+  clear?: () => void
 }
 
 export interface SettingsViewProps {
   rows: SettingRow[]
+  /** Which file the rows show and changes are written to. */
+  scope: ConfigScope
+  onToggleScope: () => void
   /** Where changes persist, shown at the foot of the page. */
   configFile: string
   /** Columns the pane owns — the editor slot, not the terminal. */
@@ -121,6 +129,14 @@ export function SettingsView(props: SettingsViewProps) {
     else if (k === 'end') setIndex(count - 1)
     else if (k === 'left' || k === 'h') rows()[selected()]?.cycle(-1)
     else if (k === 'right' || k === 'l') rows()[selected()]?.cycle(1)
+    // The global keymap hands Tab to whatever holds the editor slot, so it is
+    // this page's to spend on the thing it has two of: files to write.
+    else if (k === 'tab') props.onToggleScope()
+    else if (k === 'backspace' || k === 'delete') {
+      const clear = rows()[selected()]?.clear
+      if (!clear) return
+      clear()
+    }
     // Ctrl+F is the global file search, so the filter takes the vim-ish key
     // instead — the page has no text to search anyway.
     else if (!key.ctrl && (k === '/' || key.sequence === '/')) {
@@ -176,21 +192,35 @@ export function SettingsView(props: SettingsViewProps) {
     return { start, rows: rows().slice(start, start + fits(start)) }
   })
 
+  /** Which of the two files is on show — the page is otherwise identical. */
+  const title = () => ` Settings — ${props.scope === 'project' ? 'Project' : 'User'}`
+
   /** Long spelling when the pane can afford it, initials beside a sidebar. */
   const hints = () => {
+    const reset = selectedRow()?.clear ? ' · Bksp reset' : ''
     const full = searching()
       ? ' ↑↓ move · Enter change · Esc filter off '
-      : ' ↑↓ move · ←→ change · / filter · Esc close '
-    if (full.length + 12 <= props.width) return full
-    return searching() ? ' ↑↓ · Enter · Esc ' : ' ↑↓ · ←→ · / · Esc '
+      : ` ↑↓ move · ←→ change · Tab scope${reset} · / filter · Esc close `
+    if (full.length + title().length + 2 <= props.width) return full
+    return searching() ? ' ↑↓ · Enter · Esc ' : ' ↑↓ · ←→ · Tab · / · Esc '
   }
 
-  /** Path cut from the left to what the row can spare; the tail identifies it. */
+  /**
+   * The file the changes land in, plus what the ◆ rows mean — which is not the
+   * same thing in the two scopes: here it is "set in this file", on the user's
+   * page it is "and the project overrides it anyway".
+   */
   const footer = () => {
+    const marked = props.rows.some(row => row.local)
+    const legend = !marked
+      ? ''
+      : props.scope === 'project'
+        ? ' · ◆ set here'
+        : ' · ◆ set by project'
     let path = props.configFile
-    const room = Math.max(8, props.width - 2)
+    const room = Math.max(8, props.width - 2 - legend.length)
     if (path.length > room) path = `…${path.slice(path.length - room + 1)}`
-    return ` ${path}`
+    return ` ${path}${legend}`
   }
 
   return (
@@ -202,7 +232,7 @@ export function SettingsView(props: SettingsViewProps) {
       onMouseDown={() => props.onFocus()}
     >
       <box flexDirection="row" backgroundColor={ui.solidBarBg}>
-        <text fg={ui.text} bg={ui.solidBarBg} flexShrink={0} content=" Settings" />
+        <text fg={ui.text} bg={ui.solidBarBg} flexShrink={0} content={title()} />
         <box flexGrow={1} backgroundColor={ui.solidBarBg} />
         <text fg={ui.dim} bg={ui.solidBarBg} flexShrink={0} content={hints()} />
       </box>
@@ -267,6 +297,9 @@ export function SettingsView(props: SettingsViewProps) {
                 <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
                 <text fg={active() ? ui.text : ui.dim} bg={bg()} content={row.label} />
                 <box flexGrow={1} backgroundColor={bg()} />
+                <Show when={row.local}>
+                  <text fg={ui.accent} bg={bg()} flexShrink={0} content="◆ " />
+                </Show>
                 <text
                   fg={active() ? ui.accent : ui.text}
                   bg={bg()}

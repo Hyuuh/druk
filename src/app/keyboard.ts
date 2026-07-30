@@ -6,15 +6,60 @@ import { useKeyboard } from '@opentui/solid'
 import { parentRow } from '../core/changeTree'
 import type { CommandActions } from './commands'
 import type { AppContext } from './context'
-
-/** True for Ctrl+Opt+<key>, however this terminal spells the second modifier. */
-const chord = (key: KeyEvent) => key.shift || key.option || key.meta
+import { matchKeymap } from './keymap'
 
 /** The global keymap: everything that fires before the focused pane sees the key. */
 export function installKeyboard(ctx: AppContext, actions: CommandActions) {
   const { settings, tree, panes, editor, workspace, fileOps, prompts, overlays, git, comparison } =
     ctx
   const { config } = settings
+
+  const togglePeek = () => overlays.setPeek(peeking => !peeking)
+
+  /**
+   * What each bindable command does when its key arrives — see `keymap.ts` for the
+   * keys themselves. Every id in `BINDABLE` needs an entry here or its key is dead,
+   * which is what `test/keymap.test.ts` checks.
+   */
+  const handlers: Record<string, () => void> = {
+    'palette': () => overlays.setPalette(true),
+    'peek': togglePeek,
+    'open': () => overlays.setPicker('files'),
+    'save': workspace.saveActive,
+    'goto': () => prompts.setPrompt({ kind: 'gotoLine' }),
+    'find.file': () => overlays.setSearch({ scope: 'file' }),
+    'find.project': () => overlays.setSearch({ scope: 'project' }),
+    'find.replace': actions.replaceInFile,
+    'file.new': () => prompts.setPrompt({ kind: 'newFile', dir: tree.targetDir() }),
+    'file.newDir': () => prompts.setPrompt({ kind: 'newFolder', dir: tree.targetDir() }),
+    'tabs.close': () => {
+      // A page is the frontmost "tab": close it before any file tab.
+      if (workspace.settingsPage()) return workspace.setSettingsPage(false)
+      if (workspace.diff()) return workspace.setDiff(null)
+      if (comparison.detailOpen()) return comparison.closeDetail()
+      if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
+    },
+    'tabs.reopen': workspace.reopenTab,
+    'tabs.switch': () => overlays.setPicker('tabs'),
+    'tabs.prev': () => workspace.switchTab(-1),
+    'tabs.next': () => workspace.switchTab(1),
+    'tabs.closeOthers': actions.closeOthers,
+    'tabs.closeAll': actions.closeAll,
+    'view.sidebar': panes.toggleSidebar,
+    'view.git': panes.toggleGitView,
+    'view.markdown': workspace.toggleRendered,
+    'view.focus': actions.toggleFocus,
+    'git.diffFile': actions.gitDiffFile,
+    'git.commit': actions.gitCommit,
+    'git.push': actions.gitPush,
+    'git.compare': actions.gitCompareBranches,
+    'problems.list': actions.problemsList,
+    'problems.next': actions.problemsNext,
+    'problems.prev': actions.problemsPrev,
+    'settings': actions.openSettings,
+    'help': actions.showHelp,
+    'quit': prompts.quit,
+  }
 
   useKeyboard((key: KeyEvent) => {
     const k = key.name
@@ -40,67 +85,29 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       run()
     }
 
-    // Peek toggles on Ctrl+K and folds on any other key, which is what lets it
+    const bound = matchKeymap(settings.keymap(), key)
+
+    // Peek toggles on its own key and folds on any other, which is what lets it
     // stand in for "hold to see" on terminals that never report a key release.
-    if (key.ctrl && k === 'k') return claim(() => overlays.setPeek(p => !p))
+    if (bound === 'peek') return claim(togglePeek)
     if (overlays.peek()) overlays.setPeek(false)
 
-    if (key.ctrl && k === 'q') return claim(prompts.quit)
     // Ctrl+C quits from the tree. In the editor it belongs to EditorPane, which is
     // the only place that knows whether there is a selection to copy instead — the
     // renderer's own selection covers mouse drags only. Either way it
-    // routes through `quit()`, so a dirty buffer still gets its prompt.
+    // routes through `quit()`, so a dirty buffer still gets its prompt. Not a
+    // bindable command: the two meanings are split across two owners.
     if (key.ctrl && k === 'c' && panes.focus() !== 'editor') return claim(prompts.quit)
-    // VS Code's layout: Ctrl+P is the file picker, the palette sits on the
-    // Ctrl+Shift+P chord — which most terminals cannot send (see the chord note
-    // below), so F1, VS Code's other palette key, carries it everywhere.
-    if (key.ctrl && chord(key) && k === 'p') return claim(() => overlays.setPalette(true))
-    if (k === 'f1') return claim(() => overlays.setPalette(true))
-    if (key.ctrl && k === 'p') return claim(() => overlays.setPicker('files'))
-    if (key.ctrl && k === 'o') return claim(() => overlays.setPicker('files'))
-    if (key.ctrl && chord(key) && k === 't') return claim(workspace.reopenTab)
-    // Ctrl+E is line-end in every terminal; keep the tab family on the arrows.
-    if (key.ctrl && (k === 't' || k === 'up')) return claim(() => overlays.setPicker('tabs'))
-    // VS Code's Ctrl+Shift+G, in the spelling every terminal can send (see the
-    // project-search note below): show or hide the source-control panel.
-    if (key.ctrl && chord(key) && k === 'g') return claim(panes.toggleGitView)
-    if (key.ctrl && k === 'g') return claim(() => prompts.setPrompt({ kind: 'gotoLine' }))
-    if (key.ctrl && k === 's') return claim(workspace.saveActive)
-    // Ctrl+Shift+<letter> is byte-identical to Ctrl+<letter> outside the kitty
-    // keyboard protocol, so it cannot be bound at all in Terminal.app, plain
-    // iTerm2 or tmux — hence a plain Ctrl chord for the project search. Ctrl+Opt
-    // arrives as ctrl+meta (Terminal.app) or ctrl+option (iTerm2), never both.
-    // In vim, Ctrl+R is redo and belongs to the editor. Project search keeps its
-    // other spelling, Ctrl+Opt+F, so nothing becomes unreachable.
+
+    // In vim, Ctrl+R is redo and belongs to the editor, whatever the keymap says it
+    // runs. Project search keeps its other spelling, Ctrl+Opt+F, so nothing becomes
+    // unreachable — and a shortcut deliberately rebound onto Ctrl+R still loses it
+    // here, since the editor's own redo has no second spelling to fall back on.
     const vimOwnsRedo = config.vim && panes.focus() === 'editor' && editor.vimMode() !== 'insert'
-    if (key.ctrl && k === 'r' && !vimOwnsRedo) {
-      return claim(() => overlays.setSearch({ scope: 'project' }))
+    if (bound && !(vimOwnsRedo && key.ctrl && k === 'r')) {
+      const run = handlers[bound]
+      if (run) return claim(run)
     }
-    if (key.ctrl && chord(key) && k === 'f') {
-      return claim(() => overlays.setSearch({ scope: 'project' }))
-    }
-    if (key.ctrl && k === 'f') return claim(() => overlays.setSearch({ scope: 'file' }))
-    if (key.ctrl && k === 'w') {
-      return claim(() => {
-        // A page is the frontmost "tab": close it before any file tab.
-        if (workspace.settingsPage()) return workspace.setSettingsPage(false)
-        if (workspace.diff()) return workspace.setDiff(null)
-        if (comparison.detailOpen()) return comparison.closeDetail()
-        if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
-      })
-    }
-    if (key.ctrl && chord(key) && k === 'n') {
-      return claim(() => prompts.setPrompt({ kind: 'newFolder', dir: tree.targetDir() }))
-    }
-    if (key.ctrl && k === 'n') {
-      return claim(() => prompts.setPrompt({ kind: 'newFile', dir: tree.targetDir() }))
-    }
-    if (key.ctrl && k === 'b') return claim(panes.toggleSidebar)
-    // macOS binds plain Ctrl+arrows to Mission Control, so they never arrive there.
-    // Ctrl+Opt+arrow reports as ctrl+arrow and does reach us, and MacBooks have no
-    // page keys — hence all three spellings.
-    if (key.ctrl && (k === 'pageup' || k === 'left')) return claim(() => workspace.switchTab(-1))
-    if (key.ctrl && (k === 'pagedown' || k === 'right')) return claim(() => workspace.switchTab(1))
 
     if (panes.focus() === 'editor') {
       // In vim, Esc belongs to the mode switch. Focus moves synchronously, so
@@ -111,7 +118,10 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       // focus to the tree here would take the key away before it ever arrives.
       // Same when the completion menu is open: Esc dismisses it in EditorPane.
       const pageUp =
-        workspace.diff() !== null || workspace.settingsPage() || comparison.detailOpen()
+        workspace.diff() !== null ||
+        workspace.settingsPage() ||
+        comparison.detailOpen() ||
+        workspace.renderedPath() !== null
       if (
         k === 'escape' &&
         panes.sidebar() &&

@@ -6,7 +6,13 @@
  *
  * Entries sit grouped by `section`, which is what the help overlay renders
  * under headings — a new entry belongs beside its section mates, not at the end.
+ *
+ * A row that names bindable commands carries their `ids`, so a custom shortcut
+ * shows up here instead of leaving the table advertising the key it replaced:
+ * `src/app/settings.ts` pushes the effective spellings in through
+ * `setKeyOverrides`, and `src/app/keymap.ts` owns the ids and their defaults.
  */
+import { createSignal } from 'solid-js'
 
 type Pane = 'tree' | 'editor'
 
@@ -24,6 +30,8 @@ export interface KeyInfo {
   section: string
   /** Pane(s) the key is alive in; 'help' rows show in the help table only. */
   where: KeyScope | 'all' | 'help'
+  /** Bindable commands this row's key column spells out, in the order shown. */
+  ids?: string[]
   /** Footer advertisement: which pane shows it, as what, in what order.
    * `key` overrides the display key where the full spelling is too wide. */
   hint?: { pane: Pane | 'all'; label: string; rank: number; key?: string }
@@ -39,6 +47,7 @@ export const KEYS: KeyInfo[] = [
     label: 'Command palette (+ themes)',
     section: 'General',
     where: 'all',
+    ids: ['palette'],
     hint: { pane: 'all', label: 'commands', rank: 0, key: 'F1' },
     welcome: { label: 'Run any command', rank: 2, key: 'F1' },
   },
@@ -47,6 +56,7 @@ export const KEYS: KeyInfo[] = [
     label: 'Peek at every key for this pane',
     section: 'General',
     where: 'all',
+    ids: ['peek'],
     hint: { pane: 'all', label: 'keys', rank: 1 },
     welcome: { label: 'Peek at every key', rank: 5 },
   },
@@ -55,13 +65,13 @@ export const KEYS: KeyInfo[] = [
     label: 'Open file (fuzzy)',
     section: 'General',
     where: 'all',
+    ids: ['open'],
     welcome: { label: 'Open a file by name', rank: 1, key: 'Ctrl+P' },
   },
-  { key: 'Ctrl+G', label: 'Go to line', section: 'General', where: 'all' },
-  { key: 'Ctrl+Q', label: 'Quit', section: 'General', where: 'all' },
-  { key: 'Mouse', label: 'Click tabs, tree rows, editor', section: 'General', where: 'help' },
+  { key: 'Ctrl+G', label: 'Go to line', section: 'General', where: 'all', ids: ['goto'] },
+  { key: 'Ctrl+Q', label: 'Quit', section: 'General', where: 'all', ids: ['quit'] },
 
-  { key: 'Ctrl+S', label: 'Save file', section: 'Editing', where: 'editor' },
+  { key: 'Ctrl+S', label: 'Save file', section: 'Editing', where: 'editor', ids: ['save'] },
   { key: 'Ctrl+Z / Ctrl+Y', label: 'Undo / redo', section: 'Editing', where: 'editor' },
   { key: 'Ctrl+A', label: 'Select all', section: 'Editing', where: 'editor' },
   { key: 'Ctrl+C', label: 'Copy selection — quits if none', section: 'Editing', where: 'all' },
@@ -82,12 +92,14 @@ export const KEYS: KeyInfo[] = [
     label: 'Find in file (Tab to replace)',
     section: 'Search & replace',
     where: 'editor',
+    ids: ['find.file'],
   },
   {
     key: 'Ctrl+R',
     label: 'Find in project',
     section: 'Search & replace',
     where: 'all',
+    ids: ['find.project'],
     welcome: { label: 'Search the project', rank: 3 },
   },
   {
@@ -103,12 +115,36 @@ export const KEYS: KeyInfo[] = [
     where: 'help',
   },
 
-  { key: 'Ctrl+N', label: 'New file', section: 'Files & tabs', where: 'all' },
-  { key: `Ctrl+${ALT}+N`, label: 'New folder', section: 'Files & tabs', where: 'all' },
-  { key: 'Ctrl+W', label: 'Close tab', section: 'Files & tabs', where: 'all' },
-  { key: `Ctrl+${ALT}+T`, label: 'Reopen closed tab', section: 'Files & tabs', where: 'all' },
-  { key: 'Ctrl+T', label: 'Switch to open tab', section: 'Files & tabs', where: 'all' },
-  { key: `Ctrl+${ALT}+← / →`, label: 'Previous / next tab', section: 'Files & tabs', where: 'all' },
+  { key: 'Ctrl+N', label: 'New file', section: 'Files & tabs', where: 'all', ids: ['file.new'] },
+  {
+    key: `Ctrl+${ALT}+N`,
+    label: 'New folder',
+    section: 'Files & tabs',
+    where: 'all',
+    ids: ['file.newDir'],
+  },
+  { key: 'Ctrl+W', label: 'Close tab', section: 'Files & tabs', where: 'all', ids: ['tabs.close'] },
+  {
+    key: `Ctrl+${ALT}+T`,
+    label: 'Reopen closed tab',
+    section: 'Files & tabs',
+    where: 'all',
+    ids: ['tabs.reopen'],
+  },
+  {
+    key: 'Ctrl+T',
+    label: 'Switch to open tab',
+    section: 'Files & tabs',
+    where: 'all',
+    ids: ['tabs.switch'],
+  },
+  {
+    key: `Ctrl+${ALT}+← / →`,
+    label: 'Previous / next tab',
+    section: 'Files & tabs',
+    where: 'all',
+    ids: ['tabs.prev', 'tabs.next'],
+  },
 
   {
     key: 'Enter',
@@ -141,6 +177,7 @@ export const KEYS: KeyInfo[] = [
     label: 'Source control panel (git)',
     section: 'Source control',
     where: 'all',
+    ids: ['view.git'],
     welcome: { label: 'Review changes and commit', rank: 4 },
   },
   // Short labels on purpose: a label that wraps costs the help table a second row,
@@ -164,6 +201,14 @@ export const KEYS: KeyInfo[] = [
     label: 'Show / hide sidebar',
     section: 'View',
     where: 'all',
+    ids: ['view.sidebar'],
+  },
+  {
+    key: `Ctrl+${ALT}+M`,
+    label: 'Markdown: rendered / source',
+    section: 'View',
+    where: 'editor',
+    ids: ['view.markdown'],
   },
   // Ctrl+U / Ctrl+D too: MacBook keyboards have no page keys at all.
   {
@@ -183,8 +228,80 @@ export const KEYS: KeyInfo[] = [
   { key: 'Esc', label: 'Editor → tree', section: 'View', where: 'editor' },
 ]
 
+/** One bindable command's effective key, as `src/app/keymap.ts` resolved it. */
+export interface KeyOverride {
+  /** Spelling in force; '' when the command has no key. */
+  key: string
+  label: string
+  /** The user rebound it, so this spelling outranks the table's own. */
+  changed: boolean
+}
+
+/**
+ * A signal, not a plain object: the peek strip and the help table read this while
+ * rendering, and an assignment they cannot see would leave them advertising keys
+ * the editor no longer has.
+ */
+const [overrides, setOverrides] = createSignal<Record<string, KeyOverride>>({})
+
+export { setOverrides as setKeyOverrides }
+
+const UNBOUND = '—'
+
+/**
+ * The key column for one row. The table's own spelling stands until a command on
+ * the row is rebound, so nothing moves for the people who changed nothing — and
+ * `test/keymap.test.ts` holds the two spellings to each other.
+ */
+function displayKey(info: KeyInfo): string {
+  const map = overrides()
+  const ids = info.ids
+  if (!ids?.some(id => map[id]?.changed)) return info.key
+  const spellings = ids.map(id => map[id]?.key || UNBOUND)
+  return joinKeys(spellings)
+}
+
+/**
+ * Several commands' keys as one column. A shared modifier is written once —
+ * "Ctrl+Opt+← / →" rather than twice its width, which the help table's key column
+ * has no room for.
+ */
+function joinKeys(spellings: string[]): string {
+  if (spellings.length === 1) return spellings[0]!
+  const split = spellings.map(spelling => {
+    const at = spelling.lastIndexOf('+')
+    return at < 0
+      ? { prefix: '', key: spelling }
+      : { prefix: spelling.slice(0, at + 1), key: spelling.slice(at + 1) }
+  })
+  const prefix = split[0]!.prefix
+  if (prefix && split.every(part => part.prefix === prefix)) {
+    return `${prefix}${split.map(part => part.key).join(' / ')}`
+  }
+  return spellings.join(' / ')
+}
+
+/**
+ * The table as it stands now: every row at its effective spelling, plus a row for
+ * each command the user gave a key that the table does not otherwise advertise.
+ */
+function entries(): KeyInfo[] {
+  const map = overrides()
+  const advertised = new Set(KEYS.flatMap(info => info.ids ?? []))
+  const extra = Object.entries(map)
+    .filter(([id, override]) => override.changed && override.key && !advertised.has(id))
+    .map(([, override]) => ({
+      key: override.key,
+      label: override.label,
+      section: 'Custom keys',
+      where: 'all' as const,
+    }))
+  return [...KEYS.map(info => ({ ...info, key: displayKey(info) })), ...extra]
+}
+
 /** The help table: every row, key and long label. */
-export const ROWS: [string, string][] = KEYS.map(info => [info.key, info.label])
+export const helpRows = (): [string, string][] =>
+  entries().map(info => [info.key, info.label] as [string, string])
 
 export interface HelpSection {
   title: string
@@ -192,27 +309,37 @@ export interface HelpSection {
 }
 
 /** The table split at its section boundaries, for the help overlay's headings. */
-export const SECTIONS: HelpSection[] = KEYS.reduce<HelpSection[]>((out, info) => {
-  if (out.at(-1)?.title !== info.section) out.push({ title: info.section, rows: [] })
-  out.at(-1)!.rows.push([info.key, info.label])
-  return out
-}, [])
+export const helpSections = (): HelpSection[] =>
+  entries().reduce<HelpSection[]>((out, info) => {
+    if (out.at(-1)?.title !== info.section) out.push({ title: info.section, rows: [] })
+    out.at(-1)!.rows.push([info.key, info.label])
+    return out
+  }, [])
+
+/**
+ * The short spelling a hint or welcome row asked for — dropped once the command is
+ * rebound, since the abbreviation was written for the key it used to have.
+ */
+const shortKey = (info: KeyInfo, short: string | undefined): string =>
+  info.ids?.some(id => overrides()[id]?.changed) ? info.key : (short ?? info.key)
 
 /** Footer hints for `pane`, most useful first. */
 export function hintsFor(pane: Pane): ReadonlyArray<readonly [string, string]> {
-  return KEYS.filter(info => info.hint && (info.hint.pane === pane || info.hint.pane === 'all'))
+  return entries()
+    .filter(info => info.hint && (info.hint.pane === pane || info.hint.pane === 'all'))
     .toSorted((a, b) => a.hint!.rank - b.hint!.rank)
-    .map(info => [info.hint!.key ?? info.key, info.hint!.label] as const)
+    .map(info => [shortKey(info, info.hint!.key), info.hint!.label] as const)
 }
 
 /** Rows for the welcome screen, most useful first. */
 export function welcomeKeys(): ReadonlyArray<readonly [string, string]> {
-  return KEYS.filter(info => info.welcome)
+  return entries()
+    .filter(info => info.welcome)
     .toSorted((a, b) => a.welcome!.rank - b.welcome!.rank)
-    .map(info => [info.welcome!.key ?? info.key, info.welcome!.label] as const)
+    .map(info => [shortKey(info, info.welcome!.key), info.welcome!.label] as const)
 }
 
 /** Everything alive in `pane`, for the peek strip. */
 export function keysFor(pane: KeyScope): KeyInfo[] {
-  return KEYS.filter(info => info.where === pane || info.where === 'all')
+  return entries().filter(info => info.where === pane || info.where === 'all')
 }

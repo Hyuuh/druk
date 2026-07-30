@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 
 import { APPEARANCE_ENV, detectAppearance, watchAppearance } from '../src/core/appearance'
 import { CONFIG_FILE, DEFAULTS } from '../src/core/config'
-import { fixture, launch, runCommand, settle, untilFrame } from './helpers'
+import { fixture, launch, runCommand, settle, toggleSetting, untilFrame } from './helpers'
 
 afterEach(() => {
   delete process.env[APPEARANCE_ENV]
@@ -75,15 +75,16 @@ test('picking a theme by hand turns the sync off and survives the next poll', as
   expect(row.trimEnd().endsWith('off')).toBe(true)
 })
 
-test('the palette turns the sync on and applies the matching slot', async () => {
+test('the settings page turns the sync on and applies the matching slot', async () => {
   process.env[APPEARANCE_ENV] = 'light'
   const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }), {
     themeSync: false,
     theme: 'nord',
     themeLight: 'solarized-light',
   })
-  await runCommand(t, 'Follow OS appearance')
+  await toggleSetting(t, 'Follow OS appearance')
   await untilFrame(t, 'Following OS appearance')
+  // The Theme row is what names the slot that won, and toggleSetting closed the page.
   await runCommand(t, 'Settings')
   await untilFrame(t, 'Solarized Light')
 })

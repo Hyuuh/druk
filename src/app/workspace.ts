@@ -7,6 +7,7 @@ import { formatterFor, runFormatter } from '../core/format'
 import { BinaryFileError, exists, mtimeOf, readFile, writeFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import { isImagePath } from '../core/image'
+import { isMarkdownPath } from '../core/markdown'
 import { loadSession, saveSession } from '../core/session'
 import { trimTrailing } from '../editor/lines'
 import type { DiffFile } from '../ui/DiffView'
@@ -117,6 +118,13 @@ export function createWorkspace(deps: {
   // preview, and promoted to a permanent tab on click, double-click or edit.
   const [previewPath, setPreviewPath] = createSignal<string | null>(null)
   /**
+   * Markdown tabs reading as the rendered document rather than as their text.
+   * Per path, not one flag for the editor: a file switched away from and back to
+   * comes back the way it was left. Both halves are the one buffer — this says
+   * which of the two the editor slot is showing, nothing more.
+   */
+  const [renderedPaths, setRenderedPaths] = createSignal<string[]>([])
+  /**
    * The diff tab: its two texts as they read when it was opened, or null for no
    * such tab. It is a tab like any other — the strip shows it, Ctrl+←/→ walks onto
    * it — so opening a file switches away from it without closing it, and only
@@ -222,6 +230,7 @@ export function createWorkspace(deps: {
       if (!fallback && panes.sidebar()) panes.focusTree()
     }
     if (previewPath() === path) setPreviewPath(null)
+    setRenderedPaths(prev => prev.filter(p => p !== path))
     discardBuffer(path)
     setRecentlyClosed(prev => [...prev.filter(p => p !== path), path])
   }
@@ -248,6 +257,29 @@ export function createWorkspace(deps: {
     }
     for (const path of paths) closeTab(path, true)
     say(done)
+  }
+
+  /**
+   * The path the editor slot should render as markdown, or null for the text.
+   * The diff and the pages sit above this one, so it answers only for a file tab.
+   */
+  const renderedPath = () => {
+    const path = activePath()
+    return path && isMarkdownPath(path) && renderedPaths().includes(path) ? path : null
+  }
+
+  /** Swap the active markdown tab between the rendered document and its text. */
+  const toggleRendered = () => {
+    const path = activePath()
+    if (!path || !isMarkdownPath(path)) {
+      return say('Not a markdown file — the rendered view is for .md', 'warn')
+    }
+    const rendered = !renderedPaths().includes(path)
+    setRenderedPaths(prev => (rendered ? [...prev, path] : prev.filter(p => p !== path)))
+    // The editor keeps the keyboard while its own text is up; taking focus back
+    // is what lets the reader scroll without clicking first.
+    panes.setFocus('editor')
+    say(rendered ? `Rendering ${basename(path)}` : `Source of ${basename(path)}`)
   }
 
   /** The diff tab's id in the strip. Not a path: a file and its diff are two tabs
@@ -498,6 +530,7 @@ export function createWorkspace(deps: {
     if (active) setActivePath(remap(active))
     const preview = previewPath()
     if (preview) setPreviewPath(remap(preview))
+    setRenderedPaths(prev => prev.map(remap))
   }
 
   createEffect(
@@ -537,6 +570,8 @@ export function createWorkspace(deps: {
     tabs,
     activePath,
     previewPath,
+    renderedPath,
+    toggleRendered,
     notice,
     setNotice,
     conflict,

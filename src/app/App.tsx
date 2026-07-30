@@ -5,7 +5,7 @@ import { useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
 
 import { watchAppearance } from '../core/appearance'
-import { CONFIG_FILE } from '../core/config'
+import { loadProjectConfig, resolveConfig } from '../core/config'
 import type { Config } from '../core/config'
 import { watchTree } from '../core/fs'
 import { isImagePath } from '../core/image'
@@ -23,6 +23,7 @@ import { EditorPane } from '../ui/EditorPane'
 import { FileTree } from '../ui/FileTree'
 import { GitPanel } from '../ui/GitPanel'
 import { ImageView } from '../ui/ImageView'
+import { MarkdownView } from '../ui/MarkdownView'
 import { SettingsView } from '../ui/SettingsView'
 import { SidebarTabs } from '../ui/SidebarTabs'
 import { StatusBar } from '../ui/StatusBar'
@@ -58,7 +59,14 @@ export function App(props: {
   openFile?: string | null
   /** `druk file.ts:42`: 0-based line to land on in `openFile`. */
   openLine?: number | null
+  /** The user's own settings; the project's overrides go on top of them. */
   initialConfig: Config
+  /**
+   * `<rootDir>/.druk/settings.json`, already read — main.tsx needs it before the
+   * first render to paint the right theme, and reading it twice would be waste.
+   * Left out, it is read here.
+   */
+  initialProject?: Partial<Config>
   /**
    * The startup update check is unconditional for users — this switch exists so
    * the test harness can keep hundreds of launches off the npm registry.
@@ -73,8 +81,17 @@ export function App(props: {
   const restored = restoreWorkspace(rootDir, single)
 
   const status = createStatus()
-  const editor = createEditorBridge(props.initialConfig.vim)
-  const settings = createSettings({ initial: props.initialConfig, status, editor, dimensions })
+  const project = props.initialProject ?? loadProjectConfig(rootDir)
+  const initial = resolveConfig(props.initialConfig, project)
+  const editor = createEditorBridge(initial.vim)
+  const settings = createSettings({
+    user: props.initialConfig,
+    project,
+    rootDir,
+    status,
+    editor,
+    dimensions,
+  })
   const tree = createTree(
     rootDir,
     { expanded: restored.expanded, selected: restored.activePath },
@@ -221,6 +238,18 @@ export function App(props: {
   const backToPanel = () => panes.sidebar() && panes.view() === 'git'
 
   onMount(() => {
+    // A shortcut that did not take is invisible until the key is pressed and
+    // nothing happens, so a bad `keybindings` entry is reported on the way in.
+    const { invalid, conflicts } = settings.keymap()
+    const bad = invalid[0]
+    const clash = conflicts.find(entry => entry.rejected)
+    if (bad) say(`Shortcut "${bad.value}" for ${bad.label}: ${bad.reason}`, 'warn')
+    else if (clash) {
+      say(
+        `${clash.key} is bound twice — ${clash.winner} keeps it, ${clash.loser} has no key`,
+        'warn',
+      )
+    }
     // Same refusal `druk file.ts` deserves as opening one from the tree, and for the
     // same reason: an empty editor with a status line under it looks like a bug.
     if (restored.failed) workspace.setNotice({ name: basename(single!), reason: restored.failed })
@@ -253,7 +282,7 @@ export function App(props: {
     })
     void (async () => {
       const info = await checkForUpdate()
-      if (!cancelled && info && info.latest !== props.initialConfig.skipUpdate) {
+      if (!cancelled && info && info.latest !== initial.skipUpdate) {
         overlays.setUpdate(info)
       }
     })()
@@ -308,8 +337,14 @@ export function App(props: {
         tabs={workspace.views().map(id => ({
           id,
           // The diff's own tab, marked as one: a file and its diff are two tabs
-          // for one path, and the strip has to say which is which.
-          name: workspace.isDiffView(id) ? `⇄ ${basename(id)}` : basename(id),
+          // for one path, and the strip has to say which is which. A markdown tab
+          // reading as the rendered document is still the one tab, so it is the
+          // same name with a mark rather than a second entry.
+          name: workspace.isDiffView(id)
+            ? `⇄ ${basename(id)}`
+            : id === workspace.renderedPath()
+              ? `¶ ${basename(id)}`
+              : basename(id),
           dirty: workspace.buffers[id]?.dirty ?? false,
           preview: id === workspace.previewPath(),
         }))}
@@ -456,7 +491,8 @@ export function App(props: {
               !workspace.diff() &&
               !workspace.settingsPage() &&
               !comparison.detailOpen() &&
-              !activeImage()
+              !activeImage() &&
+              !workspace.renderedPath()
             }
             theme={config.theme}
             reloadKey={editor.reloadKey()}
@@ -496,7 +532,8 @@ export function App(props: {
               workspace.diff() !== null ||
               workspace.settingsPage() ||
               comparison.detailOpen() ||
-              activeImage() !== null
+              activeImage() !== null ||
+              workspace.renderedPath() !== null
             }
             onChange={workspace.onEditorChange}
             onCursor={editor.setCursor}
@@ -516,11 +553,30 @@ export function App(props: {
               </box>
             )}
           </Show>
+          <Show when={workspace.renderedPath()}>
+            {(path: () => string) => (
+              <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={40}>
+                <MarkdownView
+                  path={path()}
+                  name={basename(path())}
+                  content={workspace.buffers[path()]?.content ?? ''}
+                  width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                  theme={config.theme}
+                  focused={panes.focus() === 'editor'}
+                  blocked={overlays.overlay()}
+                  onFocus={() => panes.setFocus('editor')}
+                  onShowSource={workspace.toggleRendered}
+                />
+              </box>
+            )}
+          </Show>
           <Show when={workspace.settingsPage()}>
             <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={60}>
               <SettingsView
                 rows={settings.rows()}
-                configFile={CONFIG_FILE}
+                scope={settings.scope()}
+                onToggleScope={settings.toggleScope}
+                configFile={settings.configFile()}
                 width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
                 focused={panes.focus() === 'editor'}
                 blocked={overlays.overlay()}
@@ -583,7 +639,11 @@ export function App(props: {
               : undefined
         }
         // A viewer tab has no caret: the numbers would be wherever the editor last was.
-        cursor={workspace.activePath() && !activeImage() ? editor.cursor() : undefined}
+        cursor={
+          workspace.activePath() && !activeImage() && !workspace.renderedPath()
+            ? editor.cursor()
+            : undefined
+        }
         dirty={workspace.activeBuffer()?.dirty ?? false}
         vimMode={workspace.activePath() && !activeImage() ? editor.vimMode() : null}
         branch={git.branch()}

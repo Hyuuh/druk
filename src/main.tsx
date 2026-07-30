@@ -3,7 +3,7 @@ import { render } from '@opentui/solid'
 import { App } from './app/App'
 import { releaseAssetRoot } from './core/assets'
 import type { Target } from './core/cli'
-import { loadConfig } from './core/config'
+import { loadConfig, loadProjectConfig, resolveConfig } from './core/config'
 import { highlightClient } from './languages/highlight'
 import { setTheme } from './themes'
 
@@ -17,9 +17,11 @@ export async function main(target: Target): Promise<void> {
 
   const { rootDir, openFile } = target
 
-  // Apply the saved theme before the first render.
+  // Apply the saved theme before the first render — the project's, where it has
+  // one, or the first frame paints in the user's and then repaints.
   const config = loadConfig()
-  setTheme(config.theme)
+  const project = loadProjectConfig(rootDir)
+  setTheme(resolveConfig(config, project).theme)
 
   // Start the tree-sitter worker now, in parallel with the renderer's own boot:
   // spawning it plus compiling the runtime wasm is the long pole of the first
@@ -28,7 +30,13 @@ export async function main(target: Target): Promise<void> {
 
   await render(
     () => (
-      <App rootDir={rootDir} openFile={openFile} openLine={target.line} initialConfig={config} />
+      <App
+        rootDir={rootDir}
+        openFile={openFile}
+        openLine={target.line}
+        initialConfig={config}
+        initialProject={project}
+      />
     ),
     {
       useMouse: true,
