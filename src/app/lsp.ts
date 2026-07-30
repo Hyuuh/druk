@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
-import { createEffect, onCleanup } from 'solid-js'
+import { createEffect, createSignal, onCleanup } from 'solid-js'
 import { createStore } from 'solid-js/store'
 
 import { filetypeForPath } from '../languages/highlight'
@@ -8,9 +8,11 @@ import { spawnLspClient } from '../lsp/client'
 import type { LspClient } from '../lsp/client'
 import { normalizeCompletion } from '../lsp/completion'
 import type { CompletionReply } from '../lsp/completion'
+import { hasNodeRuntime, installServer, installedCommand } from '../lsp/install'
 import { isUnnecessary, severityOf } from '../lsp/protocol'
 import type { CompletionItem, Diagnostic, ProblemSeverity } from '../lsp/protocol'
-import { resolveServer } from '../lsp/servers'
+import { installHint, resolveServer } from '../lsp/servers'
+import type { PromptState } from './prompts'
 import type { Settings } from './settings'
 import type { Status } from './status'
 import type { Workspace } from './workspace'
@@ -38,12 +40,25 @@ export interface Problem {
 const CHANGE_DEBOUNCE_MS = 150
 
 /** Language servers: one per language, diagnostics per open file. */
-export function createLsp(deps: { rootDir: string; settings: Settings; status: Status }) {
-  const { rootDir, settings, status } = deps
+export function createLsp(deps: {
+  rootDir: string
+  settings: Settings
+  status: Status
+  prompts: PromptState
+}) {
+  const { rootDir, settings, status, prompts } = deps
 
   const [problems, setProblems] = createStore<Record<string, Problem[]>>({})
   /** By server id. `null` marks one that failed, so nothing respawns it. */
   const clients = new Map<string, LspClient | null>()
+  /**
+   * Bumped when a server becomes spawnable again. `wireLspEffects` reads it, so
+   * an install can re-open documents that were skipped while the server was
+   * missing — nothing else in that effect changes when a server comes back.
+   */
+  const [generation, setGeneration] = createSignal(0)
+  /** Server ids already offered this session, so a decline is not re-asked. */
+  const offered = new Set<string>()
 
   const onDiagnostics = (uri: string, diagnostics: Diagnostic[]) => {
     let path: string
@@ -74,6 +89,35 @@ export function createLsp(deps: { rootDir: string; settings: Settings; status: S
     if (problems[path]?.length) setProblems(path, [])
   }
 
+  /**
+   * What to do about a server that is not installed: offer to fetch it when druk
+   * can, otherwise print the line that installs it by hand. Asked once per server
+   * per session — `offered` outlives the failure mark, so a decline is final
+   * until the next launch.
+   */
+  const reportMissing = (resolved: NonNullable<ReturnType<typeof resolveServer>>) => {
+    const name = resolved.command[0]!
+    const spec = resolved.install
+    if (!spec) return status.say(`LSP: ${name} is not installed, or not on PATH`, 'warn')
+    if (
+      spec.kind === 'npm' &&
+      settings.config.lspAutoInstall &&
+      !offered.has(resolved.id) &&
+      // The servers druk installs are node scripts; without node they would
+      // download fine and then fail to spawn.
+      hasNodeRuntime()
+    ) {
+      offered.add(resolved.id)
+      return prompts.setPrompt({
+        kind: 'installServer',
+        id: resolved.id,
+        name,
+        packages: spec.packages,
+      })
+    }
+    status.say(`LSP: ${name} not installed — ${installHint(spec)}`, 'warn')
+  }
+
   /** The running client for `path`'s language — spawned on first use. */
   const clientFor = (path: string): LspClient | null => {
     if (!settings.config.lsp) return null
@@ -82,16 +126,33 @@ export function createLsp(deps: { rootDir: string; settings: Settings; status: S
     const known = clients.get(resolved.id)
     if (known !== undefined) return known
     const client = spawnLspClient({
-      command: resolved.command,
+      // A copy druk installed is used as-is; PATH is consulted only when there is
+      // none, so a user's own install wins from the moment they make one.
+      command: installedCommand(resolved.command) ?? resolved.command,
       rootDir,
       onDiagnostics,
-      onFail: reason => {
+      onFail: (reason, missing) => {
         clients.set(resolved.id, null)
+        if (missing) return reportMissing(resolved)
         status.say(`LSP: ${resolved.command[0]} ${reason}`, 'warn')
       },
     })
     clients.set(resolved.id, client)
     return client
+  }
+
+  /**
+   * Fetch a server the user agreed to install, then let it spawn: the failure
+   * mark goes, and the generation bump re-opens the documents that were skipped
+   * while it was missing.
+   */
+  const install = async (id: string, name: string, packages: string[]) => {
+    status.say(`Installing ${name}…`)
+    const error = await installServer(packages)
+    if (error) return status.say(`Could not install ${name}: ${error}`, 'error')
+    clients.delete(id)
+    setGeneration(generation() + 1)
+    status.say(`Installed ${name}`)
   }
 
   /**
@@ -143,7 +204,17 @@ export function createLsp(deps: { rootDir: string; settings: Settings; status: S
     return client.resolveCompletion(item)
   }
 
-  return { problems, clearProblems, clientFor, complete, resolveCompletion, onFlushNeeded, dispose }
+  return {
+    problems,
+    clearProblems,
+    clientFor,
+    complete,
+    resolveCompletion,
+    onFlushNeeded,
+    install,
+    generation,
+    dispose,
+  }
 }
 
 export type Lsp = ReturnType<typeof createLsp>
@@ -192,6 +263,10 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
       lsp.dispose()
       return
     }
+
+    // Tracked for its side effect on `clientFor`: a server just installed can
+    // now spawn, and the documents it should have opened are already open.
+    lsp.generation()
 
     const open = workspace.tabs()
     const openSet = new Set(open)

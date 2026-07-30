@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test'
 
-import { DEFAULTS } from '../src/core/config'
 import { getSyntaxStyle } from '../src/languages/highlight'
 import { THEMES } from '../src/themes'
 import { fixture, launch, press, pressTimes, runCommand } from './helpers'
@@ -40,7 +39,7 @@ test('a tab indent is tinted by the renderer alone', async () => {
 })
 
 test('tab size is configurable and shown on the settings page', async () => {
-  const t = await launch(fixture({ 'a.ts': NESTED }), { ...DEFAULTS, tabSize: 4 })
+  const t = await launch(fixture({ 'a.ts': NESTED }), { tabSize: 4 })
   await runCommand(t, 'Settings')
   const row = () =>
     t

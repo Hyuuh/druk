@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DEFAULTS, SIDEBAR_MIN } from '../src/core/config'
+import { SIDEBAR_MIN } from '../src/core/config'
 import { ui } from '../src/themes'
 import { fixture, launch, openFile, press, settle } from './helpers'
 import type { Harness } from './helpers'
@@ -76,13 +76,13 @@ describe('resizing the sidebar', () => {
 
   test('a width saved on a wider screen is clamped to fit this one', async () => {
     // 80 columns here, so a 200-column sidebar has to give the editor room.
-    const t = await launch(fixture(PROJECT), { ...DEFAULTS, sidebarWidth: 200 })
+    const t = await launch(fixture(PROJECT), { sidebarWidth: 200 })
     const at = dividerAt(t)
     expect(at).toBeGreaterThanOrEqual(SIDEBAR_MIN)
     expect(at).toBeLessThanOrEqual(60)
   })
 
-  test('the handle is a short grip at the middle, not a rule down the screen', async () => {
+  test('the handle is a hairline rule down the whole edge', async () => {
     const t = await launch(fixture(PROJECT))
     const at = dividerAt(t)
     expect(at).toBe(30)
@@ -94,14 +94,9 @@ describe('resizing the sidebar', () => {
       .slice(1, -1)
       .map(row => row[at] ?? ' ')
 
-    const marked = column.flatMap((glyph, row) => (glyph === '│' ? [row] : []))
-    expect(marked.length).toBeGreaterThan(2)
-    // A grip, not a rule: most of the column is blank.
-    expect(marked.length).toBeLessThan(column.length / 2)
-    // Contiguous, and centred to within a row of the middle.
-    expect(marked.at(-1)! - marked[0]!).toBe(marked.length - 1)
-    const middle = (marked[0]! + marked.at(-1)!) / 2
-    expect(Math.abs(middle - (column.length - 1) / 2)).toBeLessThanOrEqual(1)
+    // Every row of the pane, not a grip at the middle: the rule is what says
+    // where the sidebar ends, and a gap in it reads as a gap in the layout.
+    expect(column.every(glyph => glyph === '│')).toBe(true)
   })
 
   test('the whole column drags, not only the part that is drawn', async () => {
@@ -203,7 +198,7 @@ describe('rows hold their shape when names overflow', () => {
 
   test('the bullet sits at one column whatever the names do', async () => {
     // Narrow enough that the long names cannot fit.
-    const t = await launch(fixture(NAMES), { ...DEFAULTS, sidebarWidth: 22 })
+    const t = await launch(fixture(NAMES), { sidebarWidth: 22 })
     await press(t, input => input.pressArrow('down'))
     await press(t, input => input.pressEnter())
     await settle(t)
@@ -214,7 +209,7 @@ describe('rows hold their shape when names overflow', () => {
   })
 
   test('and keeps that column across a resize', async () => {
-    const t = await launch(fixture(NAMES), { ...DEFAULTS, sidebarWidth: 22 })
+    const t = await launch(fixture(NAMES), { sidebarWidth: 22 })
     await press(t, input => input.pressArrow('down'))
     await press(t, input => input.pressEnter())
     await settle(t)

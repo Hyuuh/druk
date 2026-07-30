@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -7,9 +7,10 @@ import { problemFrom } from '../src/app/lsp'
 import type { Problem } from '../src/app/lsp'
 import { styleIdForGroup } from '../src/languages/highlight'
 import { spawnLspClient } from '../src/lsp/client'
+import { installServer, installedCommand } from '../src/lsp/install'
 import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
 import { isUnnecessary, severityOf } from '../src/lsp/protocol'
-import { resolveServer } from '../src/lsp/servers'
+import { installHint, resolveServer } from '../src/lsp/servers'
 import { createDecoder, encodeMessage } from '../src/lsp/transport'
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
@@ -101,14 +102,55 @@ describe('protocol mapping', () => {
 
   test('overrides replace a server command, and an empty one disables it', () => {
     expect(resolveServer('typescript', {})?.command[0]).toBe('typescript-language-server')
+    expect(resolveServer('typescript', {})?.install).toEqual({
+      kind: 'npm',
+      packages: ['typescript-language-server', 'typescript'],
+    })
     expect(resolveServer('typescript', { typescript: ['deno', 'lsp'] })?.command).toEqual([
       'deno',
       'lsp',
     ])
+    // The hint names the default's package; an override would send them elsewhere.
+    expect(resolveServer('typescript', { typescript: ['deno', 'lsp'] })?.install).toBeUndefined()
     expect(resolveServer('typescript', { typescript: [] })).toBeNull()
     expect(resolveServer('brainfuck', {})).toBeNull()
     expect(resolveServer(undefined, {})).toBeNull()
   })
+
+  test('install hints read as the command that installs the server', () => {
+    expect(installHint({ kind: 'npm', packages: ['pyright'] })).toBe('npm i -g pyright')
+    expect(installHint({ kind: 'manual', command: 'gem install solargraph' })).toBe(
+      'gem install solargraph',
+    )
+  })
+})
+
+describe('installed servers', () => {
+  test('a command is rewritten only when druk installed that binary', () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    const command = ['pyright-langserver', '--stdio']
+    expect(installedCommand(command, root)).toBeNull()
+
+    const bin = join(root, 'node_modules', '.bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(join(bin, 'pyright-langserver'), '')
+    // The arguments ride along; only the executable becomes a path.
+    expect(installedCommand(command, root)).toEqual([join(bin, 'pyright-langserver'), '--stdio'])
+  })
+
+  test('an install with no npm to run it fails instead of hanging', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    // PATH is what `spawn` searches, so emptying it is how npm goes missing.
+    const path = process.env.PATH
+    process.env.PATH = ''
+    try {
+      expect(await installServer(['druk-no-such-package'], root)).toBe(
+        'npm is not installed, or not on PATH',
+      )
+    } finally {
+      process.env.PATH = path
+    }
+  }, 20_000)
 })
 
 describe('problemFrom', () => {
@@ -166,15 +208,19 @@ describe('client against a live server', () => {
   }, 20_000)
 
   test('a command that is not on PATH reports failure instead of wedging', async () => {
-    const { promise: failed, resolve: onFail } = Promise.withResolvers<string>()
+    const { promise: failed, resolve: onFail } = Promise.withResolvers<{
+      reason: string
+      missing: boolean
+    }>()
     const client = spawnLspClient({
       command: ['druk-no-such-language-server'],
       rootDir: tmpdir(),
       onDiagnostics: () => {},
-      onFail,
+      onFail: (reason, missing) => onFail({ reason, missing }),
     })
-    // Bun and Node word the ENOENT differently; both name the command.
-    expect(await failed).toContain('druk-no-such-language-server')
+    // Neither runtime's raw ENOENT wording reaches the user: the status bar names
+    // the command itself and adds the server's install line.
+    expect(await failed).toEqual({ reason: 'is not installed, or not on PATH', missing: true })
     expect(client.ready()).toBe(false)
     client.dispose()
   }, 10_000)

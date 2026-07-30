@@ -9,6 +9,13 @@ const PROJECT = { 'a.ts': 'const a = 1\n' }
 
 const saved = () => JSON.parse(readFileSync(CONFIG_FILE, 'utf8'))
 
+/**
+ * Rows near the end of the page. `gotoRow` costs one flush per arrow key — it
+ * has to read the frame to know when to stop — so a row 20 down is already a
+ * second of rendering on an idle machine, and several under a loaded suite.
+ */
+const LATE_ROW = 15_000
+
 /** Walk the settings page's selection down until it sits on `label`. */
 async function gotoRow(t: Harness, label: string) {
   for (let step = 0; step < 30; step++) {
@@ -143,41 +150,49 @@ test('Esc leaves the editor without applying', async () => {
   expect(t.captureCharFrame()).toContain('Formatters')
 })
 
-test('sidebar width takes a number or auto from the page', async () => {
-  const t = await launch(fixture(PROJECT))
-  await runCommand(t, 'Settings')
-  await gotoRow(t, 'Sidebar width')
-  await press(t, i => i.pressEnter())
-  await clear(t)
-  await press(t, i => void i.typeText('40'))
-  await press(t, i => i.pressEnter())
-  expect(saved().sidebarWidth).toBe(40)
+test(
+  'sidebar width takes a number or auto from the page',
+  async () => {
+    const t = await launch(fixture(PROJECT))
+    await runCommand(t, 'Settings')
+    await gotoRow(t, 'Sidebar width')
+    await press(t, i => i.pressEnter())
+    await clear(t)
+    await press(t, i => void i.typeText('40'))
+    await press(t, i => i.pressEnter())
+    expect(saved().sidebarWidth).toBe(40)
 
-  await press(t, i => i.pressEnter())
-  await clear(t)
-  await press(t, i => void i.typeText('auto'))
-  await press(t, i => i.pressEnter())
-  expect(saved().sidebarWidth).toBe('auto')
-})
+    await press(t, i => i.pressEnter())
+    await clear(t)
+    await press(t, i => void i.typeText('auto'))
+    await press(t, i => i.pressEnter())
+    expect(saved().sidebarWidth).toBe('auto')
+  },
+  LATE_ROW,
+)
 
-test('a server command is overridden and restored from the page', async () => {
-  const t = await launch(fixture(PROJECT))
-  await runCommand(t, 'Settings')
-  await gotoRow(t, 'Server commands')
-  await press(t, i => i.pressEnter())
-  await press(t, i => void i.typeText('typescript'))
-  await press(t, i => i.pressEnter())
-  await clear(t)
-  await press(t, i => void i.typeText('my-ls --stdio'))
-  await press(t, i => i.pressEnter())
-  expect(saved().lspServers).toEqual({ typescript: ['my-ls', '--stdio'] })
-  expect(t.captureCharFrame()).toContain('1 custom')
+test(
+  'a server command is overridden and restored from the page',
+  async () => {
+    const t = await launch(fixture(PROJECT))
+    await runCommand(t, 'Settings')
+    await gotoRow(t, 'Server commands')
+    await press(t, i => i.pressEnter())
+    await press(t, i => void i.typeText('typescript'))
+    await press(t, i => i.pressEnter())
+    await clear(t)
+    await press(t, i => void i.typeText('my-ls --stdio'))
+    await press(t, i => i.pressEnter())
+    expect(saved().lspServers).toEqual({ typescript: ['my-ls', '--stdio'] })
+    expect(t.captureCharFrame()).toContain('1 custom')
 
-  await press(t, i => i.pressEnter())
-  await press(t, i => void i.typeText('typescript'))
-  await press(t, i => i.pressEnter())
-  await clear(t)
-  await press(t, i => i.pressEnter())
-  expect(saved().lspServers).toEqual({})
-  expect(t.captureCharFrame()).toContain('back on its default command')
-})
+    await press(t, i => i.pressEnter())
+    await press(t, i => void i.typeText('typescript'))
+    await press(t, i => i.pressEnter())
+    await clear(t)
+    await press(t, i => i.pressEnter())
+    expect(saved().lspServers).toEqual({})
+    expect(t.captureCharFrame()).toContain('back on its default command')
+  },
+  LATE_ROW,
+)

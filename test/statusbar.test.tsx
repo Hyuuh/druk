@@ -4,7 +4,6 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DEFAULTS } from '../src/core/config'
 import { fixture, launch, openFile, press, pressEscape, settle } from './helpers'
 import type { Harness } from './helpers'
 
@@ -67,7 +66,7 @@ describe('the status bar', () => {
   })
 
   test('the vim badge stays leftmost, ahead of git', async () => {
-    const t = await launch(repo(), { ...DEFAULTS, vim: true })
+    const t = await launch(repo(), { vim: true })
     await openFirst(t, 'a.ts')
     const row = bar(t)
     expect(row.indexOf('NORMAL')).toBeLessThan(row.indexOf('⎇'))
@@ -154,7 +153,7 @@ describe('a message far too long for the bar', () => {
 
   async function longMessage(width: number) {
     const dir = fixture({ 'a.ts': 'const a = 1\n', [TAKEN]: 'x\n' })
-    const t = await launch(dir, DEFAULTS, { width })
+    const t = await launch(dir, {}, { width })
     await openFirst(t, 'a.ts')
     await pressEscape(t)
     await settle(t, 80)

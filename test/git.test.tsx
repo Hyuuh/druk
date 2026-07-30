@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -285,6 +285,31 @@ test('ignoredAmong reports only the gitignored paths asked about', () => {
   expect(ignored.has(join(dir, 'dist', 'out.js'))).toBe(true)
   expect(ignored.has(join(dir, 'noise.log'))).toBe(true)
   expect(ignored.has(join(dir, 'keep.ts'))).toBe(false)
+  expect(ignored.has(join(dir, 'a.ts'))).toBe(false)
+})
+
+test('one path beyond a symlink does not blank the whole answer', () => {
+  // `check-ignore` aborts the entire batch with 128 at the first path that reaches
+  // through a symlinked directory — pnpm's node_modules/@scope/pkg is one — which
+  // used to leave every other row undimmed the moment such a folder was expanded.
+  const dir = repo('one\n')
+  writeFileSync(join(dir, '.gitignore'), 'node_modules\n')
+  mkdirSync(join(dir, 'node_modules', '@scope'), { recursive: true })
+  mkdirSync(join(dir, 'pkg'))
+  writeFileSync(join(dir, 'pkg', 'index.js'), 'x\n')
+  symlinkSync(join(dir, 'pkg'), join(dir, 'node_modules', '@scope', 'pkg'))
+
+  const ignored = ignoredAmong(dir, [
+    join(dir, 'node_modules'),
+    join(dir, 'node_modules', '@scope'),
+    join(dir, 'node_modules', '@scope', 'pkg'),
+    join(dir, 'node_modules', '@scope', 'pkg', 'index.js'),
+    join(dir, 'a.ts'),
+  ])
+  expect(ignored.has(join(dir, 'node_modules'))).toBe(true)
+  expect(ignored.has(join(dir, 'node_modules', '@scope'))).toBe(true)
+  // Unanswerable by git, dimmed by its ignored ancestor instead.
+  expect(ignored.has(join(dir, 'node_modules', '@scope', 'pkg', 'index.js'))).toBe(true)
   expect(ignored.has(join(dir, 'a.ts'))).toBe(false)
 })
 

@@ -87,18 +87,29 @@ export function GitPanel(props: GitPanelProps) {
       flexBasis={0}
       onMouseDown={() => props.onFocus()}
     >
-      <box height={2} flexDirection="column" backgroundColor={ui.sidebarBg} paddingLeft={2}>
+      {/* One row, as the tree's header is: the branch takes the left, and what
+          the panel is comparing against takes the right. */}
+      <box
+        height={1}
+        flexDirection="row"
+        backgroundColor={ui.sidebarBg}
+        paddingLeft={2}
+        paddingRight={1}
+      >
         <text
           fg={props.focused ? ui.text : ui.dim}
           bg={ui.sidebarBg}
+          flexShrink={1}
           content={headline()}
           attributes={TextAttributes.BOLD}
         />
+        <box flexGrow={1} backgroundColor={ui.sidebarBg} />
         {/* The base has to be said somewhere: against another branch every file
             it touches is marked, which reads as a broken tree until you know why. */}
         <text
           fg={props.base ? ui.accent : ui.faint}
           bg={ui.sidebarBg}
+          flexShrink={0}
           content={props.base ? `vs ${props.base}` : 'source control'}
         />
       </box>

@@ -120,6 +120,12 @@ export interface Config {
   /** Completion menu while typing (and on Ctrl+Space). Needs `lsp` on too. */
   lspCompletion: boolean
   /**
+   * Offer to install a missing server (the npm ones) when a file that wants it
+   * opens. Off means the status bar prints the install line and nothing else;
+   * on still asks before anything is downloaded.
+   */
+  lspAutoInstall: boolean
+  /**
    * Per-server command override, keyed by server id — see src/lsp/servers.ts
    * for the ids and defaults. An empty array disables that server.
    */
@@ -154,6 +160,7 @@ export const DEFAULTS: Config = {
   lsp: true,
   lspInline: true,
   lspCompletion: true,
+  lspAutoInstall: true,
   lspServers: {},
   keybindings: {},
 }
@@ -220,6 +227,7 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   lsp: bool,
   lspInline: bool,
   lspCompletion: bool,
+  lspAutoInstall: bool,
   lspServers: commands,
   keybindings: strings,
 }

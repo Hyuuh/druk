@@ -4,10 +4,13 @@ import { createMemo, createSignal } from 'solid-js'
 
 import { createDir, createFile, isDirectory } from '../core/fs'
 import { commitPaths, undoLastCommit } from '../core/git'
+import { SERVER_ROOT } from '../lsp/install'
+import { installHint } from '../lsp/servers'
 import type { Branches } from './branches'
 import type { EditorBridge } from './editor'
 import type { FileOps } from './fileOps'
 import type { GitOp } from './git'
+import type { Lsp } from './lsp'
 import type { Panes } from './panes'
 import type { Status } from './status'
 import type { Tree } from './tree'
@@ -53,9 +56,10 @@ export function createPromptHandlers(deps: {
   fileOps: FileOps
   gitOp: GitOp
   branches: Branches
+  lsp: Lsp
 }) {
   const { rootDir, renderer, state, status, tree, panes, editor, workspace } = deps
-  const { fileOps, gitOp, branches } = deps
+  const { fileOps, gitOp, branches, lsp } = deps
   const { prompt, setPrompt } = state
   const { say } = status
 
@@ -131,6 +135,21 @@ export function createPromptHandlers(deps: {
         return branches.remove(p.name, p.force)
       case 'mergeBranch':
         return branches.merge(p.name)
+      case 'installServer':
+        return void lsp.install(p.id, p.name, p.packages)
+    }
+  }
+
+  /**
+   * Closing a confirm without going through with it. Most kinds simply vanish —
+   * the install offer is the one that has something left to say, since saying no
+   * is not the same as not wanting the server.
+   */
+  const cancelPrompt = () => {
+    const p = prompt()
+    setPrompt(null)
+    if (p?.kind === 'installServer') {
+      say(`LSP: ${p.name} not installed — ${installHint({ kind: 'npm', packages: p.packages })}`)
     }
   }
 
@@ -207,12 +226,29 @@ export function createPromptHandlers(deps: {
           danger: false,
           message: `Merge "${p.name}" into the current branch? Conflicts are left in the working tree.`,
         }
+      case 'installServer':
+        return {
+          title: 'Language server missing',
+          verb: 'install it',
+          danger: false,
+          // Where it lands is the part worth showing: nothing global is touched,
+          // and deleting that one directory undoes the whole thing.
+          message: `${p.name} is not installed. Fetch it with npm into ${SERVER_ROOT}?`,
+        }
       default:
         return null
     }
   })
 
-  return { quit, submitPrompt, confirmPrompt, promptTitle, promptValue, confirmation }
+  return {
+    quit,
+    submitPrompt,
+    confirmPrompt,
+    cancelPrompt,
+    promptTitle,
+    promptValue,
+    confirmation,
+  }
 }
 
 export type PromptHandlers = ReturnType<typeof createPromptHandlers>

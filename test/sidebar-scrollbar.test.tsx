@@ -14,9 +14,9 @@ function thumb(t: Harness, sidebarWidth = 30) {
     .captureCharFrame()
     .split('\n')
     .filter(row => row.length > 0)
-    // Past the tab bar, the sidebar's view tabs and the tree's two-row header,
+    // Past the tab bar, the sidebar's view tabs and the tree's header row,
     // where the track starts.
-    .slice(4, -1)
+    .slice(3, -1)
   const column = rows.map(row => row[sidebarWidth - 1] ?? ' ')
   const filled = column.flatMap((glyph, row) => ('█▀▄'.includes(glyph) ? [row] : []))
   return { column, filled }

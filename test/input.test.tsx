@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test'
 
-import { DEFAULTS } from '../src/core/config'
 import { THEMES } from '../src/themes'
 import type { ThemeName } from '../src/themes'
 import { fixture, launch, openPalette, press } from './helpers'
@@ -36,7 +35,7 @@ const contrast = (a: number[], b: number[]) => Math.max(...a.map((v, i) => Math.
 
 test('typed text is readable in the palette, search and prompts', async () => {
   for (const theme of Object.keys(THEMES) as ThemeName[]) {
-    const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }), { ...DEFAULTS, theme })
+    const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }), { theme })
 
     await openPalette(t)
     await press(t, i => void i.typeText('zzz'))

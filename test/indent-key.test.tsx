@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { DEFAULTS } from '../src/core/config'
 import type { Config } from '../src/core/config'
 import { fixture, launch, press } from './helpers'
 
@@ -27,7 +26,7 @@ describe('Tab in the editor', () => {
   })
 
   test('aligns to the next tab stop instead of always inserting a full width', async () => {
-    const { t, saved } = await editor('hello\n', { ...DEFAULTS, tabSize: 4 })
+    const { t, saved } = await editor('hello\n', { tabSize: 4 })
     // From column 1, a full width would overshoot to 5; the stop is 4.
     await press(t, input => input.pressArrow('right'))
     await press(t, input => input.pressTab())
@@ -35,7 +34,7 @@ describe('Tab in the editor', () => {
   })
 
   test('honours the configured tab size', async () => {
-    const { t, saved } = await editor('hello\n', { ...DEFAULTS, tabSize: 8 })
+    const { t, saved } = await editor('hello\n', { tabSize: 8 })
     await press(t, input => input.pressTab())
     expect(await saved()).toBe('        hello\n')
   })

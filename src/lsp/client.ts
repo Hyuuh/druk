@@ -53,9 +53,10 @@ export interface LspClientOptions {
   /**
    * The server is gone and will not be respawned: the command was not on PATH,
    * the handshake failed or timed out, or the process died. Called at most once,
-   * and never for a `dispose()` the editor asked for.
+   * and never for a `dispose()` the editor asked for. `missing` marks the one
+   * failure that is the user's to fix by installing something.
    */
-  onFail: (reason: string) => void
+  onFail: (reason: string, missing: boolean) => void
 }
 
 export function spawnLspClient(options: LspClientOptions) {
@@ -98,13 +99,13 @@ export function spawnLspClient(options: LspClientOptions) {
     else if (state === 'ready') send(message)
   }
 
-  const die = (reason: string | null) => {
+  const die = (reason: string | null, missing = false) => {
     if (state === 'dead') return
     state = 'dead'
     for (const waiter of pending.values()) waiter.reject(new Error(reason ?? 'disposed'))
     pending.clear()
     queued.length = 0
-    if (reason !== null && !disposed) options.onFail(reason)
+    if (reason !== null && !disposed) options.onFail(reason, missing)
   }
 
   const onMessage = (message: RpcMessage) => {
@@ -141,7 +142,14 @@ export function spawnLspClient(options: LspClientOptions) {
   }
 
   child.stdout?.on('data', createDecoder(onMessage))
-  child.on('error', error => die(error.message))
+  child.on('error', error =>
+    // Bun and Node word the ENOENT differently and both repeat the command name
+    // the caller already has, so the raw message reads as a stutter in the status
+    // bar. The flag is what lets the caller offer an install line instead.
+    'code' in error && error.code === 'ENOENT'
+      ? die('is not installed, or not on PATH', true)
+      : die(error.message),
+  )
   child.on('exit', () => die('exited'))
 
   const killNow = () => {

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test'
 
-import { DEFAULTS } from '../src/core/config'
 import { fixture, launch, press } from './helpers'
 
 const PROJECT = {
@@ -12,7 +11,7 @@ const PROJECT = {
 // Rows: dir, a.ts, b.ts.
 describe('h/j/k/l in the tree (vim mode)', () => {
   test('j and k move the selection like the arrows', async () => {
-    const t = await launch(fixture(PROJECT), { ...DEFAULTS, vim: true })
+    const t = await launch(fixture(PROJECT), { vim: true })
 
     await press(t, i => void i.typeText('j'))
     await press(t, i => void i.typeText('j'))
@@ -24,7 +23,7 @@ describe('h/j/k/l in the tree (vim mode)', () => {
   })
 
   test('l expands a folder and h collapses it', async () => {
-    const t = await launch(fixture(PROJECT), { ...DEFAULTS, vim: true })
+    const t = await launch(fixture(PROJECT), { vim: true })
 
     await press(t, i => void i.typeText('j'))
     await press(t, i => void i.typeText('l'))

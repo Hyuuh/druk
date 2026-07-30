@@ -80,6 +80,20 @@ const DEFAULT: ThemeName = 'dark'
 /** Whether the app paints its own background at all — the `transparent` setting. */
 let seeThrough = false
 
+/**
+ * Mix two `#rrggbb` colors. Here rather than from `languages/highlight`, whose
+ * own mixer reads `ui` — importing it back would close the cycle.
+ */
+function mix(base: string, tint: string, amount: number): string {
+  const channel = (hex: string, at: number) => Number.parseInt(hex.slice(at, at + 2), 16)
+  if (!/^#[0-9a-f]{6}$/i.test(base) || !/^#[0-9a-f]{6}$/i.test(tint)) return base
+  const to = (at: number) =>
+    Math.round(channel(base, at) + (channel(tint, at) - channel(base, at)) * amount)
+      .toString(16)
+      .padStart(2, '0')
+  return `#${to(1)}${to(3)}${to(5)}`
+}
+
 /** The store's contents for a theme, with `transparent` applied or not. */
 function colorsFor(name: ThemeName, transparent: boolean): UiColors {
   const theme = THEMES[name].ui
@@ -88,6 +102,10 @@ function colorsFor(name: ThemeName, transparent: boolean): UiColors {
     sidebarBg: transparent ? 'transparent' : theme.panelBg,
     solidBg: theme.bg,
     solidBarBg: theme.barBg,
+    // Derived, not per-theme: 26 palettes would each need a hand-picked rule, and
+    // a hairline is the same idea in all of them — the bar colour pushed a little
+    // further from the background it sits on.
+    border: mix(theme.barBg, theme.dim, 0.35),
     ...(transparent ? { bg: 'transparent', barBg: 'transparent' } : null),
   }
 }

@@ -186,7 +186,7 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             danger={ask().danger}
             message={ask().message}
             onConfirm={prompts.confirmPrompt}
-            onCancel={() => prompts.setPrompt(null)}
+            onCancel={prompts.cancelPrompt}
           />
         )}
       </Show>
