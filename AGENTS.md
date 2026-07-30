@@ -30,7 +30,9 @@ cells), a rendered view for markdown files (`Ctrl+Opt+M`, palette → View — O
 was left in, rendering the buffer rather than the file so unsaved edits show), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
 `themeLight` / `themeDark` picked separately and defaulting to the GitHub pair —
 polled, since no OS offers a portable subscription; `DRUK_OS_APPEARANCE=dark|light`
-forces the answer on a desktop none of the probes can read), an unpainted
+forces the answer on a desktop none of the probes can read), themes previewed live
+while the selection sits on one — in the palette's Themes submenu and in the settings
+page's three theme lists — and put back when the list is left without confirming, an unpainted
 background for a translucent terminal (`transparent` — editor, tab strip and
 sidebar only; floating panels stay painted or the editor reads through them),
 a settings page
@@ -177,6 +179,7 @@ dependency rule, and recipes for the extension points:
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
 | language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts`, with `install: npm(…)` when druk can fetch it itself or `install: manual(…)` for a line to print (users override per-server with the `lspServers` setting; the settings page toggles them and edits their commands) |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` — chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there, not listed per theme |
+| previewable value | `preview` + `restore` on the palette `Command` (`src/app/commands.ts`) or on a row's `select` (`src/ui/SettingsView.tsx`) — `preview` paints while the selection sits on the value, `restore` runs when the list is torn down, so it must put back what the config says rather than remember what it replaced |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `VALIDATORS` — one validator per key, since the project file is read key by key) + a row in `src/app/settings.ts` (`specs`, with the `key` it edits) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | a row in `BINDABLE` (`src/app/keymap.ts`) plus a handler under the same id in `src/app/keyboard.ts` — or, for an editor-only key, `src/ui/EditorPane.tsx` — advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Ctrl+K peek and the welcome screen), with the row's `ids` naming the commands it spells out |

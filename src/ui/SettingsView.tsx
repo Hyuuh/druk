@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 
 import type { ConfigScope } from '../core/config'
 import { fuzzyScore } from '../core/search'
@@ -42,10 +42,10 @@ export interface SettingRow {
   select?: {
     options: string[]
     pick: (index: number) => void | SettingEdit
-    /** Paint a value before confirming — used by theme rows. */
+    /** Paint a value while the selection sits on it — used by the theme rows. */
     preview?: (index: number) => void
-    /** Revert to the value in force when backing out without confirming. */
-    cancel?: () => void
+    /** Put back what the config says, once the list is gone. */
+    restore?: () => void
   }
   /** When set, Enter opens this edit directly. Takes precedence over `select`. */
   edit?: SettingEdit
@@ -349,7 +349,7 @@ export function SettingsView(props: SettingsViewProps) {
               }}
               onClose={() => setPicking(false)}
               onPreview={row?.select?.preview}
-              onCancel={row?.select?.cancel}
+              onRestore={row?.select?.restore}
             />
           )
         })()}
@@ -435,7 +435,7 @@ function SettingPicker(props: {
   onPick: (index: number) => void
   onClose: () => void
   onPreview?: (index: number) => void
-  onCancel?: () => void
+  onRestore?: () => void
 }) {
   const dimensions = useTerminalDimensions()
   const [query, setQuery] = createSignal('')
@@ -465,6 +465,12 @@ function SettingPicker(props: {
     }
   })
 
+  // On the way out, not on Escape: `onPick` closes the list before it applies the
+  // value, so the restore lands first and a pick that paints nothing itself — the
+  // light and dark theme rows, which only take effect when the OS appearance
+  // flips — is left showing the theme in force rather than the one it previewed.
+  onCleanup(() => props.onRestore?.())
+
   /** First row shown: slides so the selection stays inside the window. */
   const windowStart = () => Math.max(0, selected() - visibleRows() + 1)
 
@@ -484,7 +490,6 @@ function SettingPicker(props: {
       if (match) props.onPick(match.at)
     } else if (k === 'escape' || k === 'left') {
       key.preventDefault()
-      if (props.onCancel) props.onCancel()
       props.onClose()
     }
   })

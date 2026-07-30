@@ -18,7 +18,7 @@ import { FILE_TOKEN } from '../core/format'
 import { bindingProblem, formatChord, parseChord } from '../core/keybindings'
 import { invalidateSyntaxStyle } from '../languages/highlight'
 import { DEFAULT_SERVERS } from '../lsp/servers'
-import { setTheme, setTransparency, themeLabels, THEMES } from '../themes'
+import { paintedTheme, setTheme, setTransparency, themeLabels, THEMES } from '../themes'
 import type { ThemeName } from '../themes'
 import { ALT, setKeyOverrides } from '../ui/keys'
 import type { SettingEdit, SettingRow } from '../ui/SettingsView'
@@ -65,9 +65,20 @@ export function createSettings(deps: {
 
   /** Paint a theme, without touching which theme the config says to use. */
   const paintTheme = (name: ThemeName) => {
+    // A preview lands here on every keystroke, and repainting is not free — it
+    // drops every buffer's style table and re-highlights the window.
+    if (paintedTheme() === name) return
     setTheme(name)
     invalidateSyntaxStyle()
   }
+
+  /**
+   * Undo a preview. `config.theme` is by definition what should be on screen —
+   * `patchLayer` repaints whenever it changes, and the OS-appearance poll writes
+   * the side theme into it — so this is the whole of it, for the light and dark
+   * rows as much as for `theme` itself.
+   */
+  const restoreTheme = () => paintTheme(config.theme)
 
   /**
    * Write `patch` into one layer, persist that file, and re-resolve.
@@ -469,7 +480,7 @@ export function createSettings(deps: {
         options: THEME_NAMES.map(name => themeLabels[name]),
         pick: at => applyTheme(THEME_NAMES[at]!),
         preview: at => paintTheme(THEME_NAMES[at]!),
-        cancel: () => paintTheme(config.theme),
+        restore: restoreTheme,
       },
     },
     {
@@ -489,12 +500,7 @@ export function createSettings(deps: {
         options: THEME_NAMES.map(name => themeLabels[name]),
         pick: at => applySideTheme('themeLight', THEME_NAMES[at]!),
         preview: at => paintTheme(THEME_NAMES[at]!),
-        cancel: () => {
-          const appearance =
-            (config.themeSync && detectAppearance()) ||
-            (view().theme === config.themeLight ? 'light' : 'dark')
-          paintTheme(appearance === 'light' ? config.themeLight : config.theme)
-        },
+        restore: restoreTheme,
       },
     },
     {
@@ -507,12 +513,7 @@ export function createSettings(deps: {
         options: THEME_NAMES.map(name => themeLabels[name]),
         pick: at => applySideTheme('themeDark', THEME_NAMES[at]!),
         preview: at => paintTheme(THEME_NAMES[at]!),
-        cancel: () => {
-          const appearance =
-            (config.themeSync && detectAppearance()) ||
-            (view().theme === config.themeDark ? 'dark' : 'light')
-          paintTheme(appearance === 'dark' ? config.themeDark : config.theme)
-        },
+        restore: restoreTheme,
       },
     },
     {
@@ -734,7 +735,7 @@ export function createSettings(deps: {
     applyTheme,
     applyAppearance,
     previewTheme: paintTheme,
-    restoreTheme: () => paintTheme(config.theme),
+    restoreTheme,
     toggleThemeSync,
     toggleTransparent,
     applyTabSize,

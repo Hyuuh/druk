@@ -19,10 +19,10 @@ export interface Command {
   /** Keybinding shown right-aligned, e.g. "Ctrl+S". Leaves only. */
   hint?: string
   run?: () => void
-  /** Paint a value before confirming — used by the themes submenu. */
+  /** Paint a value while the selection sits on it — used by the themes submenu. */
   preview?: () => void
-  /** Revert to the value in force when the user backs out without confirming. */
-  cancel?: () => void
+  /** Put back what the config says, once the preview is over. */
+  restore?: () => void
   children?: Command[]
 }
 
@@ -261,7 +261,7 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         id: `themes.${name}`,
         label: `${check(ctx.activeTheme === name)}${themeLabels[name]}`,
         preview: () => actions.previewTheme(name),
-        cancel: () => actions.restoreTheme(),
+        restore: () => actions.restoreTheme(),
         run: () => actions.setTheme(name),
       })),
     },

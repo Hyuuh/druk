@@ -84,6 +84,25 @@ describe('registries', () => {
     expect(ran.length).toBe(leaves.length)
   })
 
+  test('every theme leaf can be previewed and put back', () => {
+    const ran: string[] = []
+    const actions = new Proxy({} as CommandActions, {
+      get: (_t, name: string) => (arg?: unknown) => ran.push(`${name}:${arg ?? ''}`),
+    })
+    const themes = buildCommands(actions, { activeTheme: 'dark' }).find(c => c.id === 'themes')
+    const leaves = themes?.children ?? []
+
+    expect(leaves.length).toBe(Object.keys(THEMES).length)
+    for (const leaf of leaves) {
+      expect(typeof leaf.preview).toBe('function')
+      expect(typeof leaf.restore).toBe('function')
+    }
+
+    leaves.find(c => c.id === 'themes.nord')?.preview?.()
+    leaves.find(c => c.id === 'themes.nord')?.restore?.()
+    expect(ran).toEqual(['previewTheme:nord', 'restoreTheme:'])
+  })
+
   // Missing/extra ui keys are a tsc error, so only the values are worth asserting.
   test('every theme tints the current line instead of filling it', () => {
     const channels = (hex: string) =>
