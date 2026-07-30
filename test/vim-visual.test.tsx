@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { DEFAULTS } from '../src/core/config'
 import { fixture, launch, openFile, press, pressEscape, settle } from './helpers'
 import { at, save, type, vimEditor } from './vim-harness'
 
@@ -187,7 +186,7 @@ describe('living with the rest of the editor', () => {
 
   test('switching files starts the new one in normal mode', async () => {
     const dir = fixture({ 'a.ts': 'aaa\n', 'b.ts': 'bbb\n' })
-    const t = await launch(dir, { ...DEFAULTS, vim: true })
+    const t = await launch(dir, { vim: true })
     await press(t, i => i.pressArrow('down'))
     await press(t, i => i.pressEnter())
     await type(t, 'i')
@@ -203,7 +202,7 @@ describe('living with the rest of the editor', () => {
 
   test('with vim off the same keys type', async () => {
     const dir = fixture({ 'a.ts': 'one\n' })
-    const t = await launch(dir, { ...DEFAULTS, vim: false })
+    const t = await launch(dir, { vim: false })
     await press(t, i => i.pressArrow('down'))
     await press(t, i => i.pressEnter())
     await type(t, 'dd')

@@ -7,6 +7,7 @@ import {
   launch,
   openFile,
   press,
+  pressEscape,
   runCommand,
   settle,
   until,
@@ -68,6 +69,43 @@ test('the settings page shows the LSP rows and the master toggle flips', async (
   expect(t.captureCharFrame()).toContain('Inline problem text')
   expect(t.captureCharFrame()).toMatch(/\d+\/\d+ enabled/)
 }, 15_000)
+
+test('a missing server with an npm package offers to install it', async () => {
+  // The trigger is the *default* command being absent, which an override would
+  // hide — so this is one of the few tests that depends on the host. php is the
+  // least likely server for a druk developer to have; skip rather than guess.
+  if (Bun.which('intelephense') || !Bun.which('node')) return
+  const dir = fixture({ 'a.php': '<?php\n' })
+  const t = await launch(
+    dir,
+    { lsp: true, lspAutoInstall: true },
+    {},
+    { openFile: join(dir, 'a.php') },
+  )
+
+  await untilFrame(t, 'Language server missing', LSP_WAIT)
+  expect(t.captureCharFrame()).toContain('intelephense is not installed')
+
+  // Declining leaves the install line behind, and does not ask again.
+  await pressEscape(t)
+  await untilFrame(t, 'npm i -g intelephense')
+}, 30_000)
+
+test('a missing server druk cannot install just says so', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  // An override rules out the install offer: the hint names the default's
+  // package, which is not what this command is.
+  // Wide enough for the whole sentence: the status bar truncates at 80 columns.
+  const t = await launch(
+    dir,
+    { lsp: true, lspServers: { typescript: ['druk-no-such-language-server'] } },
+    { width: 110 },
+    { openFile: join(dir, 'a.ts') },
+  )
+
+  await untilFrame(t, 'is not installed, or not on PATH', LSP_WAIT)
+  expect(t.captureCharFrame()).not.toContain('Language server missing')
+}, 30_000)
 
 test('a server spawns only once a file of its language opens', async () => {
   const dir = fixture({ 'a.ts': 'const oops = 1\n', 'readme.md': 'hi\n' })

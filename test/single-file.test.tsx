@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { resolveTarget } from '../src/core/cli'
-import { DEFAULTS } from '../src/core/config'
+import type { Config } from '../src/core/config'
 import { loadSession, saveSession } from '../src/core/session'
 import { fixture, launch, press, settle } from './helpers'
 import type { Harness } from './helpers'
@@ -16,7 +16,7 @@ const PROJECT = {
 }
 
 /** Render as `druk <file>` does: one file, its folder as the project. */
-const openOne = (file: string, config = DEFAULTS) =>
+const openOne = (file: string, config: Partial<Config> = {}) =>
   launch(dirname(file), config, {}, { openFile: file })
 
 const tabBar = (t: Harness) => t.captureCharFrame().split('\n')[0]!

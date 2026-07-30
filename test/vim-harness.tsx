@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { DEFAULTS } from '../src/core/config'
 import { fixture, launch, press, settle } from './helpers'
 import type { Harness } from './helpers'
 
@@ -12,7 +11,7 @@ import type { Harness } from './helpers'
  */
 export async function vimEditor(content = 'one\ntwo\nthree\n') {
   const dir = fixture({ 'a.ts': content })
-  const t = await launch(dir, { ...DEFAULTS, vim: true })
+  const t = await launch(dir, { vim: true })
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
   return { t, dir, file: join(dir, 'a.ts') }

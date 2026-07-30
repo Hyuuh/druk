@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DEFAULTS, SIDEBAR_MIN } from '../src/core/config'
+import { SIDEBAR_MIN } from '../src/core/config'
 import { ui } from '../src/themes'
 import { fixture, launch, openFile, press, settle } from './helpers'
 import type { Harness } from './helpers'
@@ -76,7 +76,7 @@ describe('resizing the sidebar', () => {
 
   test('a width saved on a wider screen is clamped to fit this one', async () => {
     // 80 columns here, so a 200-column sidebar has to give the editor room.
-    const t = await launch(fixture(PROJECT), { ...DEFAULTS, sidebarWidth: 200 })
+    const t = await launch(fixture(PROJECT), { sidebarWidth: 200 })
     const at = dividerAt(t)
     expect(at).toBeGreaterThanOrEqual(SIDEBAR_MIN)
     expect(at).toBeLessThanOrEqual(60)
@@ -198,7 +198,7 @@ describe('rows hold their shape when names overflow', () => {
 
   test('the bullet sits at one column whatever the names do', async () => {
     // Narrow enough that the long names cannot fit.
-    const t = await launch(fixture(NAMES), { ...DEFAULTS, sidebarWidth: 22 })
+    const t = await launch(fixture(NAMES), { sidebarWidth: 22 })
     await press(t, input => input.pressArrow('down'))
     await press(t, input => input.pressEnter())
     await settle(t)
@@ -209,7 +209,7 @@ describe('rows hold their shape when names overflow', () => {
   })
 
   test('and keeps that column across a resize', async () => {
-    const t = await launch(fixture(NAMES), { ...DEFAULTS, sidebarWidth: 22 })
+    const t = await launch(fixture(NAMES), { sidebarWidth: 22 })
     await press(t, input => input.pressArrow('down'))
     await press(t, input => input.pressEnter())
     await settle(t)

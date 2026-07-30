@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
 
-import { DEFAULTS } from '../src/core/config'
 import { fixture, launch, press, pressEscape } from './helpers'
 import { at, save, type, vimEditor } from './vim-harness'
 
@@ -13,7 +12,7 @@ describe('text objects', () => {
 
   async function bEdit(content: string) {
     const dir = fixture({ 'a.ts': content })
-    const t = await launch(dir, { ...DEFAULTS, vim: true })
+    const t = await launch(dir, { vim: true })
     await press(t, i => i.pressArrow('down'))
     await press(t, i => i.pressEnter())
     return { t, dir, file: join(dir, 'a.ts') }

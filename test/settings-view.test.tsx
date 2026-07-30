@@ -192,7 +192,7 @@ test('the page windows its rows and the selection carries the window down', asyn
   await runCommand(t, 'Settings')
   expect(t.captureCharFrame()).toContain('Settings')
 
-  await down(t, 19)
+  await down(t, 20)
   const frame = t.captureCharFrame()
   expect(frame).toContain('Servers')
   expect(frame).toContain('Settings')

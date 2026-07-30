@@ -18,6 +18,13 @@ import { join } from 'node:path'
 process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), 'druk-test-config-'))
 
 /**
+ * Same idea for the data home, which is where `src/lsp/install.ts` puts servers
+ * druk installed. Without it a developer who once accepted an install would have
+ * `installedCommand` answer for a real binary, and the suite would spawn it.
+ */
+process.env.XDG_DATA_HOME = mkdtempSync(join(tmpdir(), 'druk-test-data-'))
+
+/**
  * Destroy every harness a test `launch()`ed and didn't clean up itself.
  *
  * `renderer.destroy()` is what runs Solid's `onCleanup` — closing `App`'s fs

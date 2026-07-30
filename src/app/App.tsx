@@ -100,11 +100,11 @@ export function App(props: {
   const panes = createPanes(tree, restored.sidebar)
   const git = createGit(rootDir, () => settings.config.gitPanelView)
   const comparison = createComparison({ rootDir, git, status })
-  const lsp = createLsp({ rootDir, settings, status })
+  const promptState = createPromptState()
+  const lsp = createLsp({ rootDir, settings, status, prompts: promptState })
   // Also on the quit path: the renderer tears the root down before exiting, and
   // a leaked server would outlive the editor (tests leak them per launch).
   onCleanup(lsp.dispose)
-  const promptState = createPromptState()
   const workspace = createWorkspace({
     rootDir,
     single,
@@ -132,6 +132,7 @@ export function App(props: {
     fileOps,
     gitOp,
     branches,
+    lsp,
   })
   const overlays = createOverlays({
     renderer,

@@ -37,6 +37,8 @@ export type Prompt =
   | { kind: 'renameBranch'; from: string }
   | { kind: 'deleteBranch'; name: string; force: boolean }
   | { kind: 'mergeBranch'; name: string }
+  /** A language server is missing and druk can fetch it; `id` is the server id. */
+  | { kind: 'installServer'; id: string; name: string; packages: string[] }
   | null
 
 export type PromptKind = NonNullable<Prompt>['kind']

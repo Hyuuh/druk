@@ -373,6 +373,11 @@ export function createSettings(deps: {
     status.say(`Autocomplete ${onOff(config.lspCompletion)}`)
   }
 
+  const toggleLspAutoInstall = () => {
+    patchConfig({ lspAutoInstall: !view().lspAutoInstall })
+    status.say(`Offer to install servers ${onOff(config.lspAutoInstall)}`)
+  }
+
   /**
    * Flip one server between enabled and disabled. Disabling writes the empty
    * command; re-enabling removes the override entirely, so a custom command set
@@ -623,6 +628,13 @@ export function createSettings(deps: {
       label: 'Autocomplete',
       value: onOff(view().lspCompletion),
       cycle: toggleLspCompletion,
+    },
+    {
+      section: 'Language servers',
+      key: 'lspAutoInstall',
+      label: 'Offer to install servers',
+      value: onOff(view().lspAutoInstall),
+      cycle: toggleLspAutoInstall,
     },
     {
       // One row, not fourteen: Enter lists every known server and picking one
