@@ -2,7 +2,8 @@ import '../core/assets'
 import { getTreeSitterClient, pathToFiletype, SyntaxStyle } from '@opentui/core'
 import type { TreeSitterClient } from '@opentui/core'
 
-import { syntaxTheme, ui } from '../themes'
+import { paintedTheme, syntaxTheme, ui } from '../themes'
+import type { ThemeName } from '../themes'
 import { languageFor, VENDORED_LANGUAGES } from './index'
 import type { Language } from './index'
 
@@ -12,6 +13,8 @@ const INDENT_GUIDE = 'indent.guide'
 let clientDead = false
 let initPromise: Promise<TreeSitterClient | null> | null = null
 let syntaxStyle: SyntaxStyle | null = null
+/** Theme the cached `syntaxStyle` was built for — style ids are per instance. */
+let styleFor: ThemeName | null = null
 
 function registerVendoredParsers(client: TreeSitterClient): void {
   for (const lang of VENDORED_LANGUAGES) {
@@ -44,7 +47,13 @@ export function mixColors(base: string, tint: string, t: number): string {
 
 /** Shared style table used by every editor buffer (built from the active theme). */
 export function getSyntaxStyle(): SyntaxStyle {
-  if (!syntaxStyle) {
+  // Keyed on the painted theme: every theme's `keyword` (etc.) reuses the same
+  // numeric id, so handing the editor a stale SyntaxStyle instance after a
+  // preview cancel leaves the preview's colors on screen.
+  const theme = paintedTheme()
+  if (!syntaxStyle || styleFor !== theme) {
+    styleFor = theme
+    styleIdByGroup.clear()
     syntaxStyle = SyntaxStyle.fromStyles({
       ...syntaxTheme,
       [INDENT_GUIDE]: { bg: ui.indentGuide },
@@ -68,6 +77,7 @@ export function getSyntaxStyle(): SyntaxStyle {
 
 export function invalidateSyntaxStyle(): void {
   syntaxStyle = null
+  styleFor = null
   styleIdByGroup.clear()
 }
 

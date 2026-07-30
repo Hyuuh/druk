@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, on, onMount } from 'solid-js'
 
 import { getSyntaxStyle, highlightClient } from '../languages/highlight'
-import { ui } from '../themes'
+import { paintedTheme, ui } from '../themes'
 
 export interface MarkdownViewProps {
   /** The tab being read, so a switch can put the scroll back at the top. */
@@ -16,8 +16,6 @@ export interface MarkdownViewProps {
   content: string
   /** Columns the pane owns — the editor slot, not the terminal. */
   width: number
-  /** Theme name: the style table is rebuilt per theme, not per render. */
-  theme: string
   focused: boolean
   blocked: boolean
   onFocus: () => void
@@ -44,11 +42,12 @@ export function MarkdownView(props: MarkdownViewProps) {
 
   let box: ScrollBoxRenderable | undefined
 
-  // Keyed on the theme: the style table is rebuilt when the palette changes, and
-  // the renderable has to be handed the new one to repaint its code blocks.
+  // Keyed on the painted theme (including a live preview): the style table is
+  // rebuilt when the palette changes, and the renderable has to be handed the
+  // new one to repaint its code blocks.
   const style = createMemo(
     on(
-      () => props.theme,
+      () => paintedTheme(),
       () => getSyntaxStyle(),
     ),
   )

@@ -1,6 +1,6 @@
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
-import { createMemo, createSignal, For, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 
 import type { Command, FlatCommand } from '../app/commands'
 import { flattenCommands } from '../app/commands'
@@ -19,6 +19,8 @@ export function CommandPalette(props: CommandPaletteProps) {
   const [query, setQuery] = createSignal('')
   const [trail, setTrail] = createSignal<Command[]>([])
   const [index, setIndex] = createSignal(0)
+  /** Undo for the preview on screen, until it is confirmed or left behind. */
+  let restore: (() => void) | undefined
 
   const width = () => modalWidth(dimensions().width, 0.55, 58, 92)
   /** Border, input, blank line and footer. */
@@ -38,6 +40,24 @@ export function CommandPalette(props: CommandPaletteProps) {
 
   const selected = () => Math.min(index(), Math.max(0, rows().length - 1))
 
+  /** Paint a command's preview whenever the selection lands on one. */
+  createEffect(() => {
+    const row = rows()[selected()]
+    if (row?.command.preview) {
+      row.command.preview()
+      restore = row.command.restore
+    } else if (restore) {
+      // Filtered away from it, or backed out of the submenu: the selection has
+      // left the previewed value, so the paint goes with it.
+      restore()
+      restore = undefined
+    }
+  })
+
+  // Every other way out closes the palette rather than moving the selection, and
+  // a preview must not outlive it — so the undo hangs off the teardown.
+  onCleanup(() => restore?.())
+
   // A filter can match every leaf in the tree; rendering them all pushes the
   // input and the footer off an 80x24 screen, so only a window is drawn.
   const windowed = createMemo(() => {
@@ -53,6 +73,9 @@ export function CommandPalette(props: CommandPaletteProps) {
       setIndex(0)
       return
     }
+    // Confirming the preview on screen: `run` writes the value it is showing,
+    // so the teardown must not put the old one back over it.
+    if (row.command.preview) restore = undefined
     props.onClose()
     row.command.run?.()
   }

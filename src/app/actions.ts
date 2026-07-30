@@ -163,6 +163,8 @@ export function createCommands(ctx: AppContext) {
     toggleGitView: panes.toggleGitView,
     toggleMarkdown: workspace.toggleRendered,
     setTheme: settings.applyTheme,
+    previewTheme: settings.previewTheme,
+    restoreTheme: settings.restoreTheme,
     lineOp: editor.requestLineOp,
     triggerCompletion: editor.requestCompletion,
     openSettings: () => {

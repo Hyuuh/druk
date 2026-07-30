@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 
 import type { ConfigScope } from '../core/config'
 import { fuzzyScore } from '../core/search'
@@ -39,7 +39,14 @@ export interface SettingRow {
    * A pick may hand back a `SettingEdit` to type into — that is how list rows
    * (formatters, server commands) chain into free text.
    */
-  select?: { options: string[]; pick: (index: number) => void | SettingEdit }
+  select?: {
+    options: string[]
+    pick: (index: number) => void | SettingEdit
+    /** Paint a value while the selection sits on it — used by the theme rows. */
+    preview?: (index: number) => void
+    /** Put back what the config says, once the list is gone. */
+    restore?: () => void
+  }
   /** When set, Enter opens this edit directly. Takes precedence over `select`. */
   edit?: SettingEdit
   /** The project's own settings file is what supplies this value. */
@@ -325,20 +332,27 @@ export function SettingsView(props: SettingsViewProps) {
       <text fg={ui.faint} bg={ui.solidBg} content={footer()} />
 
       <Show when={picking()}>
-        <SettingPicker
-          title={selectedRow()?.label ?? ''}
-          options={selectedRow()?.select?.options ?? []}
-          activeIndex={(selectedRow()?.select?.options ?? []).indexOf(selectedRow()?.value ?? '')}
-          paneWidth={props.width}
-          onPick={at => {
-            // Close first: picking rebuilds the rows, and a keyed accessor read
-            // after that tears the popup down mid-handler ("stale read").
-            setPicking(false)
-            const edit = selectedRow()?.select?.pick(at)
-            if (edit) setEditing(edit)
-          }}
-          onClose={() => setPicking(false)}
-        />
+        {(() => {
+          const row = selectedRow()
+          return (
+            <SettingPicker
+              title={row?.label ?? ''}
+              options={row?.select?.options ?? []}
+              activeIndex={(row?.select?.options ?? []).indexOf(row?.value ?? '')}
+              paneWidth={props.width}
+              onPick={at => {
+                // Close first: picking rebuilds the rows, and a keyed accessor read
+                // after that tears the popup down mid-handler ("stale read").
+                setPicking(false)
+                const edit = row?.select?.pick(at)
+                if (edit) setEditing(edit)
+              }}
+              onClose={() => setPicking(false)}
+              onPreview={row?.select?.preview}
+              onRestore={row?.select?.restore}
+            />
+          )
+        })()}
       </Show>
 
       <Show when={editing()} keyed>
@@ -420,6 +434,8 @@ function SettingPicker(props: {
   paneWidth: number
   onPick: (index: number) => void
   onClose: () => void
+  onPreview?: (index: number) => void
+  onRestore?: () => void
 }) {
   const dimensions = useTerminalDimensions()
   const [query, setQuery] = createSignal('')
@@ -440,6 +456,21 @@ function SettingPicker(props: {
 
   const selected = () => Math.min(index(), Math.max(0, matches().length - 1))
 
+  let lastPreviewed: number | undefined
+  createEffect(() => {
+    const match = matches()[selected()]
+    if (match && props.onPreview && match.at !== lastPreviewed) {
+      lastPreviewed = match.at
+      props.onPreview(match.at)
+    }
+  })
+
+  // On the way out, not on Escape: `onPick` closes the list before it applies the
+  // value, so the restore lands first and a pick that paints nothing itself — the
+  // light and dark theme rows, which only take effect when the OS appearance
+  // flips — is left showing the theme in force rather than the one it previewed.
+  onCleanup(() => props.onRestore?.())
+
   /** First row shown: slides so the selection stays inside the window. */
   const windowStart = () => Math.max(0, selected() - visibleRows() + 1)
 
@@ -457,7 +488,7 @@ function SettingPicker(props: {
       key.preventDefault()
       const match = matches()[selected()]
       if (match) props.onPick(match.at)
-    } else if (k === 'escape') {
+    } else if (k === 'escape' || k === 'left') {
       key.preventDefault()
       props.onClose()
     }

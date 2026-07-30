@@ -5,6 +5,7 @@
  * `THEMES` below. It shows up in the command palette automatically.
  */
 import type { StyleDefinitionInput } from '@opentui/core'
+import { createSignal } from 'solid-js'
 import { createStore } from 'solid-js/store'
 
 import { ayuDark } from './ayu-dark'
@@ -78,7 +79,6 @@ const DEFAULT: ThemeName = 'dark'
 
 /** Whether the app paints its own background at all — the `transparent` setting. */
 let seeThrough = false
-let painted: ThemeName = DEFAULT
 
 /**
  * Mix two `#rrggbb` colors. Here rather than from `languages/highlight`, whose
@@ -116,6 +116,13 @@ function colorsFor(name: ThemeName, transparent: boolean): UiColors {
 const [ui, setUi] = createStore<UiColors>(colorsFor(DEFAULT, seeThrough))
 export { ui }
 
+// The theme currently on screen — including a live preview that has not been
+// written to config. The editor keys its syntax table off this, not off the
+// config value: a preview that only updated `ui` left the buffer on the old
+// style ids until the next keystroke.
+const [paintedTheme, setPaintedTheme] = createSignal<ThemeName>(DEFAULT)
+export { paintedTheme }
+
 // Read imperatively when the syntax style table is rebuilt, so a plain object is fine.
 export const syntaxTheme: Record<string, StyleDefinitionInput> = { ...THEMES[DEFAULT].syntax }
 
@@ -124,16 +131,18 @@ export function isThemeName(value: unknown): value is ThemeName {
 }
 
 export function setTheme(name: ThemeName): void {
-  painted = name
-  setUi(colorsFor(name, seeThrough))
   // Replace, never merge: a group the new theme omits would otherwise keep the
   // previous theme's color and render invisible when light/dark flips.
+  // Data before the signal: reactive readers of `paintedTheme` rebuild the
+  // syntax table, and must see this theme's colors when they do.
   for (const group of Object.keys(syntaxTheme)) delete syntaxTheme[group]
   Object.assign(syntaxTheme, THEMES[name].syntax)
+  setUi(colorsFor(name, seeThrough))
+  setPaintedTheme(name)
 }
 
 /** Paint the app's own background, or leave the terminal's showing through. */
 export function setTransparency(on: boolean): void {
   seeThrough = on
-  setUi(colorsFor(painted, on))
+  setUi(colorsFor(paintedTheme(), on))
 }
