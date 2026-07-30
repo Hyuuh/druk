@@ -48,6 +48,10 @@ import { CLASH_CHANGED, CLASH_DELETED, createWorkspace, restoreWorkspace } from 
 /** The divider draws its own left edge; a box border is how it spans the height. */
 const BORDER_LEFT: BorderSides[] = ['left']
 
+/** Bounds on the drawn part of the divider: shorter reads as dirt, longer as chrome. */
+const GRIP_MIN = 3
+const GRIP_MAX = 9
+
 /**
  * The composition root. Each concern lives in its own controller module; this
  * component creates them in dependency order, hands the assembled context to the
@@ -191,6 +195,19 @@ export function App(props: {
 
   /** True between grabbing the sidebar divider and letting go. */
   const [resizing, setResizing] = createSignal(false)
+
+  /**
+   * Rows of the drawn grip — a fifth of the pane, so it stays a hint on a tall
+   * terminal and does not eat a short one. The column above and below it drags
+   * too; nothing here is the grab target.
+   */
+  const gripHeight = () =>
+    Math.max(GRIP_MIN, Math.min(GRIP_MAX, Math.round((dimensions().height - 2) / 5)))
+
+  const startResize = (event: MouseEvent) => {
+    setResizing(true)
+    settings.resizeSidebar(event.x)
+  }
 
   /** Worst problem per line of the active file: the gutter dot and inline text. */
   const problemLines = createMemo(() => {
@@ -449,27 +466,33 @@ export function App(props: {
               </Show>
             </Show>
           </box>
-          {/* The sidebar's edge, and the grab target that resizes it. A rule the
-              whole way down rather than a short grip at the middle: in `border` it
-              is the quietest line on screen and reads as where one pane ends,
-              where five glyphs floating in the middle of an empty pane read as
-              debris. The accent while dragging says the grab took. Painted in
-              `bg`, not `panelBg` — the sidebar's right edge is found by where
-              panel colour stops, and the resize tests measure exactly that. The
-              sidebar starts at column 0, so the pointer's x is the width asked
-              for. */}
+          {/* The sidebar's edge, and the grab target that resizes it. The whole
+              column drags; only a short grip at its middle is drawn, because a
+              rule the whole way down is a second vertical line beside the
+              editor's gutter and reads as chrome rather than as a hint. The
+              accent while dragging says the grab took. Painted in `bg`, not
+              `panelBg` — the sidebar's right edge is found by where panel colour
+              stops, and the resize tests measure exactly that. The sidebar
+              starts at column 0, so the pointer's x is the width asked for. */}
           <box
             width={1}
             flexShrink={0}
             flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
             backgroundColor={ui.bg}
-            border={BORDER_LEFT}
-            borderColor={resizing() ? ui.accent : ui.border}
-            onMouseDown={(event: MouseEvent) => {
-              setResizing(true)
-              settings.resizeSidebar(event.x)
-            }}
-          />
+            onMouseDown={startResize}
+          >
+            <box
+              width={1}
+              height={gripHeight()}
+              flexShrink={0}
+              backgroundColor={ui.bg}
+              border={BORDER_LEFT}
+              borderColor={resizing() ? ui.accent : ui.border}
+              onMouseDown={startResize}
+            />
+          </box>
         </Show>
         {/* The diff pane sits over the editor's slot only, so the tabs, tree and
             status bar stay put — it reads as a view of the editor, not a modal. */}

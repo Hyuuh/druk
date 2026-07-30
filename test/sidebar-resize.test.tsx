@@ -82,7 +82,7 @@ describe('resizing the sidebar', () => {
     expect(at).toBeLessThanOrEqual(60)
   })
 
-  test('the handle is a hairline rule down the whole edge', async () => {
+  test('the handle is a short grip, centred, not a rule down the whole edge', async () => {
     const t = await launch(fixture(PROJECT))
     const at = dividerAt(t)
     expect(at).toBe(30)
@@ -94,9 +94,25 @@ describe('resizing the sidebar', () => {
       .slice(1, -1)
       .map(row => row[at] ?? ' ')
 
-    // Every row of the pane, not a grip at the middle: the rule is what says
-    // where the sidebar ends, and a gap in it reads as a gap in the layout.
-    expect(column.every(glyph => glyph === '│')).toBe(true)
+    const drawn = column.filter(glyph => glyph === '│').length
+    expect(drawn).toBeGreaterThanOrEqual(3)
+    expect(drawn).toBeLessThan(column.length)
+    // Contiguous and centred, so it reads as one grip rather than as gaps in a rule.
+    const first = column.indexOf('│')
+    expect(column.slice(first, first + drawn).every(glyph => glyph === '│')).toBe(true)
+    expect(Math.abs(first - (column.length - first - drawn))).toBeLessThanOrEqual(1)
+  })
+
+  test('the grip itself drags too, not only the bare column', async () => {
+    const t = await launch(fixture(PROJECT))
+    const at = dividerAt(t)
+    const rows = t.captureCharFrame().split('\n')
+    const grip = rows.findIndex(row => row[at] === '│')
+    expect(grip).toBeGreaterThan(0)
+
+    await t.mockMouse.drag(at, grip, 40, grip)
+    await settle(t)
+    expect(dividerAt(t)).toBe(40)
   })
 
   test('the whole column drags, not only the part that is drawn', async () => {
