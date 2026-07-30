@@ -448,9 +448,13 @@ function SettingPicker(props: {
 
   const selected = () => Math.min(index(), Math.max(0, matches().length - 1))
 
+  let lastPreviewed: number | undefined
   createEffect(() => {
     const match = matches()[selected()]
-    if (match && props.onPreview) props.onPreview(match.at)
+    if (match && props.onPreview && match.at !== lastPreviewed) {
+      lastPreviewed = match.at
+      props.onPreview(match.at)
+    }
   })
 
   /** First row shown: slides so the selection stays inside the window. */
@@ -470,7 +474,7 @@ function SettingPicker(props: {
       key.preventDefault()
       const match = matches()[selected()]
       if (match) props.onPick(match.at)
-    } else if (k === 'escape') {
+    } else if (k === 'escape' || k === 'left') {
       key.preventDefault()
       if (props.onCancel) props.onCancel()
       props.onClose()
