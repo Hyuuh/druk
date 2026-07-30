@@ -6,11 +6,11 @@ import { readFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import {
   fetchRemote,
-  headText,
   inRepository,
   lastCommitSubject,
   pull,
   push,
+  refText,
   stagedPaths,
   stashPop,
   stashPush,
@@ -21,6 +21,7 @@ import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
 import type { AppContext } from './context'
+import { problemFrom } from './lsp'
 
 /** Wire the palette's command tree to the controllers that carry the actions out. */
 export function createCommands(ctx: AppContext) {
@@ -42,7 +43,8 @@ export function createCommands(ctx: AppContext) {
    */
   const diffFileFor = (path: string, fileStatus: FileStatus): DiffFile | null => {
     const rel = relative(rootDir, path)
-    const oldText = fileStatus === 'untracked' ? '' : (headText(rootDir, rel) ?? '')
+    const oldText =
+      fileStatus === 'untracked' ? '' : (refText(rootDir, rel, git.diffBase() ?? 'HEAD') ?? '')
     let newText = ''
     if (fileStatus !== 'deleted') {
       const open = workspace.buffers[path]
@@ -68,11 +70,46 @@ export function createCommands(ctx: AppContext) {
   const showDiff = (path: string) => {
     // The panel only lists changed files, but its list is a frame behind a fresh
     // edit — 'modified' is the fallback for a path git has not caught up with,
-    // and diffing it against HEAD is right either way.
+    // and diffing it against the base is right either way.
     const file = diffFileFor(path, git.gitStatus().get(path) ?? 'modified')
     if (!file) return say('Cannot diff this file', 'warn')
-    ctx.overlays.setSettingsPage(false)
-    ctx.overlays.setDiff(file)
+    ctx.workspace.setSettingsPage(false)
+    ctx.workspace.setDiff(file)
+  }
+
+  /**
+   * Move the panel's cursor to `row`, diffing it if it is a file. The only way
+   * the cursor moves, so the page and the cursor cannot disagree about which
+   * change is on screen. A folder row leaves the page as it was: folding is what
+   * `gitActivateRow` is for, and a mere pass over a folder must not fold it.
+   */
+  const gitMoveTo = (row: number) => {
+    const rows = git.rows()
+    const at = Math.max(0, Math.min(row, rows.length - 1))
+    const target = rows[at]
+    if (!target) return
+    panes.setGitCursor(at)
+    if (target.kind === 'file') showDiff(target.change.path)
+  }
+
+  /** Enter, or a click: a file diffs, a folder folds. */
+  const gitActivateRow = (row: number) => {
+    gitMoveTo(row)
+    const target = git.rows()[panes.gitCursor()]
+    if (target?.kind === 'dir') git.toggleCollapsed(target.rel)
+  }
+
+  /** Jump to the neighbouring problem and read it out in the status bar. */
+  const jumpProblem = (direction: 1 | -1) => {
+    const path = workspace.activePath()
+    const list = path ? ctx.lsp.problems[path] : undefined
+    const cursor = editor.cursor()
+    const target = list ? problemFrom(list, cursor.line, cursor.col, direction) : null
+    if (!target) return say('No problems in this file')
+    editor.requestGoto(target.line, target.col)
+    const tone =
+      target.severity === 'error' ? 'error' : target.severity === 'warning' ? 'warn' : 'info'
+    say(target.message.replaceAll(/\s+/g, ' '), tone)
   }
 
   const actions = {
@@ -116,11 +153,21 @@ export function createCommands(ctx: AppContext) {
     lineOp: editor.requestLineOp,
     openSettings: () => {
       // One page at a time: the slot under the settings page is the editor's.
-      ctx.overlays.setDiff(null)
-      ctx.overlays.setSettingsPage(true)
+      ctx.workspace.setDiff(null)
+      ctx.workspace.setSettingsPage(true)
       panes.setFocus('editor')
     },
+    problemsList: () => {
+      const any = workspace.tabs().some(path => (ctx.lsp.problems[path] ?? []).length > 0)
+      if (!any) return say('No problems')
+      ctx.overlays.setProblemsOpen(true)
+    },
+    problemsNext: () => jumpProblem(1),
+    problemsPrev: () => jumpProblem(-1),
     showDiff,
+    gitMoveTo,
+    gitActivateRow,
+    gitTogglePanelView: settings.toggleGitPanelView,
     /**
      * "Diff current file" — the palette's way into the panel: it opens the
      * source-control view with the cursor on the file being edited, so the
@@ -130,10 +177,15 @@ export function createCommands(ctx: AppContext) {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
       const path = workspace.activePath()
       if (!path) return say('No file open', 'warn')
-      const row = git.changes().findIndex(change => change.path === path)
-      if (row < 0) return say(`No changes in ${relative(rootDir, path)}`)
+      const change = git.changes().find(entry => entry.path === path)
+      if (!change) return say(`No changes in ${relative(rootDir, path)}`)
       panes.showView('git')
-      panes.setGitCursor(row)
+      // A folded folder would leave the cursor pointing at a row that is not on
+      // screen — the file's own row has to exist before it can be landed on.
+      git.revealChange(change.rel)
+      panes.setGitCursor(
+        git.rows().findIndex(row => row.kind === 'file' && row.change.path === path),
+      )
       showDiff(path)
     },
     /**
@@ -143,13 +195,26 @@ export function createCommands(ctx: AppContext) {
      * palette command: `App` runs it whenever git or a buffer moves.
      */
     refreshDiff: () => {
-      const shown = ctx.overlays.diff()?.path
+      const shown = workspace.diff()?.path
       if (!shown) return
       // The page belongs to a row in the panel: once the change is committed,
       // stashed or reverted the row is gone, and so is the page it opened.
       const fileStatus = git.gitStatus().get(shown)
-      if (!fileStatus) return ctx.overlays.setDiff(null)
-      ctx.overlays.setDiff(diffFileFor(shown, fileStatus))
+      if (!fileStatus) return ctx.workspace.setDiff(null)
+      ctx.workspace.setDiff(diffFileFor(shown, fileStatus))
+    },
+    /**
+     * Point everything at another branch: the tree marks, the gutter, the
+     * source-control list and the diff page all compare against it until this is
+     * put back. Reviewing a whole branch is what this is for — "what does my work
+     * add to main", rather than "what have I not committed yet".
+     */
+    gitDiffBase: () => ctx.branches.open('diffBase'),
+    gitDiffBaseReset: () => {
+      if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
+      if (git.diffBase() === null) return say('Already comparing against HEAD')
+      git.setDiffBase(null)
+      say('Comparing against HEAD')
     },
     gitCommit: () => {
       if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
@@ -157,6 +222,9 @@ export function createCommands(ctx: AppContext) {
       // it: staged files start checked, the rest unchecked. With nothing
       // staged there is no selection to respect and everything starts checked.
       const staged = stagedPaths(rootDir)
+      // Deliberately not `git.diffBase()`: the index is built against HEAD no
+      // matter which branch is being reviewed, so offering the files that differ
+      // from some other branch would stage work that is already committed.
       const changes = [...statusMap(rootDir)]
         .map(([path, fileStatus]) => ({
           path,

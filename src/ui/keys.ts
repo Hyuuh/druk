@@ -146,8 +146,8 @@ export const KEYS: KeyInfo[] = [
   // and the table only just fits a 60-row terminal — `test/help-scroll.test.tsx`
   // measures exactly that.
   {
-    key: '↑↓ · Enter',
-    label: 'Diff the change under the cursor',
+    key: '↑↓ · Enter · →←',
+    label: 'Diff a change · fold a folder',
     section: 'Source control',
     where: 'git',
   },
@@ -164,9 +164,11 @@ export const KEYS: KeyInfo[] = [
     section: 'View',
     where: 'all',
   },
+  // One row, not two: the help table only just fits a 60-row terminal, and
+  // `test/help-scroll.test.tsx` measures exactly that.
   {
-    key: 'Tab',
-    label: 'Tree → editor · indent in editor',
+    key: 'Tab / Shift+Tab',
+    label: 'Tree → editor · Files ↔ Git',
     section: 'View',
     where: 'all',
   },

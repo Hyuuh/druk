@@ -63,10 +63,20 @@ export interface Config {
   autoSaveOnBlur: boolean
   /** How the diff view renders: one column of +/- rows, or two side by side. */
   diffView: 'inline' | 'split'
+  /** Source-control panel: changed files nested under folders, or one flat list
+   * of paths. */
+  gitPanelView: 'tree' | 'list'
   /** Whether the tree lists dotfiles. The default tells the filesystem's truth. */
   showDotfiles: boolean
   /** Hide git-ignored files from the tree. Off by default for the same reason. */
   respectGitignore: boolean
+  /** Language servers: spawn one per language as matching files open. */
+  lsp: boolean
+  /**
+   * Per-server command override, keyed by server id — see src/lsp/servers.ts
+   * for the ids and defaults. An empty array disables that server.
+   */
+  lspServers: Record<string, string[]>
 }
 
 export const DEFAULTS: Config = {
@@ -78,8 +88,11 @@ export const DEFAULTS: Config = {
   trimOnSave: false,
   autoSaveOnBlur: true,
   diffView: 'inline',
+  gitPanelView: 'tree',
   showDotfiles: true,
   respectGitignore: false,
+  lsp: true,
+  lspServers: {},
 }
 
 function parse(raw: unknown): Config {
@@ -97,9 +110,15 @@ function parse(raw: unknown): Config {
       typeof obj.autoSaveOnBlur === 'boolean' ? obj.autoSaveOnBlur : DEFAULTS.autoSaveOnBlur,
     diffView:
       obj.diffView === 'split' || obj.diffView === 'inline' ? obj.diffView : DEFAULTS.diffView,
+    gitPanelView:
+      obj.gitPanelView === 'list' || obj.gitPanelView === 'tree'
+        ? obj.gitPanelView
+        : DEFAULTS.gitPanelView,
     showDotfiles: typeof obj.showDotfiles === 'boolean' ? obj.showDotfiles : DEFAULTS.showDotfiles,
     respectGitignore:
       typeof obj.respectGitignore === 'boolean' ? obj.respectGitignore : DEFAULTS.respectGitignore,
+    lsp: typeof obj.lsp === 'boolean' ? obj.lsp : DEFAULTS.lsp,
+    lspServers: parseServers(obj.lspServers),
     sidebarWidth:
       typeof obj.sidebarWidth === 'number' &&
       obj.sidebarWidth >= SIDEBAR_MIN &&
@@ -108,6 +127,18 @@ function parse(raw: unknown): Config {
         : // Anything else, `'auto'` included, is the default.
           DEFAULTS.sidebarWidth,
   }
+}
+
+/** Only well-formed entries survive; a malformed one must not break startup. */
+function parseServers(raw: unknown): Record<string, string[]> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return DEFAULTS.lspServers
+  const servers: Record<string, string[]> = {}
+  for (const [id, command] of Object.entries(raw)) {
+    if (Array.isArray(command) && command.every(part => typeof part === 'string')) {
+      servers[id] = command
+    }
+  }
+  return servers
 }
 
 /** Read the config file, falling back to defaults on any error or bad value. */

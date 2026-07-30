@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard } from '@opentui/solid'
 
+import { parentRow } from '../core/changeTree'
 import type { CommandActions } from './commands'
 import type { AppContext } from './context'
 
@@ -81,8 +82,8 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     if (key.ctrl && k === 'w') {
       return claim(() => {
         // A page is the frontmost "tab": close it before any file tab.
-        if (overlays.settingsPage()) return overlays.setSettingsPage(false)
-        if (overlays.diff()) return overlays.setDiff(null)
+        if (workspace.settingsPage()) return workspace.setSettingsPage(false)
+        if (workspace.diff()) return workspace.setDiff(null)
         if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
       })
     }
@@ -106,7 +107,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       const vimOwnsEscape = config.vim && editor.vimMode() !== 'normal'
       // With a page up, Esc belongs to it (it closes the page) — moving
       // focus to the tree here would take the key away before it ever arrives.
-      const pageUp = overlays.diff() !== null || overlays.settingsPage()
+      const pageUp = workspace.diff() !== null || workspace.settingsPage()
       if (k === 'escape' && panes.sidebar() && !vimOwnsEscape && !pageUp) {
         panes.focusTree()
       }
@@ -125,28 +126,37 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     // The source-control panel borrows the tree's focus slot, so its keys replace
     // the tree's while it shows — or `d` would still offer to delete files.
     if (panes.view() === 'git') {
-      const files = git.changes()
-      const clamp = (row: number) => Math.max(0, Math.min(row, files.length - 1))
-      /** The cursor is the diff's pager: the page follows it, so moving here is
+      const rows = git.rows()
+      const at = Math.max(0, Math.min(panes.gitCursor(), rows.length - 1))
+      const row = rows[at]
+      /** The cursor is the diff's pager: the page follows it, so `gitMoveTo` is
        * the only way through the changes. */
-      const goTo = (row: number) => {
-        panes.setGitCursor(row)
-        const file = files[row]
-        if (file) actions.showDiff(file.path)
-      }
+      const goTo = actions.gitMoveTo
       switch (config.vim ? (vimNav[k] ?? k) : k) {
         case 'tab':
-          if (workspace.activePath() || overlays.diff()) panes.setFocus('editor')
+          // Shift+Tab walks the tab strip above the sidebar, the way it walks any
+          // other one; plain Tab keeps handing the keyboard to the editor.
+          if (key.shift) panes.showView('files')
+          else if (workspace.activePath() || workspace.diff()) panes.setFocus('editor')
           break
         case 'up':
-          goTo(clamp(panes.gitCursor() - 1))
+          goTo(at - 1)
           break
         case 'down':
-          goTo(clamp(panes.gitCursor() + 1))
+          goTo(at + 1)
+          break
+        // Folder rows fold as the tree's do. On a file, ← walks out to the folder
+        // holding it, which is the only way back to a row the arrows have passed.
+        case 'right':
+          if (row?.kind === 'dir' && row.collapsed) git.toggleCollapsed(row.rel)
+          break
+        case 'left':
+          if (row?.kind === 'dir' && !row.collapsed) git.toggleCollapsed(row.rel)
+          else if (row) goTo(parentRow(rows, at))
           break
         case 'return':
         case 'enter':
-          goTo(clamp(panes.gitCursor()))
+          actions.gitActivateRow(at)
           break
         case 'c':
           actions.gitCommit()
@@ -167,7 +177,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
           // A diff opened from this panel sits on top of it: Esc dismisses that
           // first, or the panel would close and leave the page it opened behind,
           // with no key here that closes it.
-          if (overlays.diff()) overlays.setDiff(null)
+          if (workspace.diff()) workspace.setDiff(null)
           else panes.toggleGitView()
           break
       }
@@ -177,8 +187,10 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     const node = tree.selectedNode()
     switch (config.vim ? (vimNav[k] ?? k) : k) {
       case 'tab':
+        // Shift+Tab walks the tab strip above the sidebar (see the panel's copy).
+        if (key.shift) panes.showView('git')
         // A page counts as an editor to hand focus to, file open or not.
-        if (workspace.activePath() || overlays.diff() || overlays.settingsPage()) {
+        else if (workspace.activePath() || workspace.diff() || workspace.settingsPage()) {
           panes.setFocus('editor')
         }
         break

@@ -2,6 +2,7 @@ import { relative } from 'node:path'
 
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js'
 
+import { ancestorDirs, changeRows } from '../core/changeTree'
 import type { Config } from '../core/config'
 import {
   currentBranch,
@@ -18,8 +19,12 @@ import type { Status } from './status'
 import type { Tree } from './tree'
 import type { Workspace } from './workspace'
 
-/** Everything the UI shows about the repository, refreshed by `wireGitEffects`. */
-export function createGit(rootDir: string) {
+/**
+ * Everything the UI shows about the repository, refreshed by `wireGitEffects`.
+ * `panelView` is read on every render of the panel's rows, so it is the live
+ * config accessor rather than a value — flipping the setting must rebuild them.
+ */
+export function createGit(rootDir: string, panelView: () => 'tree' | 'list') {
   const [gitLines, setGitLines] = createSignal<Map<number, LineChange>>(new Map())
   /** Bumped when something may have changed what git would report. */
   const [revision, setRevision] = createSignal(0)
@@ -38,6 +43,13 @@ export function createGit(rootDir: string) {
   const [gitBusy, setGitBusy] = createSignal(false)
   /** Changed files offered to "Commit…", or null when the picker is closed. */
   const [commitPick, setCommitPick] = createSignal<CommitFile[] | null>(null)
+  /**
+   * What every comparison is against: null is HEAD, and a ref name points the
+   * whole editor at that branch instead — tree marks, gutter, the panel's list
+   * and the diff page all follow it. Committing deliberately does not: the index
+   * is always built against HEAD, whatever is being reviewed.
+   */
+  const [diffBase, setDiffBase] = createSignal<string | null>(null)
 
   const bump = () => setRevision(n => n + 1)
 
@@ -47,6 +59,33 @@ export function createGit(rootDir: string) {
       .map(([path, status]) => ({ path, rel: relative(rootDir, path), status }))
       .toSorted((a, b) => a.rel.localeCompare(b.rel)),
   )
+
+  /** Folders the panel's tree has folded away, by path relative to the root. */
+  const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set())
+
+  /**
+   * What the panel draws and what the cursor counts, folder rows included. Every
+   * caller works in row indices: `changes` is no longer addressable by cursor,
+   * because in tree mode most rows are not files.
+   */
+  const rows = createMemo(() => changeRows(changes(), panelView(), collapsed()))
+
+  const toggleCollapsed = (rel: string) =>
+    setCollapsed(previous => {
+      const next = new Set(previous)
+      if (!next.delete(rel)) next.add(rel)
+      return next
+    })
+
+  /** Unfold every folder on the way to `rel`, so its row is on screen to land on. */
+  const revealChange = (rel: string) =>
+    setCollapsed(previous => {
+      const hiding = ancestorDirs(rel).filter(dir => previous.has(dir))
+      if (hiding.length === 0) return previous
+      const next = new Set(previous)
+      for (const dir of hiding) next.delete(dir)
+      return next
+    })
 
   return {
     gitLines,
@@ -67,7 +106,13 @@ export function createGit(rootDir: string) {
     setGitBusy,
     commitPick,
     setCommitPick,
+    diffBase,
+    setDiffBase,
     changes,
+    rows,
+    collapsed,
+    toggleCollapsed,
+    revealChange,
   }
 }
 
@@ -136,10 +181,17 @@ export function wireGitEffects(deps: {
     on(
       // Not keyed on content: `git diff` is a subprocess, far too heavy to run
       // on every keystroke. Saving bumps reloadKey, which refreshes the marks.
-      () => [ready(), workspace.activePath(), editor.reloadKey(), git.revision()] as const,
-      ([ok, path]) => {
+      () =>
+        [
+          ready(),
+          workspace.activePath(),
+          editor.reloadKey(),
+          git.revision(),
+          git.diffBase(),
+        ] as const,
+      ([ok, path, , , base]) => {
         if (!ok) return
-        git.setGitLines(path ? diffLines(path) : new Map())
+        git.setGitLines(path ? diffLines(path, base) : new Map())
       },
     ),
   )
@@ -171,10 +223,11 @@ export function wireGitEffects(deps: {
           // Not merely read in the body: flipping the setting is the one thing
           // that changes the answer without touching the tree or the repository.
           config.respectGitignore,
+          git.diffBase(),
         ] as const,
-      ([ok, , , , hidingIgnored]) => {
+      ([ok, , , , hidingIgnored, base]) => {
         if (!ok) return
-        git.setGitStatus(statusMap(rootDir))
+        git.setGitStatus(statusMap(rootDir, base))
         // With the rows hidden outright there is nothing left to dim, and the
         // subprocess would answer "none of these" on every filesystem event.
         git.setGitIgnored(

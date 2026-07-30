@@ -13,13 +13,19 @@ installer — and run as a CLI.
 Features: file tree with bulk file operations and opt-in hiding of dotfiles and
 git-ignored files, preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide), command palette, themes, vim mode,
-git marks in tree/gutter/status bar plus a source-control panel in the sidebar and
-palette commands for commit/undo/stash/push/fetch/pull and for branches
+git marks in tree/gutter/status bar plus a source-control panel in the sidebar
+(changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
+→ / ←) and palette commands for commit/undo/stash/push/fetch/pull and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
-side-by-side) for whichever change the panel's cursor is on — the arrows page
-through them and the panel is the only way in, an image viewer (PNG/JPEG as half-block
+side-by-side) for whichever change the panel's cursor is on — the arrows page through
+them, the panel is the only way in, and the diff is a tab of its own in the strip
+(`⇄ name`), so opening a file switches away from it instead of leaving it on top — a
+comparison base that points marks, gutter, panel and diff at another branch instead of
+HEAD (palette → Git → Compare against branch…), an image viewer (PNG/JPEG as half-block
 cells), a settings page (palette → Settings) that edits and persists every option
-live, with a filterable value list per option, file watching with conflict prompts,
+live, with a filterable value list per option, LSP diagnostics from the user's own
+language servers (gutter marks, status-bar counts, a problems list in the palette;
+the settings page toggles LSP and each server), file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
 ## Runtime and tooling
@@ -133,15 +139,16 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
+| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts` (users override per-server with the `lspServers` setting; the settings page toggles them) |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` |
-| setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) + a row in `src/app/settings.ts` (`rows`) so the settings page shows it |
+| setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `parse`) + a row in `src/app/settings.ts` (`rows`) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | handler in `src/app/keyboard.ts` or `src/ui/EditorPane.tsx`, advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Alt+/ peek and the welcome screen) |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 
-`ui/` and the feature folders (`core/`, `languages/`, `themes/`, `editor/`) must never
+`ui/` and the feature folders (`core/`, `languages/`, `themes/`, `editor/`, `lsp/`) must never
 import from `app/`. State lives in the `app/` controller modules (`createWorkspace`,
 `createTree`, …), which `App.tsx` creates once in dependency order and composes;
 components take props and call callbacks.

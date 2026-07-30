@@ -130,7 +130,7 @@ function myers(a: string[], b: string[], oldBase: number, newBase: number): Edit
     y--
     edits.push({ kind: 'same', oldIndex: oldBase + x, newIndex: newBase + y })
   }
-  return edits.reverse()
+  return edits.toReversed()
 }
 
 /** Unchanged lines kept on each side of a change inside a hunk. */

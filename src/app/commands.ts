@@ -51,9 +51,18 @@ export interface CommandActions {
   setTheme: (name: ThemeName) => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   openSettings: () => void
+  problemsList: () => void
+  problemsNext: () => void
+  problemsPrev: () => void
   gitDiffFile: () => void
+  gitDiffBase: () => void
+  gitTogglePanelView: () => void
+  gitDiffBaseReset: () => void
   /** Not a command: the panel's cursor is what opens a diff, and this is it. */
   showDiff: (path: string) => void
+  /** Not commands: the source-control panel's cursor, moved and pressed. */
+  gitMoveTo: (row: number) => void
+  gitActivateRow: (row: number) => void
   /** Not a command: `App` runs it when git or a buffer moves under an open diff. */
   refreshDiff: () => void
   gitCommit: () => void
@@ -127,6 +136,19 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         // The only way in: it opens the source-control panel on this file, which
         // is where the cursor pages through every other change.
         { id: 'git.diffFile', label: 'Diff current file', run: actions.gitDiffFile },
+        // What the whole editor compares against — the panel names the branch
+        // while one is picked, so the pair reads as a mode you are in or out of.
+        { id: 'git.diffBase', label: 'Compare against branch…', run: actions.gitDiffBase },
+        {
+          id: 'git.diffBaseReset',
+          label: 'Compare against HEAD',
+          run: actions.gitDiffBaseReset,
+        },
+        {
+          id: 'git.panelView',
+          label: 'Changes as tree / flat list',
+          run: actions.gitTogglePanelView,
+        },
         { id: 'git.commit', label: 'Commit…', run: actions.gitCommit },
         { id: 'git.undo', label: 'Undo last commit', run: actions.gitUndoCommit },
         { id: 'git.push', label: 'Push', run: actions.gitPush },
@@ -160,6 +182,15 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
             },
           ],
         },
+      ],
+    },
+    {
+      id: 'problems',
+      label: 'Problems',
+      children: [
+        { id: 'problems.list', label: 'List problems', run: actions.problemsList },
+        { id: 'problems.next', label: 'Next problem', run: actions.problemsNext },
+        { id: 'problems.prev', label: 'Previous problem', run: actions.problemsPrev },
       ],
     },
     {

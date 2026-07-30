@@ -1,6 +1,6 @@
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
-import { createMemo, createSignal, For, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 
 import { fuzzyScore } from '../core/search'
 import { ui } from '../themes'
@@ -40,6 +40,7 @@ export interface SettingsViewProps {
  * so this component owns nothing but the selection and the keyboard.
  */
 export function SettingsView(props: SettingsViewProps) {
+  const dimensions = useTerminalDimensions()
   const [index, setIndex] = createSignal(0)
   /** The value list floating over the page, for the selected row's `select`. */
   const [picking, setPicking] = createSignal(false)
@@ -74,6 +75,48 @@ export function SettingsView(props: SettingsViewProps) {
     key.preventDefault()
   })
 
+  /**
+   * Rows the page can draw. A section heading costs its own row plus a blank one
+   * above it, so the window is measured in drawn rows, not settings — and it has
+   * to be measured at all: overflowing the column pushes the title bar off the
+   * top of the page instead of scrolling, which reads as the page being broken.
+   */
+  const heading = (at: number) =>
+    at === 0 || props.rows[at - 1]!.section !== props.rows[at]!.section
+  const cost = (at: number) => (heading(at) ? (at > 0 ? 3 : 2) : 1)
+  const budget = () => Math.max(3, dimensions().height - 4)
+
+  /** First row on screen; moves only when the selection leaves the window. */
+  const [top, setTop] = createSignal(0)
+
+  /** How many rows starting at `from` fit in `budget`, at least one. */
+  const fits = (from: number) => {
+    let drawn = 0
+    let count = 0
+    while (from + count < props.rows.length && drawn + cost(from + count) <= budget()) {
+      drawn += cost(from + count)
+      count += 1
+    }
+    return Math.max(1, count)
+  }
+
+  createEffect(() => {
+    const at = selected()
+    setTop(previous => {
+      if (at < previous) return at
+      // Walk the window's start down until the selection is inside it: with
+      // variable row heights there is no arithmetic for this.
+      let start = previous
+      while (start < at && start + fits(start) <= at) start += 1
+      return start
+    })
+  })
+
+  const visible = createMemo(() => {
+    const start = Math.min(top(), Math.max(0, props.rows.length - 1))
+    return { start, rows: props.rows.slice(start, start + fits(start)) }
+  })
+
   /** Long spelling when the pane can afford it, initials beside a sidebar. */
   const hints = () => {
     const full = ' ↑↓ move · ←→ change · Enter list · Esc close '
@@ -103,14 +146,15 @@ export function SettingsView(props: SettingsViewProps) {
         <text fg={ui.dim} bg={ui.barBg} flexShrink={0} content={hints()} />
       </box>
 
-      <For each={props.rows}>
-        {(row, i) => {
+      <For each={visible().rows}>
+        {(row, at) => {
+          const i = () => visible().start + at()
           const active = () => i() === selected()
           const bg = () => (active() ? ui.treeSelectedBg : ui.bg)
-          const heading = () => i() === 0 || props.rows[i() - 1]!.section !== row.section
+          const showHeading = () => heading(i())
           return (
             <>
-              <Show when={heading()}>
+              <Show when={showHeading()}>
                 <Show when={i() > 0}>
                   <text fg={ui.bg} bg={ui.bg} content="" />
                 </Show>

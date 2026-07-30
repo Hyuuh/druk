@@ -33,6 +33,7 @@ scripts/
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
+    lsp.ts           language servers: spawn per language, sync buffers, diagnostics
     settings.ts      config store, the actions that patch and persist it, and the
                      settings page's rows
     status.ts        status-bar message + the one busy/progress slot
@@ -56,6 +57,11 @@ scripts/
     grammars.ts      wasm + query file imports, the form the binary can embed
     queries/*.scm    highlight queries for grammars we vendor
     highlight.ts     tree-sitter client → non-overlapping highlight segments
+  lsp/
+    protocol.ts      the slice of LSP druk speaks, hand-written (a dozen shapes)
+    transport.ts     JSON-RPC stdio framing (Content-Length frames over Buffers)
+    client.ts        one language server: spawn, handshake, document sync, dispose
+    servers.ts       filetype → server command  ← add a language server here
   themes/
     index.ts         theme registry  ← add a theme here
     types.ts         Theme / ThemeUi shape
@@ -334,11 +340,19 @@ vim mode).
   deferred tick and `branch` starts null — `statusMap` alone can take hundreds of
   milliseconds in a large repository, all of it otherwise spent before anything is on
   screen. The marks and branch appear a beat later; nothing else changes cadence.
-- **The diff page is a snapshot, and something has to refresh it.** `overlays.diff`
+- **The diff page is a snapshot, and something has to refresh it.** `workspace.diffTab`
   holds one file's two texts as they read when it opened, so a commit, stash or save
   leaves it showing changes that are gone — `App` re-runs `actions.refreshDiff` on
   `git.revision()` and `editor.reloadKey()` for that reason, and closes the page once
   the path is no longer in the status map.
+- **The diff is a tab, so its state lives in `workspace`, not beside the modals.**
+  Two signals, not one: `diffTab` is the tab (on the strip, walked onto by Ctrl+←/→,
+  closed only by `setDiff(null)`) and `diffShown` is whether it is the view on screen.
+  `workspace.diff()` is the pair readers want — "what covers the editor slot". This is
+  what makes `openFile` the single place the invariant holds: every way into a file
+  goes through it, and it clears `diffShown` (and the settings page) without closing
+  the tab. Owning it in `overlays` instead meant each caller had to remember, and the
+  tree's Enter did not — a diff stayed on screen over the file just opened.
 - **The source-control panel is the diff's pager, and its only entry point.** The page
   holds one file because `panes.gitCursor` says which: ↑/↓ in the panel move the cursor
   and swap the page under it, so nothing else may open a diff without moving that cursor
@@ -380,3 +394,14 @@ vim mode).
   `preventDefault()`.
 - **Conflicts.** Each buffer records the disk mtime it was last in sync with; saving over
   a file that changed underneath prompts instead of clobbering.
+- **LSP servers are the user's, not druk's.** `src/lsp` spawns whatever
+  `typescript-language-server`, `gopls`, … is on PATH (`lspServers` in the config
+  overrides or disables per server; the settings page flips the same keys); a missing
+  one is reported once in the status bar and that is all. Documents sync as full text —
+  simple and impossible to desynchronize — and the didChange debounce in `src/app/lsp.ts`
+  captures `{path, text}` inside the tracked effect run, so a tab switch during the wait
+  can never re-aim an edit at the wrong document. Servers are torn down from App's
+  `onCleanup` (which also covers tests) and one shared `process.on('exit')` backstop —
+  shared so a dozen servers never trip Node's max-listeners warning mid-frame — and a
+  server that never answers `initialize` is killed after a bounded wait instead of
+  queueing notifications forever.
