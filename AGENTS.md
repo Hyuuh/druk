@@ -121,7 +121,7 @@ bun run build            # compile a binary for this machine into dist/<target>/
 ./dist/*/druk .          # run what you just built (bin/druk.js finds it too)
 bun run build linux-x64  # …or for a named target, if its native package is installed
 bun run release          # package dist/ for npm + release archives (--publish to ship)
-bun run formula          # Homebrew formula for those archives (not published anywhere yet)
+bun run formula          # Homebrew formula for those archives, into dist/release/druk.rb
 bun run test             # unit + UI, one file per process, sequential (~4 min)
 bun test test/foo.tsx    # a single file, where the flag buys nothing
 bun run check            # check-types + lint + format + test — the one to run
@@ -191,10 +191,22 @@ release upload was skipped, and the published shim spent its life fetching a rel
 did not exist. Re-running a shipped version is safe — `release.ts` skips a version already
 on the registry and the upload clobbers its assets.
 
-Homebrew is not wired up yet. `scripts/formula.ts` generates a working formula from the
-archives in `dist/release/`, but nothing publishes it: that needs a `letstri/homebrew-tap`
-repository and a `TAP_TOKEN` secret, then a step in the release workflow to commit the
-formula there.
+**Homebrew needs the one credential the rest of the release does without.** The workflow
+runs `bun run formula` after packaging, so `druk.rb` — checksummed against the archives
+actually uploaded — is an asset of every release, and the `tap` job copies that asset to
+`letstri/homebrew-tap` as `Formula/druk.rb`. That copy is the exception to publishing
+unattended: GITHUB_TOKEN is scoped to this repository, and no OIDC arrangement exists for
+pushing to another one, so it reads `TAP_TOKEN` — a fine-grained PAT with contents:write
+on the tap and nothing else.
+
+Two things still have to be done by hand, once: create `letstri/homebrew-tap`, and set
+`TAP_TOKEN`. Until both exist the `tap` job skips and says so in the run's annotations —
+the formula is on the release either way, to be copied into a tap by hand (Homebrew
+refuses a formula that is not in one, so a downloaded `druk.rb` is not installable on its
+own). Skipping is safe here in a way it is not for the two steps above: nothing
+downstream reads the tap, so a formula left unupdated puts brew a version behind rather
+than breaking an install, and forks that cannot hold the secret release exactly as this
+repository does.
 
 ## Architecture
 

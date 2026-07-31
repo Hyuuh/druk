@@ -91,6 +91,12 @@ jobs:
           for dir in druk-*; do mv "$dir" "${dir#druk-}"; done
           chmod +x */druk || true
       - run: bun run release
+      # After `bun run release`, which clears dist/release before it writes the archives,
+      # and before the upload — formula.ts checksums those archives and drops druk.rb in
+      # beside them, so the `dist/release/*` glob below carries it to the release without
+      # naming it. Attaching it is what lets the tap job stay a plain file copy, and it
+      # leaves a hand-installable formula on every release even when no tap exists.
+      - run: bun run formula
       # git, not `gh release create --target`: GITHUB_TOKEN may create a release for a
       # tag that already exists, but creating one that has to create the tag too comes
       # back `403 Resource not accessible by integration`. Pushing the tag over the
@@ -126,3 +132,64 @@ jobs:
         run: bun run release --publish
         env:
           NPM_CONFIG_PROVENANCE: true
+
+  # Homebrew installs come from letstri/homebrew-tap, and a formula there is the whole of
+  # what `brew install letstri/tap/druk` reads — so shipping a version means copying
+  # druk.rb from the release into that repository.
+  #
+  # It is a separate job because it authenticates differently from everything above.
+  # GITHUB_TOKEN is scoped to this repository and cannot write to another one, and there
+  # is no OIDC trusted-publisher arrangement for a git push the way npm has one, so this
+  # is the single step of the release that needs a stored credential: TAP_TOKEN, a
+  # fine-grained PAT with contents:write on letstri/homebrew-tap alone.
+  #
+  # Skipping without it is deliberate, and is not the conditional the publish job warns
+  # about. Those two steps are conditional on *each other* — a package published without
+  # its release fetches a 404 — whereas nothing downstream reads the tap. A formula that
+  # was not updated leaves brew a version behind, which is stale, not broken, and every
+  # other channel still shipped. That is the right failure for a repository that cannot
+  # hold the secret: forks, and this one until the tap exists, release exactly as before.
+  tap:
+    needs: [check, publish]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      # `secrets` is not a context `if:` can read; mapping it here and testing the env
+      # var is how a step conditions on a secret's presence.
+      TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+    steps:
+      - name: Check out the tap
+        if: env.TAP_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          repository: letstri/homebrew-tap
+          token: ${{ secrets.TAP_TOKEN }}
+      - name: Update Formula/druk.rb
+        if: env.TAP_TOKEN != ''
+        # The formula the release already carries, not one regenerated here: it was
+        # checksummed against the archives that were actually uploaded, and rebuilding it
+        # would need every binary downloaded again to say the same thing.
+        run: |
+          mkdir -p Formula
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern druk.rb --dir Formula --clobber
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add Formula/druk.rb
+          # Re-running a shipped version is safe everywhere else in this workflow; an
+          # unchanged formula is that case reaching here, and `git commit` would fail on
+          # an empty tree rather than no-op.
+          if git diff --cached --quiet; then
+            echo "Formula/druk.rb is already at $VERSION"
+          else
+            git commit -m "druk $VERSION"
+            git push
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Say the formula was not published
+        if: env.TAP_TOKEN == ''
+        run: |
+          echo "::notice::TAP_TOKEN is not set — skipping the Homebrew tap update." \
+            "druk.rb is attached to release $VERSION and can be copied to" \
+            "letstri/homebrew-tap as Formula/druk.rb by hand."
