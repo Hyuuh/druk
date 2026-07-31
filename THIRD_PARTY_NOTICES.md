@@ -10,4 +10,4 @@ Google's PDFium through `pdfium-lib`.
 - WebAssembly SHA-256: `71aec412a303a0405baee21c3d6d3f30ad2033dc02444130fe476be3976e2d09`
 
 PDFium's BSD-style and Apache 2.0 terms are reproduced in
-`third_party/PDFIUM_LICENSE` (named `PDFIUM_LICENSE` in release archives).
+`third_party/PDFIUM_LICENSE` (named `PDFIUM_LICENSE` in packaged distributions).
