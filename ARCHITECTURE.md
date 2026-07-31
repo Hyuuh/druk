@@ -50,6 +50,7 @@ scripts/
     fs.ts            file listing, read/write, binary guard, directory watcher
     search.ts        in-file/project search, fuzzy matching, replace
     image.ts         PNG/JPEG decode + scaling onto half-block cells, for the viewer
+    pdf.ts           embedded PDFium WASM, serialized document/page rendering, fit and pan geometry
     git.ts           queries, mutations, and async branch-comparison metadata/blob reads
     diff.ts          Myers line diff between two texts, emitted as a unified patch
     imports.ts       the path token under the cursor, and where it resolves —
@@ -93,7 +94,7 @@ scripts/
   ui/                presentational components, no app state
     EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
     SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
-    SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay, TextInput,
+    SearchPanel, DiffView, ImageView, PdfView, SettingsView, UpdateBanner, Overlay, TextInput,
     PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
     modal.ts         modal geometry: width, list rows, text wrapping
     list.ts          list behaviour: windowing, panel scroll, picker keys, row colour
@@ -395,15 +396,15 @@ is just a diff against the empty tree.
   the watcher still see every file, and an ignored directory is pruned at its top row
   (never descended into), which is why `ignoredPaths` can match git's collapsed
   `--directory` output by exact path.
-- **Image tabs are viewer tabs: a tab without a buffer.** `isImagePath` branches before
-  the `readFile` in `openFile`, so a PNG/JPEG gets a tab that flows through the normal
+- **Viewer tabs have no buffer.** `isViewerPath` branches before the `readFile` in
+  `openFile`, so a PNG/JPEG or PDF gets a tab that flows through the normal
   preview/pin/session logic while `buffers` never learns about it — the no-buffer
-  invariant above is how "never written back" extends to images. Everything that assumes
+  invariant above is how "never written back" extends to viewers. Everything that assumes
   a tab has a buffer must keep coping with one that does not: `onEditorChange` returns
-  early (a phantom buffer created there would hand the image to the save path), and
+  early (a phantom buffer created there would hand the viewer file to the save path), and
   `syncFromDisk` closes vanished bufferless tabs in a separate pass, since its main walk
   iterates `buffers`.
-- **The viewer paints cells, not renderables.** `ImageView` draws `▀` half-blocks
+- **The viewer paints cells, not renderables.** `ImageView` and `PdfView` draw `▀` half-blocks
   (upper pixel foreground, lower background) straight into the frame from a `renderAfter`
   hook on one box. A `<text>` per cell would be cols×rows renderables — the Zig core
   stops handing them out a few thousand in, so a photo would blank the pane the way the
@@ -491,6 +492,11 @@ is just a diff against the empty tree.
   OpenTUI had already looked. `main.tsx` releases the root right after the imports:
   it holds only the library, and any later lookup under it (tree-sitter's wasm, on
   the first highlight) would throw and silently kill highlighting.
+
+  PDFium follows the static-import rule without staging: `core/pdf.ts` imports its WASM
+  with `with { type: 'file' }`, reads the embedded bytes and passes them as `wasmBinary`.
+  PDFium's normal lookup for a sibling `.wasm` file cannot work inside Bun's compiled
+  filesystem.
 - **Focused colors.** Inputs and the editor render focused, and OpenTUI then uses the
   `focused*` colors — setting only `textColor` leaves text in the renderable's default,
   which is invisible on most themes. `ui/TextInput.tsx` exists so no panel forgets.
