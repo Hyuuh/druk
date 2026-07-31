@@ -40,6 +40,52 @@ export interface Language {
   patterns?: { group: string; re: RegExp }[]
 }
 
+/**
+ * HCL, which Terraform and `.hcl` files share — no grammar for it ships in
+ * `tree-sitter-wasms`, so this is patterns like yaml and sql.
+ *
+ * Order is the whole design here, since later entries win the characters they
+ * overlap:
+ *
+ * - `string` comes before `variable`, so a reference inside an interpolation
+ *   (`"${var.name}"`) still paints as one instead of disappearing into the string.
+ *   The prefixes are anchored with a `(?<![\w/.])` guard for the same reason in
+ *   reverse: without it `"https://x.dev/path.html"` paints `path.html` as a variable.
+ * - `comment` is last, so a commented-out attribute is grey all the way across
+ *   rather than keeping the colours of the code inside it. The cost is a `#` that
+ *   follows a space *inside* a string — `"a # b"` — being read as a comment; the
+ *   leading `[ \t]` guard is what keeps `"#ffffff"` and `.../#anchor` out of it,
+ *   which are the two that actually turn up. yaml and ini make the same trade.
+ *
+ * Attribute keys are line-anchored, as ini's are. `terraform fmt` puts one
+ * attribute per line, so the case that would need more is the formatted-by-hand one.
+ */
+const HCL_PATTERNS: NonNullable<Language['patterns']> = [
+  { group: 'punctuation.bracket', re: /[{}[\]()]/g },
+  { group: 'punctuation', re: /[,.:]/g },
+  { group: 'operator', re: /=>|[=!<>]=|&&|\|\||[=<>+\-*/%!?:]/g },
+  { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
+  { group: 'boolean', re: /\b(?:true|false|null)\b/g },
+  { group: 'type', re: /\b(?:string|number|bool|any|list|map|set|object|tuple)\b/g },
+  {
+    group: 'keyword',
+    re: /\b(?:resource|variable|output|module|provider|data|locals|terraform|backend|provisioner|connection|lifecycle|dynamic|moved|import|check|removed|depends_on|for|in|if|else)\b/g,
+  },
+  { group: 'property', re: /^[ \t]*[\w-]+(?=[ \t]*=(?!=))/gm },
+  { group: 'function', re: /\b[a-z_]\w*(?=\()/g },
+  { group: 'string', re: /"(?:[^"\\\n]|\\.)*"/g },
+  // Heredocs, whose terminator is whatever the `<<` named — hence the backreference.
+  { group: 'string', re: /<<[-~]?(\w+)[\s\S]*?^[ \t]*\1\b/gm },
+  {
+    group: 'variable',
+    re: /(?<![\w/.])(?:var|local|data|module|each|count|path|self|terraform)(?:\.\w+)+/g,
+  },
+  // Only the openers: the closing brace is a brace, and painting every `}` as an
+  // interpolation would take every block's closing line with it.
+  { group: 'punctuation.special', re: /\$\{|%\{/g },
+  { group: 'comment', re: /(?:^|[ \t])(?:#|\/\/).*|\/\*[\s\S]*?\*\//gm },
+]
+
 export const LANGUAGES: Language[] = [
   { id: 'javascript', label: 'js', bundled: true },
   { id: 'typescript', label: 'ts', bundled: true },
@@ -151,6 +197,11 @@ export const LANGUAGES: Language[] = [
       { group: 'comment', re: /--.*$|\/\*[\s\S]*?\*\//gm },
     ],
   },
+  // Two ids over one set of patterns, as css/scss/sass are over one grammar: the
+  // syntax is HCL either way, and the status bar saying "terraform" over a `.tf`
+  // and "hcl" over a Packer or Nomad file is the only difference between them.
+  { id: 'terraform', label: 'tf', patterns: HCL_PATTERNS },
+  { id: 'hcl', patterns: HCL_PATTERNS },
   {
     id: 'ini',
     patterns: [

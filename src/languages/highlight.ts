@@ -105,6 +105,10 @@ export function filetypeForPath(path: string): string | undefined {
   if (DOTENV.test(name)) return 'dotenv'
   if (name.endsWith('.tsrx')) return 'tsrx'
   if (name.endsWith('.liquid')) return 'liquid'
+  // OpenTUI resolves none of these, so unlike yaml or sql the extension has to be
+  // claimed here or the patterns never run and a `.tf` renders as plain text.
+  if (name.endsWith('.tf') || name.endsWith('.tfvars')) return 'terraform'
+  if (name.endsWith('.hcl')) return 'hcl'
   return pathToFiletype(path) ?? undefined
 }
 
