@@ -600,7 +600,12 @@ export function App(props: {
             width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
             height={dimensions().height - 2}
             focused={panes.focus() === 'editor'}
-            blocked={overlays.overlay()}
+            blocked={
+              overlays.overlay() ||
+              workspace.diff() !== null ||
+              workspace.settingsPage() ||
+              comparison.detailOpen()
+            }
             onFocus={() => panes.setFocus('editor')}
           />
           <Show when={workspace.renderedPath()}>

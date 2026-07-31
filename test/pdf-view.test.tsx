@@ -12,6 +12,7 @@ import {
   press,
   pressEscape,
   pressTimes,
+  runCommand,
   untilFrame,
   untilGone,
 } from './helpers'
@@ -113,6 +114,23 @@ describe('PDF viewer', () => {
     await pressEscape(t)
     await pressEscape(t)
     expect(t.captureCharFrame()).not.toContain('125%')
+  })
+
+  test('a page over the PDF owns its arrow keys', async () => {
+    const { dir } = project()
+    const t = await launch(dir)
+    await openFile(t, 'sample')
+    await untilFrame(t, 'sample.pdf — 1/2 · 100%')
+
+    await runCommand(t, 'Settings')
+    await press(t, input => input.pressArrow('down'))
+    await press(t, input => input.pressEnter())
+
+    const frame = t.captureCharFrame()
+    expect(frame).toContain('Follow OS appearance')
+    const followOs = frame.split('\n').find(line => line.includes('Follow OS appearance'))
+    expect(followOs?.trimEnd().endsWith('on')).toBe(true)
+    expect(frame).not.toContain('Type to filter')
   })
 
   test('restores a PDF tab and never saves its bytes', async () => {
