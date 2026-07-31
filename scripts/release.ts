@@ -72,6 +72,7 @@ await mkdir(`${rootDir}/bin`, { recursive: true })
 await cp('./bin/druk.js', `${rootDir}/bin/druk.js`)
 await cp('./bin/postinstall.mjs', `${rootDir}/bin/postinstall.mjs`)
 await cp('./bin/binary.mjs', `${rootDir}/bin/binary.mjs`)
+await cp('./bin/windows-shim.mjs', `${rootDir}/bin/windows-shim.mjs`)
 await cp('./README.md', `${rootDir}/README.md`)
 
 const rootPkg = await Bun.file('./package.json').json()
