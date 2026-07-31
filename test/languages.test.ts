@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { LANGUAGES, languageFor, languageLabel } from '../src/languages'
 import { computeHighlights, getSyntaxStyle, segmentsIn, STALE } from '../src/languages/highlight'
-import type { Highlighted } from '../src/languages/highlight'
+import type { Highlighted, Segment } from '../src/languages/highlight'
 import { allSegments, parseHighlights, WHOLE } from './syntax'
 
 const SAMPLES: Record<string, string> = {
@@ -31,6 +31,7 @@ const SAMPLES: Record<string, string> = {
   scala: '// c\nobject A { def go(x: Int): Int = x }\n',
   yaml: '# c\na:\n  b: true\n',
   svelte: '<!-- c -->\n<script>let x = 1</script>\n<div class="a">{x}</div>\n',
+  liquid: '<!-- c -->\n<div class="a">{{ product.title | upcase }}</div>\n',
   sql: '-- c\nSELECT id FROM users WHERE age > 18;\n',
   ini: '; c\n[section]\nkey = value\n',
   dotenv: '# c\nexport PORT=3000\nURL="https://x.dev"\n',
@@ -79,6 +80,59 @@ describe('languages', () => {
       expect(segs.some(s => s.styleId === comment)).toBe(true)
     }, 15000)
   }
+})
+
+describe('liquid doc comments', () => {
+  const SOURCE = [
+    '{% doc %}',
+    '  Renders a reusable AJAX add-to-cart form and button.',
+    '',
+    '  @param {product} product - Shopify product object for the form.',
+    '  @param {variant} [current_variant] - Variant used for the initial button availability state.',
+    '',
+    '  @example',
+    "  {% render 'add-to-cart-form', product: product %}",
+    '{% enddoc %}',
+    '',
+  ].join('\n')
+
+  function styleAt(segs: Segment[], needle: string, occurrence = 0) {
+    let index = -1
+    for (let i = 0; i <= occurrence; i++) index = SOURCE.indexOf(needle, index + 1)
+    let acc = 0
+    const lines = SOURCE.split('\n')
+    for (let line = 0; line < lines.length; line++) {
+      const lineLen = lines[line]!.length
+      if (index <= acc + lineLen) {
+        const col = index - acc
+        return segs.find(s => s.line === line && col >= s.start && col < s.end)?.styleId
+      }
+      acc += lineLen + 1
+    }
+    return undefined
+  }
+
+  test('delimiters and prose default to comment, @param/@example stand out as tags, {type} as a type, and both the required and optional [name] form as a parameter', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    const ss = getSyntaxStyle()
+    const isStyle = (found: number | undefined, group: string) => found === ss.getStyleId(group)
+
+    expect(isStyle(styleAt(segs, '{% doc %}'), 'comment')).toBe(true)
+    expect(isStyle(styleAt(segs, 'Renders a reusable'), 'comment')).toBe(true)
+    expect(isStyle(styleAt(segs, '@param'), 'keyword.tag')).toBe(true)
+    expect(isStyle(styleAt(segs, '@example'), 'keyword.tag')).toBe(true)
+    expect(isStyle(styleAt(segs, '{product}'), 'type.builtin')).toBe(true)
+    expect(isStyle(styleAt(segs, '{variant}'), 'type.builtin')).toBe(true)
+    expect(isStyle(styleAt(segs, 'product', 1), 'variable.parameter')).toBe(true)
+    expect(isStyle(styleAt(segs, 'current_variant'), 'variable.parameter')).toBe(true)
+  })
+
+  test('the dotted groups above have no theme entry of their own, so the assertions above are exercising the fallback, not a coincidence', () => {
+    const ss = getSyntaxStyle()
+    expect(ss.getStyleId('keyword.tag')).toBe(ss.getStyleId('keyword'))
+    expect(ss.getStyleId('type.builtin')).toBe(ss.getStyleId('type'))
+    expect(ss.getStyleId('variable.parameter')).toBe(ss.getStyleId('variable'))
+  })
 })
 
 describe('abandoning a highlight that arrived too late', () => {

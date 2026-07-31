@@ -162,6 +162,34 @@ export const LANGUAGES: Language[] = [
       { group: 'comment', re: /^[ \t]*[#;].*/gm },
     ],
   },
+  {
+    id: 'liquid',
+    patterns: [
+      { group: 'comment', re: /<!--[\s\S]*?-->/g },
+      { group: 'string', re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g },
+      { group: 'attribute', re: /(?<=[\s<])[a-zA-Z_:][-\w:.]*(?=[ \t]*=[ \t]*["'])/g },
+      { group: 'tag', re: /<\/?([A-Za-z][\w.-]*)/g },
+      { group: 'punctuation.bracket', re: /<\/?|\/?>/g },
+      { group: 'operator', re: /=/g },
+      { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
+      { group: 'boolean', re: /\b(?:true|false|nil|blank|empty)\b/g },
+      { group: 'punctuation.special', re: /\{\{-?|-?\}\}|\{%-?|-?%\}/g },
+      {
+        group: 'keyword',
+        re: /(?<=\{%-?\s*)\b(?:assign|capture|endcapture|case|when|endcase|cycle|decrement|echo|for|endfor|break|continue|if|elsif|else|endif|include|increment|layout|liquid|raw|endraw|render|section|sections|style|endstyle|tablerow|endtablerow|unless|endunless|paginate|endpaginate|form|endform|javascript|endjavascript|schema|endschema|stylesheet|endstylesheet|comment|endcomment)\b/g,
+      },
+      { group: 'keyword.operator', re: /==|!=|<=|>=/g },
+      { group: 'operator', re: /\|(?=[ \t]*[a-zA-Z_])/g },
+      { group: 'function', re: /(?<=\|[ \t]*)[a-zA-Z_]\w*/g },
+      {
+        group: 'comment.block',
+        re: /\{%-?\s*comment\s*-?%\}[\s\S]*?\{%-?\s*endcomment\s*-?%\}|\{%-?\s*doc\s*-?%\}[\s\S]*?\{%-?\s*enddoc\s*-?%\}|\{%-?\s*#.*?-?%\}/g,
+      },
+      { group: 'keyword.tag', re: /(?<=^[ \t]*)@\w+/gm },
+      { group: 'type.builtin', re: /(?<=@param[ \t]*)\{[^{}]*\}/g },
+      { group: 'variable.parameter', re: /(?<=@param[ \t]*\{[^{}]*\}[ \t]*)\[?[a-zA-Z_]\w*\]?/g },
+    ],
+  },
 ]
 
 /**
