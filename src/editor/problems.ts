@@ -14,7 +14,7 @@ import type { ProblemSeverity } from '../lsp/protocol'
  * — an unused import on every other line — and a column speckled end to end
  * says nothing about where it is worth scrolling.
  */
-const TRACKED: ProblemSeverity[] = ['error', 'warning']
+const TRACKED = new Set<ProblemSeverity>(['error', 'warning'])
 
 /**
  * A severity per track row, or undefined where the run is clean. `rows` is the
@@ -30,7 +30,7 @@ export function problemRows(
 
   for (const [line, problem] of problems) {
     if (line < 0 || line >= total) continue
-    if (!TRACKED.includes(problem.severity)) continue
+    if (!TRACKED.has(problem.severity)) continue
     const row = Math.min(rows - 1, Math.floor((line / total) * rows))
     const current = marks[row]
     if (!current || SEVERITY_RANK[problem.severity] < SEVERITY_RANK[current]) {

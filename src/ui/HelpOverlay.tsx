@@ -5,8 +5,8 @@ import { createMemo, createSignal, For, Match, Switch } from 'solid-js'
 
 import { ui } from '../themes'
 import { helpSections } from './keys'
-import { modalWidth, PAD } from './modal'
-import { Overlay } from './Overlay'
+import { modalWidth } from './modal'
+import { ModalPanel } from './Overlay'
 
 type Line =
   | { kind: 'header'; text: string }
@@ -37,59 +37,44 @@ export function HelpOverlay() {
   })
 
   return (
-    <Overlay zIndex={200}>
-      <box
-        width={width()}
-        flexDirection="column"
-        backgroundColor={ui.panelBg}
-        border
-        borderStyle="rounded"
-        borderColor={ui.accent}
-        title=" Keyboard shortcuts "
-        titleColor={ui.text}
-        paddingLeft={PAD}
-        paddingRight={PAD}
-        paddingTop={1}
-        paddingBottom={1}
-      >
-        <For each={lines().slice(top(), top() + visible())}>
-          {line => (
-            <Switch>
-              <Match when={line.kind === 'header' && line}>
-                {(header: () => { text: string }) => (
-                  <text
-                    fg={ui.accent}
-                    bg={ui.panelBg}
-                    content={header().text}
-                    attributes={TextAttributes.BOLD}
-                  />
-                )}
-              </Match>
-              <Match when={line.kind === 'key' && line}>
-                {(row: () => { key: string; label: string }) => (
-                  <box flexDirection="row">
-                    <box width={20} flexShrink={0} paddingLeft={1}>
-                      <text fg={ui.text} bg={ui.panelBg} content={row().key} />
-                    </box>
-                    <box flexGrow={1}>
-                      <text fg={ui.dim} bg={ui.panelBg} content={row().label} />
-                    </box>
+    <ModalPanel zIndex={200} width={width()} title=" Keyboard shortcuts " padY={1}>
+      <For each={lines().slice(top(), top() + visible())}>
+        {line => (
+          <Switch>
+            <Match when={line.kind === 'header' && line}>
+              {(header: () => { text: string }) => (
+                <text
+                  fg={ui.accent}
+                  bg={ui.panelBg}
+                  content={header().text}
+                  attributes={TextAttributes.BOLD}
+                />
+              )}
+            </Match>
+            <Match when={line.kind === 'key' && line}>
+              {(row: () => { key: string; label: string }) => (
+                <box flexDirection="row">
+                  <box width={20} flexShrink={0} paddingLeft={1}>
+                    <text fg={ui.text} bg={ui.panelBg} content={row().key} />
                   </box>
-                )}
-              </Match>
-              <Match when={line.kind === 'gap'}>
-                <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-              </Match>
-            </Switch>
-          )}
-        </For>
-        <text fg={ui.dim} bg={ui.panelBg} content="" />
-        <text
-          fg={ui.dim}
-          bg={ui.panelBg}
-          content={overflowing() ? '↑↓ scroll · Esc close' : 'Press Esc to close'}
-        />
-      </box>
-    </Overlay>
+                  <box flexGrow={1}>
+                    <text fg={ui.dim} bg={ui.panelBg} content={row().label} />
+                  </box>
+                </box>
+              )}
+            </Match>
+            <Match when={line.kind === 'gap'}>
+              <text fg={ui.panelBg} bg={ui.panelBg} content="" />
+            </Match>
+          </Switch>
+        )}
+      </For>
+      <text fg={ui.dim} bg={ui.panelBg} content="" />
+      <text
+        fg={ui.dim}
+        bg={ui.panelBg}
+        content={overflowing() ? '↑↓ scroll · Esc close' : 'Press Esc to close'}
+      />
+    </ModalPanel>
   )
 }

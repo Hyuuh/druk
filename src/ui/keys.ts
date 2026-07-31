@@ -4,8 +4,10 @@
  * anywhere else is a key one of them will not know about. The real handlers
  * live in App and EditorPane; `test/hotkeys.test.tsx` sweeps the two together.
  *
- * Entries sit grouped by `section`, which is what the help overlay renders
- * under headings — a new entry belongs beside its section mates, not at the end.
+ * Entries sit grouped by `section`, which is what the help overlay and the Ctrl+K
+ * peek render under headings — a new entry belongs beside its section mates, not at
+ * the end. Both split the table where `section` changes, so an entry filed away from
+ * its mates opens the heading a second time.
  *
  * A row that names bindable commands carries their `ids`, so a custom shortcut
  * shows up here instead of leaving the table advertising the key it replaced:
@@ -154,6 +156,13 @@ export const KEYS: KeyInfo[] = [
     section: 'Files & tabs',
     where: 'all',
     ids: ['tabs.prev', 'tabs.next'],
+  },
+  {
+    key: `Ctrl+${ALT}+Z / Y`,
+    label: 'Go back / forward (← → on the strip)',
+    section: 'Files & tabs',
+    where: 'all',
+    ids: ['nav.back', 'nav.forward'],
   },
 
   {
@@ -318,13 +327,16 @@ export interface HelpSection {
   rows: [string, string][]
 }
 
-/** The table split at its section boundaries, for the help overlay's headings. */
-export const helpSections = (): HelpSection[] =>
-  entries().reduce<HelpSection[]>((out, info) => {
+/** Rows split where their `section` changes. `KEYS` keeps a section contiguous. */
+const sectionsOf = (rows: KeyInfo[]): HelpSection[] =>
+  rows.reduce<HelpSection[]>((out, info) => {
     if (out.at(-1)?.title !== info.section) out.push({ title: info.section, rows: [] })
     out.at(-1)!.rows.push([info.key, info.label])
     return out
   }, [])
+
+/** The table split at its section boundaries, for the help overlay's headings. */
+export const helpSections = (): HelpSection[] => sectionsOf(entries())
 
 /**
  * The short spelling a hint or welcome row asked for — dropped once the command is
@@ -353,3 +365,6 @@ export function welcomeKeys(): ReadonlyArray<readonly [string, string]> {
 export function keysFor(pane: KeyScope): KeyInfo[] {
   return entries().filter(info => info.where === pane || info.where === 'all')
 }
+
+/** What `pane` answers to, under the help overlay's headings — the peek panel. */
+export const keySectionsFor = (pane: KeyScope): HelpSection[] => sectionsOf(keysFor(pane))

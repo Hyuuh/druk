@@ -8,7 +8,7 @@ import type { ConfigScope } from '../core/config'
 import { fuzzyScore } from '../core/search'
 import { ui } from '../themes'
 import { listRows, modalWidth, PAD } from './modal'
-import { Overlay } from './Overlay'
+import { ModalPanel } from './Overlay'
 import { TextInput } from './TextInput'
 
 /** One input inside an edit. A lone field needs no label; several do. */
@@ -412,63 +412,50 @@ function SettingEditor(props: {
     setValues(previous => previous.map((old, i) => (i === at ? value : old)))
 
   return (
-    <Overlay zIndex={150}>
-      <box
-        width={width()}
-        flexDirection="column"
-        backgroundColor={ui.panelBg}
-        border
-        borderStyle="rounded"
-        borderColor={ui.accent}
-        title={` ${props.edit.title} `}
-        titleColor={ui.text}
-        paddingLeft={PAD}
-        paddingRight={PAD}
-      >
-        <For each={props.edit.fields}>
-          {(field, at) => (
-            <>
-              <Show when={field.label}>
-                <text
-                  fg={at() === focus() ? ui.text : ui.dim}
-                  bg={ui.panelBg}
-                  content={field.label!}
-                />
-              </Show>
-              {/* Two focused inputs would split the typing between them, so the
+    <ModalPanel zIndex={150} width={width()} title={` ${props.edit.title} `}>
+      <For each={props.edit.fields}>
+        {(field, at) => (
+          <>
+            <Show when={field.label}>
+              <text
+                fg={at() === focus() ? ui.text : ui.dim}
+                bg={ui.panelBg}
+                content={field.label!}
+              />
+            </Show>
+            {/* Two focused inputs would split the typing between them, so the
                   field without the cursor is drawn as plain text. */}
-              <Show
-                when={at() === focus()}
-                fallback={
-                  <text
-                    fg={values()[at()] ? ui.dim : ui.faint}
-                    bg={ui.panelBg}
-                    content={values()[at()] || field.placeholder || ''}
-                  />
-                }
-              >
-                <TextInput
-                  value={values()[at()]!}
-                  placeholder={field.placeholder}
-                  onInput={value => setField(at(), value)}
+            <Show
+              when={at() === focus()}
+              fallback={
+                <text
+                  fg={values()[at()] ? ui.dim : ui.faint}
+                  bg={ui.panelBg}
+                  content={values()[at()] || field.placeholder || ''}
                 />
-              </Show>
-            </>
-          )}
-        </For>
-        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-        <For each={props.edit.hint ?? []}>
-          {line => <text fg={ui.faint} bg={ui.panelBg} content={line} />}
-        </For>
-        <text
-          fg={ui.dim}
-          bg={ui.panelBg}
-          content={
-            count() > 1 ? 'Tab next field · Enter apply · Esc cancel' : 'Enter apply · Esc cancel'
-          }
-        />
-      </box>
-    </Overlay>
+              }
+            >
+              <TextInput
+                value={values()[at()]!}
+                placeholder={field.placeholder}
+                onInput={value => setField(at(), value)}
+              />
+            </Show>
+          </>
+        )}
+      </For>
+      <text fg={ui.panelBg} bg={ui.panelBg} content="" />
+      <For each={props.edit.hint ?? []}>
+        {line => <text fg={ui.faint} bg={ui.panelBg} content={line} />}
+      </For>
+      <text
+        fg={ui.dim}
+        bg={ui.panelBg}
+        content={
+          count() > 1 ? 'Tab next field · Enter apply · Esc cancel' : 'Enter apply · Esc cancel'
+        }
+      />
+    </ModalPanel>
   )
 }
 
@@ -547,52 +534,39 @@ function SettingPicker(props: {
   })
 
   return (
-    <Overlay zIndex={150}>
-      <box
-        width={width()}
-        flexDirection="column"
-        backgroundColor={ui.panelBg}
-        border
-        borderStyle="rounded"
-        borderColor={ui.accent}
-        title={` ${props.title} `}
-        titleColor={ui.text}
-        paddingLeft={PAD}
-        paddingRight={PAD}
+    <ModalPanel zIndex={150} width={width()} title={` ${props.title} `}>
+      <TextInput
+        value={query()}
+        placeholder="Type to filter…"
+        onInput={value => {
+          setQuery(value)
+          setIndex(0)
+        }}
+      />
+      <text fg={ui.panelBg} bg={ui.panelBg} content="" />
+      <Show
+        when={matches().length > 0}
+        fallback={<text fg={ui.dim} bg={ui.panelBg} content="No matches" />}
       >
-        <TextInput
-          value={query()}
-          placeholder="Type to filter…"
-          onInput={value => {
-            setQuery(value)
-            setIndex(0)
+        <For each={matches().slice(windowStart(), windowStart() + visibleRows())}>
+          {(match, i) => {
+            const active = () => windowStart() + i() === selected()
+            const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
+            return (
+              <box flexDirection="row" backgroundColor={bg()}>
+                <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
+                <text
+                  fg={match.at === props.activeIndex ? ui.accent : active() ? ui.text : ui.dim}
+                  bg={bg()}
+                  content={props.options[match.at]!.slice(0, width() - PAD * 2 - 2)}
+                />
+                <box flexGrow={1} backgroundColor={bg()} />
+              </box>
+            )
           }}
-        />
-        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-        <Show
-          when={matches().length > 0}
-          fallback={<text fg={ui.dim} bg={ui.panelBg} content="No matches" />}
-        >
-          <For each={matches().slice(windowStart(), windowStart() + visibleRows())}>
-            {(match, i) => {
-              const active = () => windowStart() + i() === selected()
-              const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-              return (
-                <box flexDirection="row" backgroundColor={bg()}>
-                  <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
-                  <text
-                    fg={match.at === props.activeIndex ? ui.accent : active() ? ui.text : ui.dim}
-                    bg={bg()}
-                    content={props.options[match.at]!.slice(0, width() - PAD * 2 - 2)}
-                  />
-                  <box flexGrow={1} backgroundColor={bg()} />
-                </box>
-              )
-            }}
-          </For>
-        </Show>
-        <text fg={ui.dim} bg={ui.panelBg} content="↑↓ move · Enter pick · Esc back" />
-      </box>
-    </Overlay>
+        </For>
+      </Show>
+      <text fg={ui.dim} bg={ui.panelBg} content="↑↓ move · Enter pick · Esc back" />
+    </ModalPanel>
   )
 }

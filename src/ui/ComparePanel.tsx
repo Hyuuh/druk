@@ -1,10 +1,11 @@
 import { TextAttributes } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { createMemo, For, Show } from 'solid-js'
 
 import type { BranchComparison, ComparisonCommit, ComparisonFile } from '../core/git'
 import { ui } from '../themes'
 import { diffMark, diffStatusColor } from './DiffView'
+import { createPanelWindow, rowBg } from './list'
 
 export interface ComparePanelProps {
   state: 'idle' | 'loading' | 'ready' | 'empty' | 'error'
@@ -27,22 +28,16 @@ export function ComparePanel(props: ComparePanelProps) {
   const cursor = () => Math.max(0, Math.min(props.cursor, rows().length - 1))
   // Sidebar tabs + five header rows + footer + tabs/status chrome.
   const pageRows = () => Math.max(3, dimensions().height - 10)
-  const [top, setTop] = createSignal(0)
+  const top = createPanelWindow(cursor, () => rows().length, pageRows)
 
-  createEffect(() => {
-    const visible = pageRows()
-    const at = cursor()
-    const total = rows().length
-    setTop(previous => {
-      const start = Math.max(0, Math.min(previous, total - visible))
-      if (at < start) return at
-      if (at >= start + visible) return at - visible + 1
-      return start
-    })
-  })
-
-  const visibleFiles = createMemo(() => props.files.slice(top(), top() + pageRows()))
-  const visibleCommits = createMemo(() => props.commits.slice(top(), top() + pageRows()))
+  // One window over whichever list is showing: slicing both meant the hidden one
+  // was re-sliced on every cursor move for nothing.
+  const visibleFiles = createMemo(() =>
+    props.mode === 'files' ? props.files.slice(top(), top() + pageRows()) : [],
+  )
+  const visibleCommits = createMemo(() =>
+    props.mode === 'commits' ? props.commits.slice(top(), top() + pageRows()) : [],
+  )
   const summary = () => {
     const comparison = props.comparison
     if (!comparison) return ''
@@ -106,9 +101,7 @@ export function ComparePanel(props: ComparePanelProps) {
               <For each={visibleCommits()}>
                 {(commit, row) => {
                   const index = () => top() + row()
-                  const selected = () => index() === cursor()
-                  const bg = () =>
-                    selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.sidebarBg
+                  const bg = () => rowBg(index() === cursor(), props.focused)
                   return (
                     <box
                       height={1}
@@ -132,9 +125,7 @@ export function ComparePanel(props: ComparePanelProps) {
             <For each={visibleFiles()}>
               {(file, row) => {
                 const index = () => top() + row()
-                const selected = () => index() === cursor()
-                const bg = () =>
-                  selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.sidebarBg
+                const bg = () => rowBg(index() === cursor(), props.focused)
                 const totals = () =>
                   file.binary ? 'binary' : `+${file.additions} −${file.deletions}`
                 return (

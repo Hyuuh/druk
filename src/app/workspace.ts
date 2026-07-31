@@ -380,15 +380,19 @@ export function createWorkspace(deps: {
       return false
     }
     setBuffers(path, { content: final, dirty: false, mtime: mtimeOf(path) })
+    // Spawned before anything else this save does: the formatter is the longest
+    // thing on the path between Ctrl+S and the reformatted text, and every line
+    // below it — the editor push, the git refresh — is work that can happen while
+    // the child runs. Started after them, it waits for all of it first.
+    if (config.formatOnSave) {
+      const command = formatterFor(path, config.formatters)
+      if (command) formatAfterSave(path, final, command)
+    }
     // The trim changed the text on disk; the editor has to show the same thing —
     // and as an undoable step, not a history-wiping reload.
     if (final !== content && path === activePath()) editor.pushEdit(final)
     git.bump()
     say(`Saved ${basename(path)}`)
-    if (config.formatOnSave) {
-      const command = formatterFor(path, config.formatters)
-      if (command) formatAfterSave(path, final, command)
-    }
     return true
   }
 

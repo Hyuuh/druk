@@ -1,6 +1,11 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { lstatSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+
+// Not `run`: every query in this file names its own result `run`, and the two
+// spellings sitting in one scope is how a call ends up aimed at the wrong one.
+import { notInstalled, run as runProcess } from './process'
+import type { ProcessResult } from './process'
 
 export type LineChange = 'added' | 'modified' | 'deleted'
 export type FileStatus = 'untracked' | 'added' | 'modified' | 'deleted'
@@ -26,63 +31,13 @@ function git(cwd: string, args: string[], timeout = 5000, input?: string) {
   })
 }
 
-interface AsyncGit {
-  status: number | null
-  stdout: string
-  stderr: string
-  timedOut: boolean
-  overflow: boolean
-}
-
 /**
  * `git` off the render thread, for the comparison queries — the synchronous
  * `git` above would stall a frame for as long as the subprocess takes, which on
  * a branch's worth of files is not a frame's worth of time.
  */
-function gitAsync(cwd: string, args: string[], timeout = 10_000): Promise<AsyncGit> {
-  return new Promise(resolve => {
-    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-    let outputSize = 0
-    let timedOut = false
-    let overflow = false
-    let finished = false
-    // Declared before `finish`, which clears it: the timer's own callback is one
-    // of the ways the process ends, so the two have to close over each other.
-    let timer: ReturnType<typeof setTimeout>
-
-    const finish = (status: number | null) => {
-      if (finished) return
-      finished = true
-      clearTimeout(timer)
-      resolve({
-        status,
-        stdout: Buffer.concat(stdout).toString('utf8'),
-        stderr: Buffer.concat(stderr).toString('utf8'),
-        timedOut,
-        overflow,
-      })
-    }
-    const collect = (target: Buffer[], chunk: Buffer) => {
-      outputSize += chunk.length
-      if (outputSize > MAX_OUTPUT) {
-        overflow = true
-        child.kill()
-        return
-      }
-      target.push(chunk)
-    }
-    timer = setTimeout(() => {
-      timedOut = true
-      child.kill()
-    }, timeout)
-
-    child.stdout.on('data', (chunk: Buffer) => collect(stdout, chunk))
-    child.stderr.on('data', (chunk: Buffer) => collect(stderr, chunk))
-    child.on('error', () => finish(null))
-    child.on('close', finish)
-  })
+function gitAsync(cwd: string, args: string[], timeout = 10_000): Promise<ProcessResult> {
+  return runProcess('git', args, { cwd, timeout, maxOutput: MAX_OUTPUT })
 }
 
 /**
@@ -299,7 +254,7 @@ function comparisonFailure(reason: ComparisonFailure, detail: string): Compariso
   return { ok: false, reason, detail }
 }
 
-function asyncFailure(run: AsyncGit, fallback: string): ComparisonResult<never> {
+function asyncFailure(run: ProcessResult, fallback: string): ComparisonResult<never> {
   if (run.timedOut) return comparisonFailure('timeout', `${fallback} timed out`)
   if (run.overflow) return comparisonFailure('gitError', `${fallback} produced too much output`)
   return comparisonFailure('gitError', run.stderr.trim() || fallback)
@@ -597,7 +552,7 @@ export async function comparisonFileContent(
   if (file.binary) return { ok: true, value: { binary: true } }
 
   const read = (oid: string | null) =>
-    oid ? gitAsync(cwd, ['cat-file', 'blob', oid]) : Promise.resolve<AsyncGit | null>(null)
+    oid ? gitAsync(cwd, ['cat-file', 'blob', oid]) : Promise.resolve<ProcessResult | null>(null)
   const [oldRun, newRun] = await Promise.all([read(file.oldOid), read(file.newOid)])
   if (oldRun && oldRun.status !== 0) return asyncFailure(oldRun, `Could not read ${file.oldPath}`)
   if (newRun && newRun.status !== 0) return asyncFailure(newRun, `Could not read ${file.path}`)
@@ -1033,56 +988,31 @@ export function explain(stderr: string, stdout = ''): string {
   return failureLine(stderr || stdout)
 }
 
-function mutate(cwd: string, args: string[]): Promise<GitResult> {
-  return new Promise(resolve => {
-    const child = spawn('git', args, {
-      cwd,
-      // Without this an https remote with no cached credential makes git *prompt*
-      // on the terminal druk owns — an invisible question the TUI hangs behind.
-      // Failing fast turns it into a status-bar error instead.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', chunk => (stdout += chunk))
-    child.stderr.on('data', chunk => (stderr += chunk))
-    let killed = false
-    const timer = setTimeout(() => {
-      killed = true
-      child.kill('SIGKILL')
-    }, MUTATE_TIMEOUT)
-    // 'error' (spawn failure) and 'close' can both fire; the first one answers.
-    let settled = false
-    const finish = (result: GitResult) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve(result)
-    }
-    child.on('error', err =>
-      finish({
-        ok: false,
-        detail:
-          // The one failure with no git output to explain: there is no git.
-          'code' in err && err.code === 'ENOENT'
-            ? 'git is not installed, or not on PATH'
-            : err.message,
-      }),
-    )
-    child.on('close', code => {
-      // Success chatter (push progress, fetch summaries) arrives on stderr too,
-      // so on failure stderr is the answer and on success either will do.
-      const ok = code === 0
-      if (ok) return finish({ ok, detail: firstLine(stdout || stderr) })
-      // A killed process leaves whatever it had already written, which for a
-      // hung fetch is nothing at all — say why it stopped instead of going blank.
-      const detail = killed
-        ? `Timed out after ${MUTATE_TIMEOUT / 1000}s and was stopped`
-        : explain(stderr, stdout)
-      finish({ ok, detail })
-    })
+async function mutate(cwd: string, args: string[]): Promise<GitResult> {
+  const result = await runProcess('git', args, {
+    cwd,
+    // Without this an https remote with no cached credential makes git *prompt*
+    // on the terminal druk owns — an invisible question the TUI hangs behind.
+    // Failing fast turns it into a status-bar error instead.
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    timeout: MUTATE_TIMEOUT,
   })
+  if (result.error) {
+    // The one failure with no git output to explain: there is no git.
+    const detail = notInstalled(result)
+      ? 'git is not installed, or not on PATH'
+      : result.error.message
+    return { ok: false, detail }
+  }
+  // Success chatter (push progress, fetch summaries) arrives on stderr too,
+  // so on failure stderr is the answer and on success either will do.
+  if (result.status === 0) return { ok: true, detail: firstLine(result.stdout || result.stderr) }
+  // A killed process leaves whatever it had already written, which for a
+  // hung fetch is nothing at all — say why it stopped instead of going blank.
+  const detail = result.timedOut
+    ? `Timed out after ${MUTATE_TIMEOUT / 1000}s and was stopped`
+    : explain(result.stderr, result.stdout)
+  return { ok: false, detail }
 }
 
 /** Stage and commit exactly `paths`; anything staged for other paths stays staged. */

@@ -1,10 +1,11 @@
 import { TextAttributes } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { createMemo, For, Show } from 'solid-js'
 
 import type { ChangeRow, DirRow, FileRow } from '../core/changeTree'
 import { ui } from '../themes'
 import { MARKS, statusColor } from './FileTree'
+import { createPanelWindow, rowBg } from './list'
 
 /** `Show`'s `when` takes a value, not a predicate: these hand it the narrowed row
  * (or nothing) so the block inside needs no cast. */
@@ -51,22 +52,7 @@ export function GitPanel(props: GitPanelProps) {
    * `git status` after a big refactor is not, and a cursor below the fold reads
    * as no cursor at all.
    */
-  const [top, setTop] = createSignal(0)
-
-  // The window moves only when the cursor leaves it, as the tree's scrollbox does.
-  // Deriving the start from the cursor alone instead scrolls on every keypress,
-  // pinning the selected row to the bottom of the panel.
-  createEffect(() => {
-    const rows = pageRows()
-    const at = cursor()
-    const total = props.rows.length
-    setTop(previous => {
-      const start = Math.max(0, Math.min(previous, total - rows))
-      if (at < start) return at
-      if (at >= start + rows) return at - rows + 1
-      return start
-    })
-  })
+  const top = createPanelWindow(cursor, () => props.rows.length, pageRows)
 
   const visible = createMemo(() => props.rows.slice(top(), top() + pageRows()))
 
@@ -129,9 +115,7 @@ export function GitPanel(props: GitPanelProps) {
           <For each={visible()}>
             {(row, at) => {
               const index = () => top() + at()
-              const selected = () => index() === cursor()
-              const bg = () =>
-                selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.sidebarBg
+              const bg = () => rowBg(index() === cursor(), props.focused)
               return (
                 <box
                   height={1}

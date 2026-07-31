@@ -284,7 +284,7 @@ export interface Highlighted {
 }
 
 /** Index of the line containing `offset`: last start at or before it. */
-function lineOfOffset(starts: number[], offset: number): number {
+export function lineOfOffset(starts: number[], offset: number): number {
   let low = 0
   let high = starts.length - 1
   while (low < high) {

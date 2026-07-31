@@ -4,7 +4,7 @@ import { createSignal, For } from 'solid-js'
 
 import { ui } from '../themes'
 import { modalWidth, PAD, wrapText } from './modal'
-import { Overlay } from './Overlay'
+import { ModalPanel } from './Overlay'
 
 export interface Choice {
   id: string
@@ -44,38 +44,25 @@ export function ChoiceModal(props: ChoiceModalProps) {
   })
 
   return (
-    <Overlay zIndex={160}>
-      <box
-        width={width()}
-        flexDirection="column"
-        backgroundColor={ui.panelBg}
-        border
-        borderStyle="rounded"
-        borderColor={ui.dirty}
-        title={` ${props.title} `}
-        titleColor={ui.dirty}
-        paddingLeft={PAD}
-        paddingRight={PAD}
-      >
-        <For each={lines()}>{line => <text fg={ui.text} bg={ui.panelBg} content={line} />}</For>
-        <text fg={ui.dim} bg={ui.panelBg} content="" />
-        <For each={props.choices}>
-          {(choice, i) => {
-            const active = () => i() === index()
-            const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-            return (
-              <box flexDirection="row" backgroundColor={bg()}>
-                <text fg={ui.dirty} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
-                <box flexGrow={1} backgroundColor={bg()}>
-                  <text fg={active() ? ui.text : ui.dim} bg={bg()} content={choice.label} />
-                </box>
+    <ModalPanel zIndex={160} width={width()} title={` ${props.title} `} accent={ui.dirty}>
+      <For each={lines()}>{line => <text fg={ui.text} bg={ui.panelBg} content={line} />}</For>
+      <text fg={ui.dim} bg={ui.panelBg} content="" />
+      <For each={props.choices}>
+        {(choice, i) => {
+          const active = () => i() === index()
+          const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
+          return (
+            <box flexDirection="row" backgroundColor={bg()}>
+              <text fg={ui.dirty} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
+              <box flexGrow={1} backgroundColor={bg()}>
+                <text fg={active() ? ui.text : ui.dim} bg={bg()} content={choice.label} />
               </box>
-            )
-          }}
-        </For>
-        <text fg={ui.dim} bg={ui.panelBg} content="" />
-        <text fg={ui.dim} bg={ui.panelBg} content="↑↓ choose · Enter confirm · Esc cancel" />
-      </box>
-    </Overlay>
+            </box>
+          )
+        }}
+      </For>
+      <text fg={ui.dim} bg={ui.panelBg} content="" />
+      <text fg={ui.dim} bg={ui.panelBg} content="↑↓ choose · Enter confirm · Esc cancel" />
+    </ModalPanel>
   )
 }

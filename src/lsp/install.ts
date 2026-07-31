@@ -13,10 +13,11 @@
  * - **PATH still wins.** `installedCommand` only answers for a binary druk put
  *   there itself, so a user who installs the server properly gets their copy.
  */
-import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
+
+import { firstLine, notInstalled, run } from '../core/process'
 
 /** Long enough for a cold npm cache on a slow link; short enough to not hang. */
 const INSTALL_TIMEOUT_MS = 180_000
@@ -56,48 +57,21 @@ function runsClean(bin: string, args: string[]): boolean {
  * Install `packages` into druk's prefix. Resolves to an error message, or null
  * when the server is ready to spawn.
  */
-export function installServer(packages: string[], root = SERVER_ROOT): Promise<string | null> {
-  return new Promise(resolve => {
-    // --no-save keeps npm from writing a package.json describing a "project"
-    // that is really just a bin directory; --prefix creates the tree regardless.
-    const child = spawn(
-      'npm',
-      ['install', '--prefix', root, '--no-save', '--no-audit', '--no-fund', ...packages],
-      { stdio: ['ignore', 'ignore', 'pipe'] },
-    )
-    let stderr = ''
-    child.stderr.on('data', chunk => (stderr += chunk))
-
-    let killed = false
-    const timer = setTimeout(() => {
-      killed = true
-      child.kill('SIGKILL')
-    }, INSTALL_TIMEOUT_MS)
-
-    // 'error' (spawn failure) and 'close' can both fire; the first one answers.
-    let settled = false
-    const finish = (error: string | null) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve(error)
-    }
-
-    child.on('error', error =>
-      finish(
-        'code' in error && error.code === 'ENOENT'
-          ? 'npm is not installed, or not on PATH'
-          : error.message,
-      ),
-    )
-    child.on('close', code => {
-      if (killed) return finish('npm timed out')
-      if (code === 0) return finish(null)
-      return finish(firstLine(stderr) || `npm exited with code ${code}`)
-    })
-  })
-}
-
-function firstLine(text: string): string {
-  return text.trim().split('\n')[0]?.trim() ?? ''
+export async function installServer(
+  packages: string[],
+  root = SERVER_ROOT,
+): Promise<string | null> {
+  // --no-save keeps npm from writing a package.json describing a "project"
+  // that is really just a bin directory; --prefix creates the tree regardless.
+  const result = await run(
+    'npm',
+    ['install', '--prefix', root, '--no-save', '--no-audit', '--no-fund', ...packages],
+    { timeout: INSTALL_TIMEOUT_MS },
+  )
+  if (result.error) {
+    return notInstalled(result) ? 'npm is not installed, or not on PATH' : result.error.message
+  }
+  if (result.timedOut) return 'npm timed out'
+  if (result.status === 0) return null
+  return firstLine(result.stderr) || `npm exited with code ${result.status}`
 }

@@ -2,6 +2,9 @@ import { RGBA } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
 import type { JSX } from '@opentui/solid'
 
+import { ui } from '../themes'
+import { PAD } from './modal'
+
 /**
  * Dim over everything behind a modal. This is real alpha compositing — the terminal
  * cell keeps its character and its colours are blended toward black, so the editor
@@ -61,5 +64,48 @@ export function Overlay(props: {
       />
       {props.children}
     </box>
+  )
+}
+
+/**
+ * A modal's frame: the scrim, the rounded border and the padding every panel in
+ * the editor shares. Twelve components spelled this out identically, which is
+ * twelve chances for one of them to drift a column or a colour.
+ */
+export function ModalPanel(props: {
+  /** Rendered into the border, so it carries its own spaces: `' Commit '`. */
+  title: string
+  width: number
+  /**
+   * Border *and* title colour, for a modal whose whole point is that it is not
+   * routine — a destructive confirm, an unsaved-changes choice. Left out, the
+   * border is the accent and the title reads as ordinary text.
+   */
+  accent?: string
+  zIndex?: number
+  align?: 'center' | 'top'
+  /** Rows of padding above and below the content; the help overlay wants one. */
+  padY?: number
+  children: JSX.Element
+}) {
+  return (
+    <Overlay zIndex={props.zIndex} align={props.align}>
+      <box
+        width={props.width}
+        flexDirection="column"
+        backgroundColor={ui.panelBg}
+        border
+        borderStyle="rounded"
+        borderColor={props.accent ?? ui.accent}
+        title={props.title}
+        titleColor={props.accent ?? ui.text}
+        paddingLeft={PAD}
+        paddingRight={PAD}
+        paddingTop={props.padY}
+        paddingBottom={props.padY}
+      >
+        {props.children}
+      </box>
+    </Overlay>
   )
 }

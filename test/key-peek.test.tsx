@@ -4,8 +4,10 @@ import { fixture, launch, press } from './helpers'
 
 const PROJECT = { 'a.ts': 'const a = 1\n' }
 
+// Wide: the panel gives each column a share of the terminal, and an 80-column one
+// leaves the labels clipped to a width no assertion can spell out.
 async function inTree() {
-  return launch(fixture(PROJECT), {}, { height: 30 })
+  return launch(fixture(PROJECT), {}, { width: 120, height: 30 })
 }
 
 async function inEditor() {
@@ -56,6 +58,32 @@ test('Ctrl+K again closes it without doing anything else', async () => {
   await peek(t)
   await peek(t)
   expect(t.captureCharFrame()).not.toContain('Select a range')
+})
+
+test('the keys are grouped under the help overlay’s headings', async () => {
+  const t = await inTree()
+  await peek(t)
+
+  const frame = t.captureCharFrame()
+  for (const heading of ['General', 'Files & tabs', 'File tree', 'Source control', 'View']) {
+    expect(frame).toContain(heading)
+  }
+  // Every heading has its keys under it, not in the next column.
+  const lines = frame.split('\n')
+  const heading = lines.findIndex(line => line.includes('File tree'))
+  expect(lines[heading + 1]).toContain('Enter')
+})
+
+test('a terminal too short for the whole table says so', async () => {
+  const t = await launch(fixture(PROJECT), {}, { width: 60, height: 14 })
+  await peek(t)
+
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('General')
+  expect(frame).toContain('… more (F1)')
+  // Cut, not overrun: the panel still has its title and the status bar below it.
+  expect(frame).toContain('Keys · file tree')
+  expect(frame).toContain('F1 commands')
 })
 
 test('typing in the editor after a peek lands in the buffer', async () => {

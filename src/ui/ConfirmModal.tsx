@@ -4,7 +4,7 @@ import { For } from 'solid-js'
 
 import { ui } from '../themes'
 import { modalWidth, PAD, wrapText } from './modal'
-import { Overlay } from './Overlay'
+import { ModalPanel } from './Overlay'
 
 export interface ConfirmModalProps {
   message: string
@@ -35,23 +35,10 @@ export function ConfirmModal(props: ConfirmModalProps) {
   const accent = () => (props.danger ? ui.error : ui.accent)
 
   return (
-    <Overlay>
-      <box
-        width={width()}
-        flexDirection="column"
-        backgroundColor={ui.panelBg}
-        border
-        borderStyle="rounded"
-        borderColor={accent()}
-        title={` ${props.title} `}
-        titleColor={accent()}
-        paddingLeft={PAD}
-        paddingRight={PAD}
-      >
-        <For each={lines()}>{line => <text fg={ui.text} bg={ui.panelBg} content={line} />}</For>
-        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-        <text fg={ui.dim} bg={ui.panelBg} content={`Enter to ${props.verb} · Esc to cancel`} />
-      </box>
-    </Overlay>
+    <ModalPanel width={width()} title={` ${props.title} `} accent={accent()}>
+      <For each={lines()}>{line => <text fg={ui.text} bg={ui.panelBg} content={line} />}</For>
+      <text fg={ui.panelBg} bg={ui.panelBg} content="" />
+      <text fg={ui.dim} bg={ui.panelBg} content={`Enter to ${props.verb} · Esc to cancel`} />
+    </ModalPanel>
   )
 }

@@ -26,6 +26,8 @@ scripts/
     Overlays.tsx     overlay state + the modal stack (search, pickers, palette, help…)
     context.ts       AppContext: every controller, typed, for the wiring that spans them
     workspace.ts     buffers + tabs: open/close/save, disk sync, session persistence
+    navigation.ts    the visit history the back / forward arrows walk: one stop per
+                     tab landed on, kept at the cursor position it was left at
     tree.ts          file-tree state: expansion, selection, marked ranges
     fileOps.ts       move/copy/delete batches and the x/c/p clipboard
     git.ts           git signals, the serialised mutation runner, refresh effects
@@ -53,6 +55,7 @@ scripts/
     imports.ts       the path token under the cursor, and where it resolves —
                      relative, project-root, or through tsconfig/jsconfig aliases
     bulk.ts          delete/copy/move in the background, reporting progress
+    process.ts       one async subprocess wrapper: timeout, bounded output, one settle
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
     session.ts       per-project open tabs + expanded folders, keyed by path
     update.ts        startup npm version check (best-effort, opt-out)
@@ -92,6 +95,8 @@ scripts/
     SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
     SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay, TextInput,
     PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
+    modal.ts         modal geometry: width, list rows, text wrapping
+    list.ts          list behaviour: windowing, panel scroll, picker keys, row colour
 ```
 
 Dependency direction is one-way: `ui/` and feature folders never import from `app/`.
@@ -489,6 +494,16 @@ is just a diff against the empty tree.
 - **Focused colors.** Inputs and the editor render focused, and OpenTUI then uses the
   `focused*` colors — setting only `textColor` leaves text in the renderable's default,
   which is invisible on most themes. `ui/TextInput.tsx` exists so no panel forgets.
+- **A modal is a `ModalPanel`, not a hand-built box.** The scrim, the rounded border,
+  the padding and the title colour are one component in `ui/Overlay.tsx`; twelve
+  components used to spell them out, and the copies had begun to disagree about a
+  column here and a colour there. `accent` is the only knob that changes the look, and
+  it exists for the modals whose whole point is that they are not routine.
+- **Subprocesses go through `core/process.ts`.** git mutations, the comparison
+  queries, the user's formatter and an npm install of a language server all need a
+  timeout that kills, output collected without growing without bound, a spawn failure
+  reported as itself, and exactly one settle — `error` and `close` can both fire.
+  Four hand-rolled copies each got one of those subtly wrong at some point.
 - **Focus is synchronous.** Solid applies state during the keypress, so a key that moves
   focus into the editor also reaches the textarea unless the handler calls
   `preventDefault()`.

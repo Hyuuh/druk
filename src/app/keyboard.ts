@@ -45,6 +45,8 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'tabs.switch': () => overlays.setPicker('tabs'),
     'tabs.prev': () => workspace.switchTab(-1),
     'tabs.next': () => workspace.switchTab(1),
+    'nav.back': actions.navBack,
+    'nav.forward': actions.navForward,
     'tabs.closeOthers': actions.closeOthers,
     'tabs.closeAll': actions.closeAll,
     'view.sidebar': panes.toggleSidebar,
@@ -144,6 +146,13 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     // Solid applies focus synchronously, so without this the key that opens a
     // file also reaches the freshly focused textarea.
     key.preventDefault()
+
+    // Bare keys rather than a chord: the sidebar's panes own their keyboard while
+    // focused, and every Ctrl+Opt pair worth having is already spoken for. Ahead
+    // of the per-pane switches because the width belongs to the sidebar, not to
+    // whichever of them is showing.
+    if (k === '[' || k === ']') return settings.nudgeSidebar(k === '[' ? -2 : 2)
+
     const vimNav: Record<string, string> = { h: 'left', j: 'down', k: 'up', l: 'right' }
 
     // The source-control panel borrows the tree's focus slot, so its keys replace
@@ -181,12 +190,6 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
             // the comparison would close and leave the page it opened behind.
             if (comparison.detailOpen()) comparison.closeDetail()
             else comparison.close()
-            break
-          case '[':
-            settings.nudgeSidebar(-2)
-            break
-          case ']':
-            settings.nudgeSidebar(2)
             break
         }
         return
@@ -237,12 +240,6 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         case 'b':
           actions.gitSwitchBranch()
           break
-        case '[':
-          settings.nudgeSidebar(-2)
-          break
-        case ']':
-          settings.nudgeSidebar(2)
-          break
         case 'escape':
           // A diff opened from this panel sits on top of it: Esc dismisses that
           // first, or the panel would close and leave the page it opened behind,
@@ -283,14 +280,6 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       case 'return':
       case 'enter':
         if (node) workspace.activateNode(node)
-        break
-      // Bare keys rather than a chord: the tree owns its keyboard while focused,
-      // and every Ctrl+Opt pair worth having is already spoken for.
-      case '[':
-        settings.nudgeSidebar(-2)
-        break
-      case ']':
-        settings.nudgeSidebar(2)
         break
       case 'a':
         prompts.setPrompt({ kind: key.shift ? 'newFolder' : 'newFile', dir: tree.targetDir() })

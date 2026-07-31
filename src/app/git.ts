@@ -1,6 +1,6 @@
 import { relative } from 'node:path'
 
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js'
+import { createEffect, createMemo, createSignal, on, onCleanup } from 'solid-js'
 
 import { ancestorDirs, changeRows } from '../core/changeTree'
 import type { Config } from '../core/config'
@@ -166,47 +166,69 @@ export function wireGitEffects(deps: {
 }) {
   const { rootDir, git, tree, editor, workspace, config } = deps
 
-  // Every query below is a synchronous subprocess, and effects run inside the
-  // initial render pass — `statusMap` alone can take hundreds of milliseconds in
-  // a large repository, all of it spent before the first frame. Each effect
-  // therefore sits behind one deferred tick: the frame goes out first, then the
-  // effects re-run with their real dependencies.
-  const [ready, setReady] = createSignal(false)
-  onMount(() => {
-    const timer = setTimeout(() => setReady(true), 0)
-    onCleanup(() => clearTimeout(timer))
+  /**
+   * Run `query` after the frame that asked for it, and once per burst.
+   *
+   * Every query below is a handful of synchronous subprocesses — ~75ms together
+   * on a middling repository, hundreds of milliseconds on a large one — so run
+   * inline they are paid out of whatever repaint triggered them: the initial
+   * render, or, most visibly, the two refreshes a save with a formatter asks for
+   * before and after the tool runs. Deferring puts the frame on screen first and
+   * collapses a burst (a save's own bump, then the watcher's on the formatter's
+   * write) into one pass. The body must therefore read its inputs itself: by the
+   * time it runs, the values `on` handed the effect may be a burst out of date.
+   */
+  const deferred = (query: () => void) => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    onCleanup(() => {
+      if (timer) clearTimeout(timer)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        timer = null
+        query()
+      }, 0)
+    }
+  }
+
+  const refreshLines = deferred(() => {
+    const path = workspace.activePath()
+    git.setGitLines(path ? diffLines(path, git.diffBase()) : new Map())
   })
 
   createEffect(
     on(
       // Not keyed on content: `git diff` is a subprocess, far too heavy to run
       // on every keystroke. Saving bumps reloadKey, which refreshes the marks.
-      () =>
-        [
-          ready(),
-          workspace.activePath(),
-          editor.reloadKey(),
-          git.revision(),
-          git.diffBase(),
-        ] as const,
-      ([ok, path, , , base]) => {
-        if (!ok) return
-        git.setGitLines(path ? diffLines(path, base) : new Map())
-      },
+      () => [workspace.activePath(), editor.reloadKey(), git.revision(), git.diffBase()] as const,
+      refreshLines,
     ),
   )
 
+  const refreshUpstream = deferred(() => git.setUpstream(upstreamOf(rootDir)))
+
   // Ahead/behind only moves when history does, so it is deliberately not tied to
   // the tree refresh, which fires on every filesystem event.
-  createEffect(
-    on(
-      () => [ready(), git.branch(), git.revision()] as const,
-      ([ok]) => {
-        if (!ok) return
-        git.setUpstream(upstreamOf(rootDir))
-      },
-    ),
-  )
+  createEffect(on(() => [git.branch(), git.revision()] as const, refreshUpstream))
+
+  const refreshStatus = deferred(() => {
+    git.setGitStatus(statusMap(rootDir, git.diffBase()))
+    // With the rows hidden outright there is nothing left to dim, and the
+    // subprocess would answer "none of these" on every filesystem event.
+    git.setGitIgnored(
+      config.respectGitignore
+        ? new Set<string>()
+        : ignoredAmong(
+            rootDir,
+            tree.nodes().map(n => n.path),
+          ),
+    )
+    git.setBranch(currentBranch(rootDir))
+    // `git init` in another terminal writes .git, so the watcher brings us
+    // here — the only place the panel would ever learn it has a repository.
+    git.setInRepo(inRepository(rootDir))
+  })
 
   // Tree marks follow the same cadence, plus any filesystem change. The branch
   // rides along: a checkout in another terminal writes .git, so the watcher fires
@@ -216,7 +238,6 @@ export function wireGitEffects(deps: {
     on(
       () =>
         [
-          ready(),
           tree.expanded(),
           git.revision(),
           editor.reloadKey(),
@@ -225,24 +246,7 @@ export function wireGitEffects(deps: {
           config.respectGitignore,
           git.diffBase(),
         ] as const,
-      ([ok, , , , hidingIgnored, base]) => {
-        if (!ok) return
-        git.setGitStatus(statusMap(rootDir, base))
-        // With the rows hidden outright there is nothing left to dim, and the
-        // subprocess would answer "none of these" on every filesystem event.
-        git.setGitIgnored(
-          hidingIgnored
-            ? new Set<string>()
-            : ignoredAmong(
-                rootDir,
-                tree.nodes().map(n => n.path),
-              ),
-        )
-        git.setBranch(currentBranch(rootDir))
-        // `git init` in another terminal writes .git, so the watcher brings us
-        // here — the only place the panel would ever learn it has a repository.
-        git.setInRepo(inRepository(rootDir))
-      },
+      refreshStatus,
     ),
   )
 }

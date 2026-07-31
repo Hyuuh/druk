@@ -119,6 +119,9 @@ export function createCommands(ctx: AppContext) {
    * or it would aim at the file still on screen.
    */
   const openAt = (path: string, line: number, col: number) => {
+    // A jump inside the file already open changes no tab, so nothing else would
+    // record where it started — and the way back is what the jump is half of.
+    if (path === workspace.activeView()) ctx.navigation.mark()
     workspace.setDiff(null)
     workspace.setSettingsPage(false)
     if (path !== workspace.activePath()) workspace.openFile(path)
@@ -210,6 +213,8 @@ export function createCommands(ctx: AppContext) {
     reopenTab: workspace.reopenTab,
     nextTab: () => workspace.switchTab(1),
     prevTab: () => workspace.switchTab(-1),
+    navBack: ctx.navigation.back,
+    navForward: ctx.navigation.forward,
     toggleFocus: () => (panes.focus() === 'tree' ? panes.setFocus('editor') : panes.focusTree()),
     toggleSidebar: panes.toggleSidebar,
     toggleGitView: panes.toggleGitView,

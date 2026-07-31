@@ -6,7 +6,7 @@ import type { FileStatus } from '../core/git'
 import { ui } from '../themes'
 import { MARKS, statusColor } from './FileTree'
 import { listRows, modalWidth, PAD } from './modal'
-import { Overlay } from './Overlay'
+import { ModalPanel } from './Overlay'
 
 export interface CommitFile {
   path: string
@@ -91,61 +91,52 @@ export function CommitModal(props: CommitModalProps) {
   })
 
   return (
-    <Overlay zIndex={150}>
-      <box
-        width={width()}
-        flexDirection="column"
-        backgroundColor={ui.panelBg}
-        border
-        borderStyle="rounded"
-        borderColor={ui.accent}
-        title={` Commit — ${picked().length} of ${props.files.length} files `}
-        titleColor={ui.text}
-        paddingLeft={PAD}
-        paddingRight={PAD}
-      >
-        <For each={props.files.slice(top(), top() + rows())}>
-          {(file, i) => {
-            const active = () => top() + i() === cursor()
-            const checked = () => !excluded().has(file.path)
-            const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-            const shown = () => file.rel.slice(0, width() - PAD * 2 - 10)
-            return (
-              <box flexDirection="row" backgroundColor={bg()}>
-                <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
-                <text
-                  fg={checked() ? ui.accent : ui.dim}
-                  bg={bg()}
-                  flexShrink={0}
-                  content={checked() ? '[x] ' : '[ ] '}
-                />
-                <text
-                  fg={statusColor(file.status)}
-                  bg={bg()}
-                  flexShrink={0}
-                  content={`${MARKS[file.status]} `}
-                />
-                <box flexGrow={1} backgroundColor={bg()}>
-                  <text fg={checked() ? ui.text : ui.dim} bg={bg()} content={shown()} />
-                </box>
+    <ModalPanel
+      zIndex={150}
+      width={width()}
+      title={` Commit — ${picked().length} of ${props.files.length} files `}
+    >
+      <For each={props.files.slice(top(), top() + rows())}>
+        {(file, i) => {
+          const active = () => top() + i() === cursor()
+          const checked = () => !excluded().has(file.path)
+          const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
+          const shown = () => file.rel.slice(0, width() - PAD * 2 - 10)
+          return (
+            <box flexDirection="row" backgroundColor={bg()}>
+              <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
+              <text
+                fg={checked() ? ui.accent : ui.dim}
+                bg={bg()}
+                flexShrink={0}
+                content={checked() ? '[x] ' : '[ ] '}
+              />
+              <text
+                fg={statusColor(file.status)}
+                bg={bg()}
+                flexShrink={0}
+                content={`${MARKS[file.status]} `}
+              />
+              <box flexGrow={1} backgroundColor={bg()}>
+                <text fg={checked() ? ui.text : ui.dim} bg={bg()} content={shown()} />
               </box>
-            )
-          }}
-        </For>
-        <Show when={top() + rows() < props.files.length}>
-          <text
-            fg={ui.dim}
-            bg={ui.panelBg}
-            content={`  … ${props.files.length - top() - rows()} more`}
-          />
-        </Show>
-        <text fg={ui.dim} bg={ui.panelBg} content="" />
+            </box>
+          )
+        }}
+      </For>
+      <Show when={top() + rows() < props.files.length}>
         <text
           fg={ui.dim}
           bg={ui.panelBg}
-          content="↑↓ move · Space toggle · A all · Enter message · Esc cancel"
+          content={`  … ${props.files.length - top() - rows()} more`}
         />
-      </box>
-    </Overlay>
+      </Show>
+      <text fg={ui.dim} bg={ui.panelBg} content="" />
+      <text
+        fg={ui.dim}
+        bg={ui.panelBg}
+        content="↑↓ move · Space toggle · A all · Enter message · Esc cancel"
+      />
+    </ModalPanel>
   )
 }

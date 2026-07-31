@@ -75,6 +75,10 @@ protocol's three shapes it comes) and open the file under the cursor
 relative to the file and to the project root, then through the aliases
 `tsconfig.json`/`jsconfig.json` declares, and only then handed to the language
 server, which is what places a bare package or an alias druk cannot read),
+a visit history — every tab the editor lands on, kept at the position it was left
+at, walked with `Ctrl+Opt+Z` / `Ctrl+Opt+Y` or the ← → arrows at the left of the
+tab strip, so a jump to a definition has a way back; a jump that stays inside the
+open file is a stop of its own, since no tab changes to record one —
 format on save through the user's own commands (`formatOnSave`
 is the switch, `formatters` maps extensions to an in-place command — prettier,
 eslint --fix, oxfmt, gofmt — with the saved file's path appended, or put where a

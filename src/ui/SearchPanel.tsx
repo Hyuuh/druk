@@ -8,8 +8,9 @@ import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import type { Context, Match, SearchOptions } from '../core/search'
 import { buildQuery, contextAround, contextIn, searchProject, searchText } from '../core/search'
 import { ui } from '../themes'
+import { windowAround } from './list'
 import { modalWidth, PAD } from './modal'
-import { Overlay, topInset } from './Overlay'
+import { ModalPanel, topInset } from './Overlay'
 import { TextInput } from './TextInput'
 
 export type SearchScope = 'file' | 'project'
@@ -202,16 +203,8 @@ export function SearchPanel(props: SearchPanelProps) {
   }
 
   /** The window of rows on screen, kept over the selected row. */
-  const windowed = createMemo(() => {
-    const all = rows()
-    const size = resultRows()
-    // One row of lead-in, so the file heading above the selection stays visible.
-    const start = Math.max(0, Math.min(selected() - size + 2, all.length - size))
-    return {
-      start: Math.max(0, start),
-      rows: all.slice(Math.max(0, start), Math.max(0, start) + size),
-    }
-  })
+  // Lead 2: one row of lead-in, so the file heading above the selection stays visible.
+  const windowed = createMemo(() => windowAround(rows(), selected(), resultRows(), 2))
 
   /** Ctrl+C / Ctrl+W / Ctrl+R flips an option; the results recompute from scratch. */
   const toggleOption = (name: keyof SearchOptions) => {
@@ -299,187 +292,179 @@ export function SearchPanel(props: SearchPanelProps) {
   }
 
   return (
-    <Overlay zIndex={150} align="top">
-      <box
-        width={width()}
-        flexDirection="column"
-        backgroundColor={ui.panelBg}
-        border
-        borderStyle="rounded"
-        borderColor={ui.accent}
-        title={props.scope === 'project' ? ' Search in project ' : ' Search in file '}
-        titleColor={ui.text}
-        paddingLeft={PAD}
-        paddingRight={PAD}
-      >
-        <TextInput value={query()} placeholder="Search…" onInput={type} />
-        <Show when={replacing()}>
-          <TextInput value={replacement()} placeholder="Replace with…" onInput={setReplacement} />
-        </Show>
-        <text fg={ui.dim} bg={ui.panelBg} content={summary()} />
-        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
+    <ModalPanel
+      zIndex={150}
+      align="top"
+      width={width()}
+      title={props.scope === 'project' ? ' Search in project ' : ' Search in file '}
+    >
+      <TextInput value={query()} placeholder="Search…" onInput={type} />
+      <Show when={replacing()}>
+        <TextInput value={replacement()} placeholder="Replace with…" onInput={setReplacement} />
+      </Show>
+      <text fg={ui.dim} bg={ui.panelBg} content={summary()} />
+      <text fg={ui.panelBg} bg={ui.panelBg} content="" />
 
-        <For each={windowed().rows}>
-          {(row, i) => {
-            const at = () => windowed().start + i()
-            const active = () => at() === selected()
+      <For each={windowed().rows}>
+        {(row, i) => {
+          const at = () => windowed().start + i()
+          const active = () => at() === selected()
 
-            if (row.kind === 'file') {
-              const bg = () => (active() ? ui.treeSelectedBg : ui.solidBarBg)
-              return (
-                <box flexDirection="row" backgroundColor={bg()}>
-                  <text
-                    fg={ui.folder}
-                    bg={bg()}
-                    flexShrink={0}
-                    content={`${row.folded ? '▸' : '▾'} ${label(row.path)} `}
-                    attributes={TextAttributes.BOLD}
-                  />
-                  {/* Spacer first, so the count lands on the right edge. */}
-                  <box flexGrow={1} backgroundColor={bg()} />
-                  <text
-                    fg={active() ? ui.accent : ui.faint}
-                    bg={bg()}
-                    flexShrink={0}
-                    content={`${row.count} match${row.count === 1 ? '' : 'es'} `}
-                  />
-                </box>
-              )
-            }
-
-            const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-            const gutter = () => `${row.match.line + 1}`.padStart(5)
-            // Room left after the marker (1), the line number and its gap (7) and the
-            // cut marker (1). One column over and the row wraps onto a second line —
-            // and the replacement shown beside the hit takes its share of it too.
-            const cut = () =>
-              sliceAround(row.match.text, row.match.col, contentWidth() - 9 - swap().length)
-            const head = () => cut().text.slice(0, cut().col)
-            const hit = () => cut().text.slice(cut().col, cut().col + row.match.length)
-            const tail = () => cut().text.slice(cut().col + row.match.length)
-
+          if (row.kind === 'file') {
+            const bg = () => (active() ? ui.treeSelectedBg : ui.solidBarBg)
             return (
               <box flexDirection="row" backgroundColor={bg()}>
-                <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌' : ' '} />
+                <text
+                  fg={ui.folder}
+                  bg={bg()}
+                  flexShrink={0}
+                  content={`${row.folded ? '▸' : '▾'} ${label(row.path)} `}
+                  attributes={TextAttributes.BOLD}
+                />
+                {/* Spacer first, so the count lands on the right edge. */}
+                <box flexGrow={1} backgroundColor={bg()} />
                 <text
                   fg={active() ? ui.accent : ui.faint}
                   bg={bg()}
                   flexShrink={0}
-                  content={`${gutter()}  `}
+                  content={`${row.count} match${row.count === 1 ? '' : 'es'} `}
                 />
-                <text fg={ui.dim} bg={bg()} flexShrink={0} content={cut().cut ? '…' : ''} />
-                <text fg={active() ? ui.text : ui.dim} bg={bg()} flexShrink={0} content={head()} />
-                {/* The hit itself, so the eye lands on why the row is here — struck
-                    through once there is a replacement to put in its place. */}
-                <text
-                  fg={swap() ? ui.gitDeleted : ui.accent}
-                  bg={bg()}
-                  flexShrink={0}
-                  content={hit()}
-                  attributes={swap() ? TextAttributes.STRIKETHROUGH : TextAttributes.BOLD}
-                />
-                <Show when={swap()}>
-                  <text
-                    fg={ui.gitAdded}
-                    bg={bg()}
-                    flexShrink={0}
-                    content={swap()}
-                    attributes={TextAttributes.BOLD}
-                  />
-                </Show>
-                <box flexGrow={1} backgroundColor={bg()}>
-                  <text fg={active() ? ui.text : ui.dim} bg={bg()} content={tail()} />
-                </box>
               </box>
             )
-          }}
-        </For>
+          }
 
-        <Show when={preview()}>
-          {(around: () => Context) => (
-            <box flexDirection="column" backgroundColor={ui.solidBg} marginTop={1}>
-              <For each={around().lines}>
-                {(line, i) => {
-                  const at = () => around().start + i()
-                  const isMatch = () => at() === current()?.line
-                  return (
-                    <box
-                      flexDirection="row"
-                      backgroundColor={isMatch() ? ui.currentLine : ui.solidBg}
-                    >
-                      <text
-                        fg={ui.gutter}
-                        bg={isMatch() ? ui.currentLine : ui.solidBg}
-                        flexShrink={0}
-                        content={`${`${at() + 1}`.padStart(5)} `}
-                      />
-                      <box flexGrow={1} backgroundColor={isMatch() ? ui.currentLine : ui.solidBg}>
-                        {/* The selected line carries the same before/after as its row
+          const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
+          const gutter = () => `${row.match.line + 1}`.padStart(5)
+          // Room left after the marker (1), the line number and its gap (7) and the
+          // cut marker (1). One column over and the row wraps onto a second line —
+          // and the replacement shown beside the hit takes its share of it too.
+          const cut = () =>
+            sliceAround(row.match.text, row.match.col, contentWidth() - 9 - swap().length)
+          const head = () => cut().text.slice(0, cut().col)
+          const hit = () => cut().text.slice(cut().col, cut().col + row.match.length)
+          const tail = () => cut().text.slice(cut().col + row.match.length)
+
+          return (
+            <box flexDirection="row" backgroundColor={bg()}>
+              <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌' : ' '} />
+              <text
+                fg={active() ? ui.accent : ui.faint}
+                bg={bg()}
+                flexShrink={0}
+                content={`${gutter()}  `}
+              />
+              <text fg={ui.dim} bg={bg()} flexShrink={0} content={cut().cut ? '…' : ''} />
+              <text fg={active() ? ui.text : ui.dim} bg={bg()} flexShrink={0} content={head()} />
+              {/* The hit itself, so the eye lands on why the row is here — struck
+                    through once there is a replacement to put in its place. */}
+              <text
+                fg={swap() ? ui.gitDeleted : ui.accent}
+                bg={bg()}
+                flexShrink={0}
+                content={hit()}
+                attributes={swap() ? TextAttributes.STRIKETHROUGH : TextAttributes.BOLD}
+              />
+              <Show when={swap()}>
+                <text
+                  fg={ui.gitAdded}
+                  bg={bg()}
+                  flexShrink={0}
+                  content={swap()}
+                  attributes={TextAttributes.BOLD}
+                />
+              </Show>
+              <box flexGrow={1} backgroundColor={bg()}>
+                <text fg={active() ? ui.text : ui.dim} bg={bg()} content={tail()} />
+              </box>
+            </box>
+          )
+        }}
+      </For>
+
+      <Show when={preview()}>
+        {(around: () => Context) => (
+          <box flexDirection="column" backgroundColor={ui.solidBg} marginTop={1}>
+            <For each={around().lines}>
+              {(line, i) => {
+                const at = () => around().start + i()
+                const isMatch = () => at() === current()?.line
+                return (
+                  <box
+                    flexDirection="row"
+                    backgroundColor={isMatch() ? ui.currentLine : ui.solidBg}
+                  >
+                    <text
+                      fg={ui.gutter}
+                      bg={isMatch() ? ui.currentLine : ui.solidBg}
+                      flexShrink={0}
+                      content={`${`${at() + 1}`.padStart(5)} `}
+                    />
+                    <box flexGrow={1} backgroundColor={isMatch() ? ui.currentLine : ui.solidBg}>
+                      {/* The selected line carries the same before/after as its row
                             above it, or the two would disagree about what the file is
                             about to say. */}
-                        <Show
-                          when={isMatch() && swap() && current()}
-                          fallback={
+                      <Show
+                        when={isMatch() && swap() && current()}
+                        fallback={
+                          <text
+                            fg={isMatch() ? ui.text : ui.faint}
+                            bg={isMatch() ? ui.currentLine : ui.solidBg}
+                            content={line.slice(0, contentWidth() - 6)}
+                          />
+                        }
+                      >
+                        {(match: () => Match) => (
+                          <box flexDirection="row" backgroundColor={ui.currentLine}>
                             <text
-                              fg={isMatch() ? ui.text : ui.faint}
-                              bg={isMatch() ? ui.currentLine : ui.solidBg}
-                              content={line.slice(0, contentWidth() - 6)}
+                              fg={ui.text}
+                              bg={ui.currentLine}
+                              flexShrink={0}
+                              content={line.slice(0, match().col)}
                             />
-                          }
-                        >
-                          {(match: () => Match) => (
-                            <box flexDirection="row" backgroundColor={ui.currentLine}>
+                            <text
+                              fg={ui.gitDeleted}
+                              bg={ui.currentLine}
+                              flexShrink={0}
+                              content={line.slice(match().col, match().col + match().length)}
+                              attributes={TextAttributes.STRIKETHROUGH}
+                            />
+                            <text
+                              fg={ui.gitAdded}
+                              bg={ui.currentLine}
+                              flexShrink={0}
+                              content={swap()}
+                              attributes={TextAttributes.BOLD}
+                            />
+                            <box flexGrow={1} backgroundColor={ui.currentLine}>
                               <text
                                 fg={ui.text}
                                 bg={ui.currentLine}
-                                flexShrink={0}
-                                content={line.slice(0, match().col)}
+                                content={line.slice(match().col + match().length)}
                               />
-                              <text
-                                fg={ui.gitDeleted}
-                                bg={ui.currentLine}
-                                flexShrink={0}
-                                content={line.slice(match().col, match().col + match().length)}
-                                attributes={TextAttributes.STRIKETHROUGH}
-                              />
-                              <text
-                                fg={ui.gitAdded}
-                                bg={ui.currentLine}
-                                flexShrink={0}
-                                content={swap()}
-                                attributes={TextAttributes.BOLD}
-                              />
-                              <box flexGrow={1} backgroundColor={ui.currentLine}>
-                                <text
-                                  fg={ui.text}
-                                  bg={ui.currentLine}
-                                  content={line.slice(match().col + match().length)}
-                                />
-                              </box>
                             </box>
-                          )}
-                        </Show>
-                      </box>
+                          </box>
+                        )}
+                      </Show>
                     </box>
-                  )
-                }}
-              </For>
-            </box>
-          )}
-        </Show>
+                  </box>
+                )
+              }}
+            </For>
+          </box>
+        )}
+      </Show>
 
-        <text
-          fg={ui.dim}
-          bg={ui.panelBg}
-          content={
-            props.onReplaceAll
-              ? replacing()
-                ? '↑↓ move · Enter replace · Ctrl+A replace all · Tab back · Esc close'
-                : '↑↓ move · Enter jump · Tab replace · Ctrl+C/W/R case/word/regex · Esc close'
-              : '↑↓ move · Enter jump · Tab fold · Ctrl+C/W/R case/word/regex · Esc close'
-          }
-        />
-      </box>
-    </Overlay>
+      <text
+        fg={ui.dim}
+        bg={ui.panelBg}
+        content={
+          props.onReplaceAll
+            ? replacing()
+              ? '↑↓ move · Enter replace · Ctrl+A replace all · Tab back · Esc close'
+              : '↑↓ move · Enter jump · Tab replace · Ctrl+C/W/R case/word/regex · Esc close'
+            : '↑↓ move · Enter jump · Tab fold · Ctrl+C/W/R case/word/regex · Esc close'
+        }
+      />
+    </ModalPanel>
   )
 }

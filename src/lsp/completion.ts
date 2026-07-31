@@ -50,11 +50,22 @@ export interface Match {
   positions: number[]
 }
 
+/** Characters a match may sit behind and still count as starting a word. */
+const SEPARATORS = new Set(['_', '-', '.', '/', '\\', ':', ' '])
+
 /**
- * Subsequence match of `query` in `text`, scored the editor-completion way:
- * consecutive hits and word-boundary hits (start, after `_`/`.`, camelCase hump)
- * are worth the most, exact-case a little more, and every skipped character
- * costs. Returns null when `query` is not a subsequence at all.
+ * Subsequence match of `query` in `text`, scored as VS Code's `fuzzyScore` does:
+ * a character that lands where a prefix match would put it, on a camelCase hump,
+ * or straight after a separator is worth 7 when the case agrees and 5 when it
+ * does not; anything else is worth 1. A hit that continues the previous one earns
+ * a little more, and skipped characters cost, so `map` beats `meltAtPressure`.
+ *
+ * Length is deliberately not part of the score. VS Code leaves items that match
+ * the prefix equally well to the server's own order, and that is what keeps a
+ * type's own members above the hundreds of auto-import candidates that spell the
+ * same letters — scoring them apart here would overrule the server for good.
+ *
+ * Returns null when `query` is not a subsequence at all.
  */
 export function fuzzyMatch(
   query: string,
@@ -69,29 +80,46 @@ export function fuzzyMatch(
   for (let q = 0; q < lowerQuery.length; q++) {
     const found = lowerText.indexOf(lowerQuery[q]!, at)
     if (found < 0) return null
+    const char = text[found]!
     const prev = text[found - 1]
-    const boundary =
-      found === 0 ||
-      prev === '_' ||
-      prev === '.' ||
-      prev === '-' ||
-      (text[found]! >= 'A' && text[found]! <= 'Z' && prev! >= 'a' && prev! <= 'z')
-    if (boundary) score += 8
-    if (positions.length > 0 && found === positions.at(-1)! + 1) score += 6
-    if (text[found] === query[q]) score += 1
-    score -= found - at // skipped characters push the item down
+    const hump = char >= 'A' && char <= 'Z' && !(prev! >= 'A' && prev! <= 'Z')
+    const strong = found === q || hump || (prev !== undefined && SEPARATORS.has(prev))
+    let step = strong ? (char === query[q] ? 7 : 5) : 1
+    if (positions.length > 0 && found === positions.at(-1)! + 1) step += 2
+    score += step - (found - at) // skipped characters push the item down
     positions.push(found)
     at = found + 1
   }
-  // Shorter candidates win ties: `map` before `mapValues` for the query "map".
-  return { score: score - Math.floor(text.length / 8), positions }
+  return { score, positions }
 }
 
 /**
- * Filter and rank the server's items against the typed prefix. The text matched
- * is `filterText ?? label` (the spec's rule), but the positions returned are
- * label indexes — when the two differ the highlight is dropped rather than lied
- * about. Ties fall back to the server's own `sortText` ordering.
+ * The server's own ranking, and the whole order when nothing has been typed:
+ * `sortText` (the label when the server sent none, per the spec), then the label,
+ * then the kind — VS Code's `defaultComparator`. Comparison is by code unit, not
+ * locale: `sortText` is an opaque sort key, so `localeCompare`'s ideas about
+ * digits and punctuation only corrupt it.
+ */
+function serverOrder(a: CompletionItem, b: CompletionItem): number {
+  const aSort = (a.sortText ?? a.label).toLowerCase()
+  const bSort = (b.sortText ?? b.label).toLowerCase()
+  if (aSort !== bSort) return aSort < bSort ? -1 : 1
+  if (a.label !== b.label) return a.label < b.label ? -1 : 1
+  return (a.kind ?? 0) - (b.kind ?? 0)
+}
+
+/**
+ * Filter and rank the server's items against the typed prefix, in VS Code's two
+ * stages: the fuzzy score, and `serverOrder` under it — so items the prefix matches
+ * equally well stay in the order the server asked for, which is the point of the
+ * arrangement and why a prefix that fits a member and an auto-import alike still
+ * shows the member. Sorting the survivors rather than the items first is the same
+ * order for far less work: a global completion is thousands of items and this runs
+ * on every keystroke.
+ *
+ * The text matched is `filterText ?? label` (the spec's rule), but the positions
+ * returned are label indexes — when the two differ the highlight is dropped
+ * rather than lied about.
  */
 export function filterCompletions(items: CompletionItem[], prefix: string): Match[] {
   const matches: Match[] = []
@@ -105,12 +133,7 @@ export function filterCompletions(items: CompletionItem[], prefix: string): Matc
       positions: target === item.label ? match.positions : [],
     })
   }
-  return matches.toSorted(
-    (a, b) =>
-      b.score - a.score ||
-      (a.item.sortText ?? a.item.label).localeCompare(b.item.sortText ?? b.item.label) ||
-      a.item.label.length - b.item.label.length,
-  )
+  return matches.toSorted((a, b) => b.score - a.score || serverOrder(a.item, b.item))
 }
 
 /**

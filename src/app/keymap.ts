@@ -67,6 +67,11 @@ export const BINDABLE: Bindable[] = [
     defaults: [`Ctrl+${ALT}+→`],
     also: ['Ctrl+→', 'Ctrl+PgDn'],
   },
+  // Undo and redo for where you have been, which is what the pair is next to on
+  // the keyboard — Ctrl+Opt+←/→ already walks the strip, and the arrows every
+  // other editor uses for this are Alt+←/→, which the textarea needs for words.
+  { id: 'nav.back', label: 'Go back', defaults: [`Ctrl+${ALT}+Z`] },
+  { id: 'nav.forward', label: 'Go forward', defaults: [`Ctrl+${ALT}+Y`] },
   { id: 'tabs.closeOthers', label: 'Close other tabs', defaults: [] },
   { id: 'tabs.closeAll', label: 'Close all tabs', defaults: [] },
   { id: 'view.sidebar', label: 'Show / hide sidebar', defaults: ['Ctrl+B'] },

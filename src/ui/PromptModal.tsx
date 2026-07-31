@@ -3,8 +3,8 @@ import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
 import { createSignal } from 'solid-js'
 
 import { ui } from '../themes'
-import { modalWidth, PAD } from './modal'
-import { Overlay } from './Overlay'
+import { modalWidth } from './modal'
+import { ModalPanel } from './Overlay'
 import { TextInput } from './TextInput'
 
 export interface PromptModalProps {
@@ -33,23 +33,10 @@ export function PromptModal(props: PromptModalProps) {
   })
 
   return (
-    <Overlay>
-      <box
-        width={width()}
-        flexDirection="column"
-        backgroundColor={ui.panelBg}
-        border
-        borderStyle="rounded"
-        borderColor={ui.accent}
-        title={` ${props.title} `}
-        titleColor={ui.text}
-        paddingLeft={PAD}
-        paddingRight={PAD}
-      >
-        <TextInput value={value()} onInput={setValue} />
-        <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-        <text fg={ui.dim} bg={ui.panelBg} content="Enter to confirm · Esc to cancel" />
-      </box>
-    </Overlay>
+    <ModalPanel width={width()} title={` ${props.title} `}>
+      <TextInput value={value()} onInput={setValue} />
+      <text fg={ui.panelBg} bg={ui.panelBg} content="" />
+      <text fg={ui.dim} bg={ui.panelBg} content="Enter to confirm · Esc to cancel" />
+    </ModalPanel>
   )
 }

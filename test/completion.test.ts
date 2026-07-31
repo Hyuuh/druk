@@ -56,6 +56,14 @@ describe('fuzzyMatch', () => {
     const flat = fuzzyMatch('fb', 'foobar')!
     expect(hump.score).toBeGreaterThan(flat.score)
   })
+
+  test('length is not scored, so an equal prefix match ties', () => {
+    expect(fuzzyMatch('tab', 'table')!.score).toBe(fuzzyMatch('tab', 'tableOfContents')!.score)
+  })
+
+  test('the same letters in the same case beat a case-folded match', () => {
+    expect(fuzzyMatch('tab', 'table')!.score).toBeGreaterThan(fuzzyMatch('tab', 'Table')!.score)
+  })
 })
 
 describe('filterCompletions', () => {
@@ -87,6 +95,31 @@ describe('filterCompletions', () => {
       '',
     ).map(m => m.item.label)
     expect(got).toEqual(['a', 'b'])
+  })
+
+  test('sortText decides between items the prefix fits equally well', () => {
+    // What tsserver sends for `x.tab|`: the type's own property ranks 11, the
+    // auto-import candidates 16. The property must not sink under 200 of them.
+    const got = filterCompletions(
+      [
+        { label: 'TableAliasProxyHandler', sortText: '16' },
+        { label: 'tableName', sortText: '16' },
+        { label: 'table', sortText: '11' },
+      ],
+      'tab',
+    ).map(m => m.item.label)
+    expect(got[0]).toBe('table')
+  })
+
+  test('a better prefix match still outranks a lower sortText', () => {
+    const got = filterCompletions(
+      [
+        { label: 'pgTable', sortText: '11' },
+        { label: 'table', sortText: '16' },
+      ],
+      'tab',
+    ).map(m => m.item.label)
+    expect(got[0]).toBe('table')
   })
 })
 

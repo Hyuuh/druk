@@ -646,6 +646,22 @@ export function EditorPane(props: EditorPaneProps) {
   }
 
   /**
+   * The spans, bucketed by the line they start on. `applyWindow` marks one line
+   * at a time, so a flat scan meant every line of the window walked every
+   * diagnostic in the file — a file with hundreds of them paid that on each
+   * scroll tick.
+   */
+  const problemsByLine = createMemo(() => {
+    const byStart = new Map<number, EditorPaneProps['problemRanges']>()
+    for (const problem of props.problemRanges) {
+      const list = byStart.get(problem.line)
+      if (list) list.push(problem)
+      else byStart.set(problem.line, [problem])
+    }
+    return byStart
+  })
+
+  /**
    * Mark the spans of every problem starting on `line`. Layered over the syntax
    * highlights: a fault keeps its text color and gains a faint severity tint,
    * while an Unnecessary-tagged span fades instead. A multi-line span marks its
@@ -654,8 +670,7 @@ export function EditorPane(props: EditorPaneProps) {
    */
   const markProblems = (line: number) => {
     if (!editor) return
-    for (const problem of props.problemRanges) {
-      if (problem.line !== line) continue
+    for (const problem of problemsByLine().get(line) ?? []) {
       const group = problem.unnecessary ? 'unnecessary' : problem.severity
       const styleId = styleIdForGroup(`druk.problem.${group}`)
       if (styleId == null) continue

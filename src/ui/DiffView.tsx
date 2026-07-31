@@ -9,6 +9,7 @@ import {
   filetypeForPath,
   getSyntaxStyle,
   highlightClient,
+  lineOfOffset,
   STALE,
 } from '../languages/highlight'
 import type { Highlighted } from '../languages/highlight'
@@ -166,18 +167,6 @@ function paneLines(patch: string, view: 'unified' | 'split') {
   return { left, right }
 }
 
-/** Greatest line whose start offset is at or before `offset`. */
-function lineAt(starts: number[], offset: number): number {
-  let low = 0
-  let high = starts.length - 1
-  while (low < high) {
-    const mid = (low + high + 1) >> 1
-    if (starts[mid]! <= offset) low = mid
-    else high = mid - 1
-  }
-  return low
-}
-
 /**
  * The diff pane: takes the editor's place while open and shows the one change
  * the source-control panel's cursor is on. Rendering is OpenTUI's `<diff>`
@@ -276,7 +265,7 @@ export function DiffView(props: DiffViewProps) {
             // Guides carry a background fill that would stamp over the diff's.
             if (capture.group === 'indent.guide') continue
             for (
-              let line = lineAt(doc.starts, capture.start);
+              let line = lineOfOffset(doc.starts, capture.start);
               line < doc.starts.length && doc.starts[line]! < capture.end;
               line++
             ) {

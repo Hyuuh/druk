@@ -18,8 +18,13 @@ export interface TabsProps {
   tabs: TabInfo[]
   /** `id` of the tab on screen. */
   activeId: string | null
+  /** Whether the visit history has anywhere to go, each way. */
+  canBack: boolean
+  canForward: boolean
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  onBack: () => void
+  onForward: () => void
   /** Clicking an overflow counter asks for the full list of open tabs. */
   onOverflow: () => void
 }
@@ -27,6 +32,8 @@ export interface TabsProps {
 const MAX_LABEL = 18
 /** Padding, the dirty/close glyph and the separator around a label. */
 const CHROME = 5
+/** Columns the history arrows take off the row: two boxes and their padding. */
+const NAV = 5
 
 const shorten = (name: string) =>
   name.length <= MAX_LABEL ? name : `${name.slice(0, MAX_LABEL - 1)}…`
@@ -40,8 +47,10 @@ export function Tabs(props: TabsProps) {
    */
   const visible = createMemo(() => {
     // The bar spans the terminal: the tree sits below it, not beside it. Taking
-    // the sidebar's width off the budget made tabs reflow on every resize.
-    const budget = dimensions().width
+    // the sidebar's width off the budget made tabs reflow on every resize. The
+    // arrows are drawn whether or not they are live, so their columns are gone
+    // from the budget either way.
+    const budget = dimensions().width - NAV
     const width = (tab: TabInfo) => shorten(tab.name).length + CHROME
 
     const active = Math.max(
@@ -75,6 +84,20 @@ export function Tabs(props: TabsProps) {
   return (
     <box flexDirection="column" flexShrink={0}>
       <box height={1} flexDirection="row" backgroundColor={ui.barBg}>
+        {/* The way back through the tabs the editor has landed on. Always drawn,
+            dimmed to `faint` when that way is empty: an arrow that comes and goes
+            shifts every tab beside it, and the row would jump on each jump. */}
+        <box paddingLeft={1} backgroundColor={ui.barBg} onMouseDown={() => props.onBack()}>
+          <text fg={props.canBack ? ui.dim : ui.faint} bg={ui.barBg} content="←" />
+        </box>
+        <box
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={ui.barBg}
+          onMouseDown={() => props.onForward()}
+        >
+          <text fg={props.canForward ? ui.dim : ui.faint} bg={ui.barBg} content="→" />
+        </box>
         <Show
           when={props.tabs.length > 0}
           fallback={<text fg={ui.faint} bg={ui.barBg} content="  no open files" />}

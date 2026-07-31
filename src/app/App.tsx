@@ -37,6 +37,7 @@ import { createFileOps } from './fileOps'
 import { createGit, createGitOp, wireGitEffects } from './git'
 import { installKeyboard } from './keyboard'
 import { createLsp, wireLspEffects } from './lsp'
+import { createNavigation } from './navigation'
 import { createOverlays, OverlayStack } from './Overlays'
 import { createPanes } from './panes'
 import { createPromptHandlers, createPromptState } from './prompts'
@@ -121,6 +122,7 @@ export function App(props: {
     git,
     setPrompt: promptState.setPrompt,
   })
+  const navigation = createNavigation({ workspace, editor, panes, status })
   const fileOps = createFileOps({ rootDir, status, tree, workspace })
   const gitOp = createGitOp({ rootDir, git, status, workspace })
   const branches = createBranches({ rootDir, status, git, gitOp, prompts: promptState })
@@ -162,6 +164,7 @@ export function App(props: {
     branches,
     comparison,
     workspace,
+    navigation,
     fileOps,
     prompts: { ...promptState, ...promptHandlers },
     overlays,
@@ -370,8 +373,12 @@ export function App(props: {
           preview: id === workspace.previewPath(),
         }))}
         activeId={workspace.activeView()}
+        canBack={navigation.canBack()}
+        canForward={navigation.canForward()}
         onSelect={workspace.showView}
         onClose={workspace.closeView}
+        onBack={navigation.back}
+        onForward={navigation.forward}
         onOverflow={() => overlays.setPicker('tabs')}
       />
       {/* Drag capture lives on the row, not the divider: the pointer leaves a

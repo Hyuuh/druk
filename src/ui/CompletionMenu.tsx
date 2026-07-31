@@ -3,6 +3,7 @@ import { createMemo, For, Show } from 'solid-js'
 import { kindInfo, matchRuns } from '../lsp/completion'
 import type { KindGroup, Match } from '../lsp/completion'
 import { ui } from '../themes'
+import { windowAround } from './list'
 
 /** Content rows the menu shows at most; more items scroll behind a counter row. */
 export const MENU_ROWS = 8
@@ -55,13 +56,7 @@ const cut = (text: string, room: number) =>
  * painter that a test can drive through the real keyboard flow.
  */
 export function CompletionMenu(props: CompletionMenuProps) {
-  const windowed = createMemo(() => {
-    const start = Math.max(
-      0,
-      Math.min(props.selected - MENU_ROWS + 1, props.matches.length - MENU_ROWS),
-    )
-    return { start, rows: props.matches.slice(start, start + MENU_ROWS) }
-  })
+  const windowed = createMemo(() => windowAround(props.matches, props.selected, MENU_ROWS))
   /** Columns inside the border. */
   const inner = () => props.width - 2
 

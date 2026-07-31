@@ -51,6 +51,8 @@ export interface CommandActions {
   reopenTab: () => void
   nextTab: () => void
   prevTab: () => void
+  navBack: () => void
+  navForward: () => void
   toggleFocus: () => void
   toggleSidebar: () => void
   toggleGitView: () => void
@@ -227,6 +229,15 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         { id: 'tabs.closeAll', label: 'Close all tabs', run: actions.closeAll },
         { id: 'tabs.next', label: 'Next tab', hint: `Ctrl+${ALT}+→`, run: actions.nextTab },
         { id: 'tabs.prev', label: 'Previous tab', hint: `Ctrl+${ALT}+←`, run: actions.prevTab },
+        // Not the tab order but the order they were visited in — a jump to a
+        // definition and the way back from it, the arrows on the strip do this.
+        { id: 'nav.back', label: 'Go back', hint: `Ctrl+${ALT}+Z`, run: actions.navBack },
+        {
+          id: 'nav.forward',
+          label: 'Go forward',
+          hint: `Ctrl+${ALT}+Y`,
+          run: actions.navForward,
+        },
       ],
     },
     {
