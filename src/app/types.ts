@@ -1,3 +1,5 @@
+import type { FetchableInstall } from '../lsp/servers'
+
 /** Which pane owns the keyboard when no overlay is open. */
 export type Focus = 'tree' | 'editor'
 
@@ -38,7 +40,7 @@ export type Prompt =
   | { kind: 'deleteBranch'; name: string; force: boolean }
   | { kind: 'mergeBranch'; name: string }
   /** A language server is missing and druk can fetch it; `id` is the server id. */
-  | { kind: 'installServer'; id: string; name: string; packages: string[] }
+  | { kind: 'installServer'; id: string; name: string; install: FetchableInstall }
   | null
 
 export type PromptKind = NonNullable<Prompt>['kind']

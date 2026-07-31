@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -7,7 +7,7 @@ import { problemFrom } from '../src/app/lsp'
 import type { Problem } from '../src/app/lsp'
 import { styleIdForGroup } from '../src/languages/highlight'
 import { spawnLspClient } from '../src/lsp/client'
-import { installServer, installedCommand } from '../src/lsp/install'
+import { downloadServer, installServer, installedCommand } from '../src/lsp/install'
 import { projectCommand, typescriptMajor } from '../src/lsp/project'
 import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
 import { isUnnecessary, severityOf } from '../src/lsp/protocol'
@@ -124,6 +124,18 @@ describe('protocol mapping', () => {
     })
   })
 
+  test('elixir is served by expert, the official Elixir LSP', () => {
+    const resolved = resolveServer('elixir', {})
+    expect(resolved?.command).toEqual(['expert', '--stdio'])
+    // The arches expert builds for get a fetch offer; anything else a hint.
+    const supported =
+      ['x64', 'arm64'].includes(process.arch) &&
+      ['linux', 'darwin', 'win32'].includes(process.platform)
+    expect(resolved?.install?.kind).toBe(supported ? 'download' : 'manual')
+    // An override replaces the command and drops the hint, as with any server.
+    expect(resolveServer('elixir', { elixir: ['next-ls'] })?.install).toBeUndefined()
+  })
+
   test('install hints read as the command that installs the server', () => {
     expect(installHint({ kind: 'npm', packages: ['pyright'] })).toBe('npm i -g pyright')
     expect(installHint({ kind: 'manual', command: 'gem install solargraph' })).toBe(
@@ -143,7 +155,33 @@ describe('installed servers', () => {
     writeFileSync(join(bin, 'pyright-langserver'), '')
     // The arguments ride along; only the executable becomes a path.
     expect(installedCommand(command, root)).toEqual([join(bin, 'pyright-langserver'), '--stdio'])
+    // Downloaded binaries land in bin/ instead of node_modules/.bin.
+    const downloaded = join(root, 'bin', 'expert')
+    mkdirSync(join(root, 'bin'), { recursive: true })
+    writeFileSync(downloaded, '')
+    expect(installedCommand(['expert', '--stdio'], root)).toEqual([downloaded, '--stdio'])
   })
+
+  test('a release binary downloads into bin/ and reports HTTP errors', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (req.url.endsWith('/missing')) return new Response('not here', { status: 404 })
+        return new Response('#!/bin/sh\necho hi\n')
+      },
+    })
+    try {
+      const base = `http://127.0.0.1:${server.port}`
+      expect(await downloadServer(`${base}/expert`, 'expert', root)).toBeNull()
+      const target = join(root, 'bin', 'expert')
+      expect(existsSync(target)).toBe(true)
+      expect(installedCommand(['expert', '--stdio'], root)).toEqual([target, '--stdio'])
+      expect(await downloadServer(`${base}/missing`, 'expert', root)).toBe('HTTP 404')
+    } finally {
+      server.stop()
+    }
+  }, 20_000)
 
   test('an install with no npm to run it fails instead of hanging', async () => {
     const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))

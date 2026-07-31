@@ -10,14 +10,19 @@
  */
 
 /**
- * How a missing server is obtained. `npm` is the case druk can carry out itself;
- * `manual` is a line to print, for servers that come with a language toolchain.
- * Servers with neither (clangd, zls, sourcekit-lsp) ship with an SDK, and no one
- * command installs them on every OS.
+ * How a missing server is obtained. `npm` and `download` are the cases druk can
+ * carry out itself — a package install, or a release binary fetched from a URL
+ * (see `./install.ts`); `manual` is a line to print, for servers that come with
+ * a language toolchain. Servers with neither (clangd, zls, sourcekit-lsp) ship
+ * with an SDK, and no one command installs them on every OS.
  */
 export type ServerInstall =
   | { kind: 'npm'; packages: string[] }
   | { kind: 'manual'; command: string }
+  | { kind: 'download'; url: string }
+
+/** The kinds druk can install itself — what a confirm prompt ever carries. */
+export type FetchableInstall = Exclude<ServerInstall, { kind: 'manual' }>
 
 export interface ServerSpec {
   id: string
@@ -29,6 +34,31 @@ export interface ServerSpec {
 
 const npm = (...packages: string[]): ServerInstall => ({ kind: 'npm', packages })
 const manual = (command: string): ServerInstall => ({ kind: 'manual', command })
+const download = (url: string): ServerInstall => ({ kind: 'download', url })
+
+/**
+ * The release asset for this machine, or null on one expert does not build for.
+ * Expert ships a self-contained binary per OS/arch on its releases page — no
+ * npm package — named `expert_<os>_<arch>` (with `.exe` on Windows).
+ */
+function expertInstall(): ServerInstall {
+  const os =
+    process.platform === 'win32'
+      ? 'windows'
+      : process.platform === 'darwin'
+        ? 'darwin'
+        : process.platform === 'linux'
+          ? 'linux'
+          : null
+  const arch = process.arch === 'x64' ? 'amd64' : process.arch === 'arm64' ? 'arm64' : null
+  if (!os || !arch)
+    return manual(
+      'Download the binary from https://github.com/expert-lsp/expert/releases and put it on your $PATH',
+    )
+  return download(
+    `https://github.com/expert-lsp/expert/releases/latest/download/expert_${os}_${arch}${process.platform === 'win32' ? '.exe' : ''}`,
+  )
+}
 
 export const DEFAULT_SERVERS: ServerSpec[] = [
   {
@@ -76,6 +106,13 @@ export const DEFAULT_SERVERS: ServerSpec[] = [
     install: manual('gem install solargraph'),
   },
   {
+    id: 'elixir',
+    // `--stdio` is required: without it expert waits for a port argument.
+    command: ['expert', '--stdio'],
+    filetypes: ['elixir'],
+    install: expertInstall(),
+  },
+  {
     id: 'php',
     command: ['intelephense', '--stdio'],
     filetypes: ['php'],
@@ -104,7 +141,9 @@ export const DEFAULT_SERVERS: ServerSpec[] = [
 
 /** The line that tells a user how to install `spec` themselves. */
 export function installHint(install: ServerInstall): string {
-  return install.kind === 'npm' ? `npm i -g ${install.packages.join(' ')}` : install.command
+  if (install.kind === 'npm') return `npm i -g ${install.packages.join(' ')}`
+  if (install.kind === 'download') return `Download it from ${install.url}`
+  return install.command
 }
 
 /**

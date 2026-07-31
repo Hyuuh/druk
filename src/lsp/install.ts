@@ -13,13 +13,13 @@
  * - **PATH still wins.** `installedCommand` only answers for a binary druk put
  *   there itself, so a user who installs the server properly gets their copy.
  */
-import { existsSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 
 import { firstLine, notInstalled, run } from '../core/process'
 
-/** Long enough for a cold npm cache on a slow link; short enough to not hang. */
+/** Long enough for a slow link; short enough to not hang. */
 const INSTALL_TIMEOUT_MS = 180_000
 
 export const SERVER_ROOT = join(
@@ -30,13 +30,20 @@ export const SERVER_ROOT = join(
 
 /**
  * `command` rewritten to run the copy druk installed, or null if there is none.
- * The name in `node_modules/.bin` is the same one that would have been on PATH.
+ * npm servers land in `node_modules/.bin`; downloaded binaries in `bin/` (with
+ * the `.exe` suffix Windows needs).
  */
 export function installedCommand(command: string[], root = SERVER_ROOT): string[] | null {
   const [executable, ...args] = command
   if (!executable) return null
   const local = join(root, 'node_modules', '.bin', executable)
-  return existsSync(local) ? [local, ...args] : null
+  if (existsSync(local)) return [local, ...args]
+  const downloaded = join(
+    root,
+    'bin',
+    process.platform === 'win32' ? `${executable}.exe` : executable,
+  )
+  return existsSync(downloaded) ? [downloaded, ...args] : null
 }
 
 /** Whether the servers druk installs could run at all. */
@@ -74,4 +81,28 @@ export async function installServer(
   if (result.timedOut) return 'npm timed out'
   if (result.status === 0) return null
   return firstLine(result.stderr) || `npm exited with code ${result.status}`
+}
+
+/**
+ * Fetch a release binary into `root/bin`, like `installServer` but for servers
+ * that ship as a download rather than an npm package. `name` is the executable
+ * the command runs — the file is saved as `name` (`.exe` on Windows) so
+ * `installedCommand` finds it. Resolves to an error message, or null on success.
+ */
+export async function downloadServer(
+  url: string,
+  name: string,
+  root = SERVER_ROOT,
+): Promise<string | null> {
+  const target = join(root, 'bin', process.platform === 'win32' ? `${name}.exe` : name)
+  try {
+    mkdirSync(join(root, 'bin'), { recursive: true })
+    const response = await fetch(url, { signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS) })
+    if (!response.ok) return `HTTP ${response.status}`
+    await Bun.write(target, response)
+    if (process.platform !== 'win32') chmodSync(target, 0o755)
+    return null
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
 }
