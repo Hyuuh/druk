@@ -31,6 +31,18 @@ describe('deleting in the background', () => {
     expect(seen.at(-1)).toMatchObject({ done: 12, total: 12 })
   })
 
+  test('several targets share one count — done never passes total', async () => {
+    const a = heavyDir(3)
+    const b = heavyDir(4)
+    const seen: BulkProgress[] = []
+
+    await removeAll([a.dir, b.dir], progress => seen.push({ ...progress }))
+
+    // A per-target total read as "Deleting 5/4" the moment the second target began.
+    for (const progress of seen) expect(progress.done).toBeLessThanOrEqual(progress.total)
+    expect(seen.at(-1)).toMatchObject({ done: 7, total: 7 })
+  })
+
   test('counts up one entry at a time', async () => {
     const { dir } = heavyDir(5)
     const seen: BulkProgress[] = []

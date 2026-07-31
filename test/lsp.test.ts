@@ -284,6 +284,21 @@ describe('client against a live server', () => {
     // the command itself and adds the server's install line.
     expect(await failed).toEqual({ reason: 'is not installed, or not on PATH', missing: true })
     expect(client.ready()).toBe(false)
+    // Dead, not merely un-ready: the document sync uses this to forget the entry,
+    // so a server installed later receives the file that first asked for it.
+    expect(client.dead()).toBe(true)
     client.dispose()
   }, 10_000)
+
+  test('a starting client is not dead — its documents must not be forgotten', () => {
+    const client = spawnLspClient({
+      command: [process.execPath, FAKE],
+      rootDir: tmpdir(),
+      onDiagnostics: () => {},
+      onFail: () => {},
+    })
+    expect(client.ready()).toBe(false)
+    expect(client.dead()).toBe(false)
+    client.dispose()
+  })
 })

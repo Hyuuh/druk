@@ -269,6 +269,13 @@ export function spawnLspClient(options: LspClientOptions) {
     /** True once the handshake finished and false again when the server dies. */
     ready: () => state === 'ready',
 
+    /**
+     * True once the server is gone for good. Not `!ready()`: a client is also
+     * un-ready while starting, and treating that as dead would tear down a
+     * document sync the handshake is about to honour.
+     */
+    dead: () => state === 'dead',
+
     pullDiagnostics,
 
     openDocument(path: string, languageId: string, text: string) {

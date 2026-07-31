@@ -51,10 +51,13 @@ export async function removeAll(
 ): Promise<BulkResult> {
   const failed: string[] = []
   let done = 0
+  let total = 0
 
   for (const target of targets) {
     const units = await unitsOf(target)
-    const total = units.length
+    // Cumulative, not this target's own count: `done` never resets, so a
+    // per-target total read as "Deleting 15/4" the moment a second target began.
+    total += units.length
     for (const unit of units) {
       try {
         await fs.promises.rm(unit, { recursive: true, force: true })

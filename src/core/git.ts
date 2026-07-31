@@ -786,9 +786,11 @@ export function upstreamOf(cwd: string): Upstream | null {
     return currentBranch(cwd) ? { name: null, ahead: 0, behind: 0 } : null
   }
 
+  // Status checked, and NaN floored: a failed count would otherwise put "NaN↓"
+  // on the status bar — `[''].map(Number)` is `[NaN]`, which `?? 0` keeps.
   const counts = git(cwd, ['rev-list', '--left-right', '--count', '@{u}...HEAD'])
-  const [behind, ahead] = (counts.stdout ?? '').trim().split(/\s+/).map(Number)
-  return { name: ref.stdout.trim(), ahead: ahead ?? 0, behind: behind ?? 0 }
+  const [behind, ahead] = counts.status === 0 ? counts.stdout.trim().split(/\s+/).map(Number) : []
+  return { name: ref.stdout.trim(), ahead: ahead || 0, behind: behind || 0 }
 }
 
 export function inRepository(cwd: string): boolean {

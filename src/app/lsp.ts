@@ -397,7 +397,18 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
       // Read here, in the tracked run — these are the captured values.
       const text = buffer.content
       const dirty = buffer.dirty
-      const known = synced.get(path)
+      let known = synced.get(path)
+
+      // The entry's server is gone — it failed to spawn, or crashed. Forgetting
+      // it is what lets the document reach a replacement: the very file whose
+      // opening triggered the install offer is synced to the *dead* client, so
+      // without this the generation bump after an install re-opens every
+      // document except the one that asked for the server.
+      if (known?.client.dead()) {
+        pendingEdits.delete(path)
+        synced.delete(path)
+        known = undefined
+      }
 
       if (!known) {
         const client = lsp.clientFor(path)
