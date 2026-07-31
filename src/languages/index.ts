@@ -181,6 +181,7 @@ export const LANGUAGES: Language[] = [
       { group: 'keyword.operator', re: /==|!=|<=|>=/g },
       { group: 'operator', re: /\|(?=[ \t]*[a-zA-Z_])/g },
       { group: 'function', re: /(?<=\|[ \t]*)[a-zA-Z_]\w*/g },
+      { group: 'variable', re: /(?<=\b(?:assign|capture)\b[ \t]+)[a-zA-Z_]\w*/g },
       {
         group: 'comment.block',
         re: /\{%-?\s*comment\s*-?%\}[\s\S]*?\{%-?\s*endcomment\s*-?%\}|\{%-?\s*doc\s*-?%\}[\s\S]*?\{%-?\s*enddoc\s*-?%\}|\{%-?\s*#.*?-?%\}/g,

@@ -135,6 +135,69 @@ describe('liquid doc comments', () => {
   })
 })
 
+describe('liquid assign targets', () => {
+  const SOURCE = [
+    '{%- liquid',
+    '  assign variant = current_variant | default: product.first_available_variant',
+    "  assign resolved_form_class = 'js-add-to-cart'",
+    '  if form_class != blank',
+    '    assign resolved_form_class = resolved_form_class | append: form_class',
+    '  endif',
+    '-%}',
+    '{% capture inline_label %}Add to cart{% endcapture %}',
+    '<div class="{{ resolved_form_class }}">{{ variant }}</div>',
+    '',
+  ].join('\n')
+
+  function styleAt(segs: Segment[], needle: string, occurrence = 0) {
+    let index = -1
+    for (let i = 0; i <= occurrence; i++) index = SOURCE.indexOf(needle, index + 1)
+    let acc = 0
+    const lines = SOURCE.split('\n')
+    for (let line = 0; line < lines.length; line++) {
+      const lineLen = lines[line]!.length
+      if (index <= acc + lineLen) {
+        const col = index - acc
+        return segs.find(s => s.line === line && col >= s.start && col < s.end)?.styleId
+      }
+      acc += lineLen + 1
+    }
+    return undefined
+  }
+
+  test('an assign target is styled as a variable whether its value is a bare reference, a filter chain, or a string literal', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    const ss = getSyntaxStyle()
+    const isStyle = (found: number | undefined, group: string) => found === ss.getStyleId(group)
+
+    expect(isStyle(styleAt(segs, 'variant = current_variant'), 'variable')).toBe(true)
+    expect(isStyle(styleAt(segs, "resolved_form_class = 'js-add-to-cart'"), 'variable')).toBe(true)
+    expect(isStyle(styleAt(segs, 'resolved_form_class = resolved_form_class'), 'variable')).toBe(
+      true,
+    )
+    expect(isStyle(styleAt(segs, 'inline_label'), 'variable')).toBe(true)
+  })
+
+  test('a reference to that name elsewhere is not mistaken for another declaration', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    const ss = getSyntaxStyle()
+
+    expect(styleAt(segs, 'form_class != blank')).not.toBe(ss.getStyleId('variable'))
+    expect(styleAt(segs, 'resolved_form_class', 2)).not.toBe(ss.getStyleId('variable'))
+    expect(styleAt(segs, 'resolved_form_class', 3)).not.toBe(ss.getStyleId('variable'))
+  })
+
+  test('real HTML attributes and filters are unaffected', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    const ss = getSyntaxStyle()
+    const isStyle = (found: number | undefined, group: string) => found === ss.getStyleId(group)
+
+    expect(isStyle(styleAt(segs, 'class="'), 'attribute')).toBe(true)
+    expect(isStyle(styleAt(segs, 'default:'), 'function')).toBe(true)
+    expect(isStyle(styleAt(segs, 'append:'), 'function')).toBe(true)
+  })
+})
+
 describe('abandoning a highlight that arrived too late', () => {
   const SOURCE = 'const alpha = 1 // note\n'
 
