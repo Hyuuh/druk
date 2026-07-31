@@ -7,7 +7,7 @@ import type { TargetName } from '../build'
 /**
  * Packages the binaries built by build.ts:
  *   dist/npm/druk/              the one package published, a shim holding no binary
- *   dist/release/druk-<target>.{zip,tar.gz}   the binaries themselves
+ *   dist/release/druk-<target>.{zip,tar.gz}   binaries + third-party notices
  *
  * The archives are the only place a binary is distributed: both the install script and
  * the npm shim pull them from the GitHub release. There used to be an npm package per
@@ -23,6 +23,8 @@ import type { TargetName } from '../build'
  */
 const NPM_DIR = './dist/npm'
 const RELEASE_DIR = './dist/release'
+const NOTICE = './THIRD_PARTY_NOTICES.md'
+const PDFIUM_LICENSE = './third_party/PDFIUM_LICENSE'
 
 const { version } = await Bun.file('./package.json').json()
 
@@ -56,13 +58,15 @@ for (const target of targets) {
 
   const archive = `${RELEASE_DIR}/druk-${target}.${os === 'linux' ? 'tar.gz' : 'zip'}`
   const from = `./dist/${target}`
+  await cp(NOTICE, `${from}/THIRD_PARTY_NOTICES.md`)
+  await cp(PDFIUM_LICENSE, `${from}/PDFIUM_LICENSE`)
   if (os === 'linux') {
-    await Bun.$`tar -czf ${archive} -C ${from} ${exe}`
+    await Bun.$`tar -czf ${archive} -C ${from} ${exe} THIRD_PARTY_NOTICES.md PDFIUM_LICENSE`
   } else if (Bun.which('zip')) {
-    await Bun.$`zip -qj ${archive} ${`${from}/${exe}`}`
+    await Bun.$`zip -qj ${archive} ${`${from}/${exe}`} ${`${from}/THIRD_PARTY_NOTICES.md`} ${`${from}/PDFIUM_LICENSE`}`
   } else {
     // Windows has no `zip`, but its bsdtar picks the format from the extension.
-    await Bun.$`tar -a -cf ${archive} -C ${from} ${exe}`
+    await Bun.$`tar -a -cf ${archive} -C ${from} ${exe} THIRD_PARTY_NOTICES.md PDFIUM_LICENSE`
   }
   process.stdout.write(`packaged ${target} -> ${archive}\n`)
 }
@@ -74,6 +78,8 @@ await cp('./bin/postinstall.mjs', `${rootDir}/bin/postinstall.mjs`)
 await cp('./bin/binary.mjs', `${rootDir}/bin/binary.mjs`)
 await cp('./bin/windows-shim.mjs', `${rootDir}/bin/windows-shim.mjs`)
 await cp('./README.md', `${rootDir}/README.md`)
+await cp(NOTICE, `${rootDir}/THIRD_PARTY_NOTICES.md`)
+await cp(PDFIUM_LICENSE, `${rootDir}/PDFIUM_LICENSE`)
 
 const rootPkg = await Bun.file('./package.json').json()
 await Bun.write(
@@ -86,7 +92,7 @@ await Bun.write(
       '//private': undefined,
       'private': undefined,
       'bin': { druk: './bin/druk.js' },
-      'files': ['bin'],
+      'files': ['bin', 'THIRD_PARTY_NOTICES.md', 'PDFIUM_LICENSE'],
       // Nothing to build or check here; the one script fetches the binary so that
       // the first run does not have to.
       'scripts': { postinstall: 'node ./bin/postinstall.mjs' },
@@ -96,7 +102,7 @@ await Bun.write(
       'cpu': ['arm64', 'x64'],
       'devDependencies': undefined,
       // Every dependency is compiled into the binary, and the binary comes from the
-      // GitHub release — so the published package holds nothing but the shim.
+      // GitHub release — so the published package holds only the shim and notices.
       'dependencies': undefined,
     },
     null,
