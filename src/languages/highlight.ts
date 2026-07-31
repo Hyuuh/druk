@@ -104,6 +104,7 @@ export function filetypeForPath(path: string): string | undefined {
   if (BY_NAME[name]) return BY_NAME[name]
   if (DOTENV.test(name)) return 'dotenv'
   if (name.endsWith('.tsrx')) return 'tsrx'
+  if (name.endsWith('.liquid')) return 'liquid'
   return pathToFiletype(path) ?? undefined
 }
 

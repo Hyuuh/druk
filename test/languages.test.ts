@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { LANGUAGES, languageFor, languageLabel } from '../src/languages'
 import { computeHighlights, getSyntaxStyle, segmentsIn, STALE } from '../src/languages/highlight'
-import type { Highlighted } from '../src/languages/highlight'
+import type { Highlighted, Segment } from '../src/languages/highlight'
 import { allSegments, parseHighlights, WHOLE } from './syntax'
 
 const SAMPLES: Record<string, string> = {
@@ -31,6 +31,7 @@ const SAMPLES: Record<string, string> = {
   scala: '// c\nobject A { def go(x: Int): Int = x }\n',
   yaml: '# c\na:\n  b: true\n',
   svelte: '<!-- c -->\n<script>let x = 1</script>\n<div class="a">{x}</div>\n',
+  liquid: '<!-- c -->\n<div class="a">{{ product.title | upcase }}</div>\n',
   sql: '-- c\nSELECT id FROM users WHERE age > 18;\n',
   ini: '; c\n[section]\nkey = value\n',
   dotenv: '# c\nexport PORT=3000\nURL="https://x.dev"\n',
@@ -79,6 +80,158 @@ describe('languages', () => {
       expect(segs.some(s => s.styleId === comment)).toBe(true)
     }, 15000)
   }
+})
+
+/**
+ * Style id painted over the `occurrence`-th `needle` in `source`, by its first
+ * character. Segment coordinates are per line, so the offset has to be walked
+ * back into a line and a column first.
+ */
+function styleLookup(source: string) {
+  const lines = source.split('\n')
+  return (segs: Segment[], needle: string, occurrence = 0) => {
+    let index = -1
+    for (let i = 0; i <= occurrence; i++) index = source.indexOf(needle, index + 1)
+    let acc = 0
+    for (let line = 0; line < lines.length; line++) {
+      const lineLen = lines[line]!.length
+      if (index < acc + lineLen) {
+        const col = index - acc
+        return segs.find(s => s.line === line && col >= s.start && col < s.end)?.styleId
+      }
+      acc += lineLen + 1
+    }
+    return undefined
+  }
+}
+
+/** `getStyleId` answers `number | null`, which `toBe` will not take. */
+const isStyle = (found: number | undefined, group: string) =>
+  found === getSyntaxStyle().getStyleId(group)
+
+describe('liquid doc comments', () => {
+  const SOURCE = [
+    '{% doc %}',
+    '  Renders a reusable AJAX add-to-cart form and button.',
+    '',
+    '  @param {product} product - Shopify product object for the form.',
+    '  @param {variant} [current_variant] - Variant used for the initial button availability state.',
+    '',
+    '  @example',
+    "  {% render 'add-to-cart-form', product: product %}",
+    '{% enddoc %}',
+    '',
+  ].join('\n')
+
+  const styleAt = styleLookup(SOURCE)
+
+  test('delimiters and prose default to comment, @param/@example stand out as tags, {type} as a type, and both the required and optional [name] form as a parameter', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    expect(isStyle(styleAt(segs, '{% doc %}'), 'comment')).toBe(true)
+    expect(isStyle(styleAt(segs, 'Renders a reusable'), 'comment')).toBe(true)
+    expect(isStyle(styleAt(segs, '@param'), 'keyword.tag')).toBe(true)
+    expect(isStyle(styleAt(segs, '@example'), 'keyword.tag')).toBe(true)
+    expect(isStyle(styleAt(segs, '{product}'), 'type.builtin')).toBe(true)
+    expect(isStyle(styleAt(segs, '{variant}'), 'type.builtin')).toBe(true)
+    expect(isStyle(styleAt(segs, 'product', 1), 'variable.parameter')).toBe(true)
+    expect(isStyle(styleAt(segs, 'current_variant'), 'variable.parameter')).toBe(true)
+  })
+
+  test('the dotted groups above have no theme entry of their own, so the assertions above are exercising the fallback, not a coincidence', () => {
+    const ss = getSyntaxStyle()
+    expect(ss.getStyleId('keyword.tag')).toBe(ss.getStyleId('keyword'))
+    expect(ss.getStyleId('type.builtin')).toBe(ss.getStyleId('type'))
+    expect(ss.getStyleId('variable.parameter')).toBe(ss.getStyleId('variable'))
+  })
+})
+
+describe('liquid assign targets', () => {
+  const SOURCE = [
+    '{%- liquid',
+    '  assign variant = current_variant | default: product.first_available_variant',
+    "  assign resolved_form_class = 'js-add-to-cart'",
+    '  if form_class != blank',
+    '    assign resolved_form_class = resolved_form_class | append: form_class',
+    '  endif',
+    '-%}',
+    '{% capture inline_label %}Add to cart{% endcapture %}',
+    '<div class="{{ resolved_form_class }}">{{ variant }}</div>',
+    '',
+  ].join('\n')
+
+  const styleAt = styleLookup(SOURCE)
+
+  test('an assign target is styled as a variable whether its value is a bare reference, a filter chain, or a string literal', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    expect(isStyle(styleAt(segs, 'variant = current_variant'), 'variable')).toBe(true)
+    expect(isStyle(styleAt(segs, "resolved_form_class = 'js-add-to-cart'"), 'variable')).toBe(true)
+    expect(isStyle(styleAt(segs, 'resolved_form_class = resolved_form_class'), 'variable')).toBe(
+      true,
+    )
+    expect(isStyle(styleAt(segs, 'inline_label'), 'variable')).toBe(true)
+  })
+
+  test('a reference to that name elsewhere is not mistaken for another declaration', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    const ss = getSyntaxStyle()
+
+    expect(styleAt(segs, 'form_class != blank')).not.toBe(ss.getStyleId('variable'))
+    expect(styleAt(segs, 'resolved_form_class', 2)).not.toBe(ss.getStyleId('variable'))
+    expect(styleAt(segs, 'resolved_form_class', 3)).not.toBe(ss.getStyleId('variable'))
+  })
+
+  test('real HTML attributes and filters are unaffected', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    expect(isStyle(styleAt(segs, 'class="'), 'attribute')).toBe(true)
+    expect(isStyle(styleAt(segs, 'default:'), 'function')).toBe(true)
+    expect(isStyle(styleAt(segs, 'append:'), 'function')).toBe(true)
+  })
+})
+
+describe('liquid around the markup a theme file is mostly made of', () => {
+  const SOURCE = [
+    '<!-- section: cart -->',
+    '<div class="cart" data-count="3" id="cart-2">',
+    "  <p>It's the customer's cart. Don't panic.</p>",
+    '  <span>Buy one or capture it later.</span>',
+    '</div>',
+    '<script>',
+    '  const ok = alpha || beta',
+    '</script>',
+    '',
+  ].join('\n')
+
+  const styleAt = styleLookup(SOURCE)
+
+  test('an HTML comment keeps its own delimiters instead of losing them to the bracket pattern', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    expect(isStyle(styleAt(segs, '<!--'), 'comment')).toBe(true)
+    expect(isStyle(styleAt(segs, '-->'), 'comment')).toBe(true)
+  })
+
+  test('an attribute value stays one string, digits and all', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    expect(isStyle(styleAt(segs, '"3"'), 'string')).toBe(true)
+    expect(isStyle(styleAt(segs, '3'), 'string')).toBe(true)
+    expect(isStyle(styleAt(segs, '2'), 'string')).toBe(true)
+  })
+
+  test('apostrophes in prose do not pair into a string', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    expect(isStyle(styleAt(segs, "'s the customer"), 'string')).toBe(false)
+    expect(isStyle(styleAt(segs, 'the customer'), 'string')).toBe(false)
+  })
+
+  test('prose that happens to say "capture" does not declare a variable', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    expect(isStyle(styleAt(segs, 'it later'), 'variable')).toBe(false)
+  })
+
+  test('a JavaScript or in an embedded script is not read as a filter pipe', async () => {
+    const segs = await allSegments(SOURCE, 'liquid')
+    expect(isStyle(styleAt(segs, '|| beta'), 'operator')).toBe(false)
+    expect(isStyle(styleAt(segs, 'beta'), 'function')).toBe(false)
+  })
 })
 
 describe('abandoning a highlight that arrived too late', () => {
