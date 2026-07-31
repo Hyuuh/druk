@@ -31,6 +31,10 @@ import type { Status } from './status'
 const EDITOR_MIN = 20
 
 const TAB_SIZES = [2, 4, 8]
+/** The shapes OpenTUI draws. Its fourth, `default`, is left out: it defers to whatever
+ * the terminal was already set to, which is not a choice this row could show a value
+ * for. */
+const CURSOR_STYLES = ['block', 'line', 'underline'] as const
 const THEME_NAMES = Object.keys(THEMES) as ThemeName[]
 
 /** The entry `dir` steps to, wrapping at both ends. */
@@ -190,6 +194,11 @@ export function createSettings(deps: {
   const applyTabSize = (size: number) => {
     patchConfig({ tabSize: size })
     status.say(`Tab size: ${size}`)
+  }
+
+  const applyCursorStyle = (style: Config['cursorStyle']) => {
+    patchConfig({ cursorStyle: style })
+    status.say(config.vim ? `Cursor: ${style} — vim mode overrides it` : `Cursor: ${style}`)
   }
 
   const applyVim = (enabled: boolean) => {
@@ -558,6 +567,24 @@ export function createSettings(deps: {
       label: 'Vim mode',
       value: onOff(view().vim),
       cycle: () => applyVim(!view().vim),
+    },
+    {
+      section: 'Editor',
+      key: 'cursorStyle',
+      label: 'Cursor',
+      // Said on the row rather than left to the status line, which is gone by the time
+      // anyone wonders why the caret did not change.
+      //
+      // `config.vim` and not `view().vim`, unlike the value beside it: the note is about
+      // the caret actually on screen, and a project file pinning vim on overrides it
+      // whatever the user's own file says. The shape stays `view()`'s, because that is
+      // the value this page edits and marks as overridden.
+      value: config.vim ? `${view().cursorStyle} (vim overrides)` : view().cursorStyle,
+      cycle: dir => applyCursorStyle(step(CURSOR_STYLES, view().cursorStyle, dir)),
+      select: {
+        options: [...CURSOR_STYLES],
+        pick: at => applyCursorStyle(CURSOR_STYLES[at]!),
+      },
     },
     {
       section: 'Editor',

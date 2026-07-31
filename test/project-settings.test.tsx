@@ -46,7 +46,7 @@ test('the project file outranks the user settings', async () => {
 test('a key the project leaves out keeps the user value', async () => {
   const t = await launch(project({ vim: true }), { tabSize: 8 })
   await runCommand(t, 'Settings: this project')
-  await down(t, 6) // Theme, Follow OS, Light, Dark, Transparent, Vim → Tab size
+  await down(t, 7) // Theme, Follow OS, Light, Dark, Transparent, Vim, Cursor → Tab size
   expect(rowOf(t, 'Vim mode').endsWith('on')).toBe(true)
   // Not 2: an absent key falls through to the user's file, not to the default.
   expect(rowOf(t, 'Tab size').endsWith('8')).toBe(true)
@@ -56,7 +56,7 @@ test('Tab moves the page between the two files', async () => {
   const t = await launch(project({ tabSize: 8 }))
   await runCommand(t, 'Settings')
   expect(t.captureCharFrame()).toContain('Settings — User')
-  await down(t, 6)
+  await down(t, 7)
   // The user page shows the user's own value, marked as overridden — VS Code's
   // arrangement, and the only one where stepping the row does something visible.
   expect(rowOf(t, 'Tab size').endsWith('2')).toBe(true)
@@ -81,7 +81,7 @@ test('Backspace drops an override and the user value comes back', async () => {
   const dir = project({ tabSize: 8 })
   const t = await launch(dir)
   await runCommand(t, 'Settings: this project')
-  await down(t, 6)
+  await down(t, 7)
   expect(rowOf(t, 'Tab size').endsWith('8')).toBe(true)
   await press(t, i => i.pressBackspace())
   expect(rowOf(t, 'Tab size').endsWith('2')).toBe(true)

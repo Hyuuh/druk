@@ -78,6 +78,11 @@ export interface Config {
   /** Modal editing (normal / insert / visual). */
   vim: boolean
   /**
+   * Shape of the caret. Ignored while `vim` is on, where the shape is how you tell
+   * normal from insert and the mode has to win.
+   */
+  cursorStyle: 'block' | 'line' | 'underline'
+  /**
    * Columns per indent level for space indentation — the Tab key and the guides.
    * A literal tab is two columns whatever this says: OpenTUI's renderer fixes that
    * width and exposes no setting for it.
@@ -153,6 +158,8 @@ export const DEFAULTS: Config = {
   themeDark: 'dark',
   transparent: false,
   vim: false,
+  // OpenTUI's own default, so an unset key keeps the caret druk has always drawn.
+  cursorStyle: 'block',
   tabSize: 2,
   sidebarWidth: 'auto',
   skipUpdate: '',
@@ -216,6 +223,7 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   themeDark: theme,
   transparent: bool,
   vim: bool,
+  cursorStyle: among('block', 'line', 'underline'),
   tabSize: raw => (typeof raw === 'number' && raw >= 1 && raw <= 16 ? Math.floor(raw) : undefined),
   sidebarWidth: raw => {
     if (raw === 'auto') return 'auto'

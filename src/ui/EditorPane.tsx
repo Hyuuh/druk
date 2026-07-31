@@ -59,6 +59,8 @@ export interface EditorPaneProps {
   /** A line edit asked for from the palette; bumped `key` re-applies. */
   lineOp: { op: 'comment' | 'up' | 'down' | 'duplicate'; key: number } | null
   vim: boolean
+  /** Caret shape, for as long as vim is off — see the `cursorStyle` config key. */
+  cursorStyle: 'block' | 'line' | 'underline'
   tabSize: number
   /** True while a modal owns the keyboard; the editor must ignore all keys. */
   blocked: boolean
@@ -1482,6 +1484,17 @@ export function EditorPane(props: EditorPaneProps) {
               focusedBackgroundColor={ui.bg}
               focusedTextColor={ui.text}
               cursorColor={ui.cursor}
+              // Vim owns the caret while it is on: the shape is how normal and insert
+              // are told apart, so the setting yields to it rather than fighting the
+              // mode swap in the keyboard handler below. `vim` is reactive, so turning
+              // it off here is also what puts the user's own shape back — vim leaves
+              // the caret in whatever shape its last mode chose.
+              // `blinking: true` is OpenTUI's default, restated because this replaces
+              // the whole option object rather than one field of it.
+              cursorStyle={{
+                style: props.vim ? 'block' : props.cursorStyle,
+                blinking: true,
+              }}
               // Always wrapping: OpenTUI's textarea scrolls sideways only by
               // dragging the caret along, so unwrapped long lines have no way to be
               // read that does not move the cursor.
