@@ -1,4 +1,5 @@
 import { listDir, readFile } from './fs'
+import { ignoredPaths } from './git'
 
 export interface Match {
   path: string
@@ -102,12 +103,22 @@ export function searchText(
   return matches
 }
 
-// Breadth-first, so the files nearest the root are found before any limit cuts off.
+/*
+ * Breadth-first, so the files nearest the root are found before any limit cuts off.
+ *
+ * Git-ignored entries are left out whatever `respectGitignore` says — that setting
+ * is about what the tree *shows*, and a build directory or a worktree checkout
+ * parked inside the project is nobody's search result either way. `ignoredPaths`
+ * collapses a fully-ignored directory to a single entry, which is all this needs:
+ * a directory that is skipped is never queued, so nothing under it is walked.
+ */
 function* filesUnder(root: string): Generator<string> {
+  const ignored = ignoredPaths(root)
   const queue: string[] = [root]
   while (queue.length > 0) {
     const dir = queue.shift()!
     for (const node of listDir(dir)) {
+      if (ignored.has(node.path)) continue
       if (node.isDir) {
         if (!SKIPPED_DIRS.has(node.name)) queue.push(node.path)
       } else {

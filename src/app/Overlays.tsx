@@ -89,7 +89,7 @@ export function createOverlays(deps: {
     // A page gives way to anything that lands in a file — `openFile` closes it,
     // but a match in the file already open never calls it.
     workspace.setDiff(null)
-    workspace.setSettingsPage(false)
+    workspace.setPage(null)
     if (match.path && match.path !== workspace.activePath()) workspace.openFile(match.path)
     editor.requestGoto(match.line, match.col)
     panes.setFocus('editor')
@@ -300,7 +300,7 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             if (!row || id === 'more') return
             // `openFile` closes the page, but a problem in the open file skips it.
             workspace.setDiff(null)
-            workspace.setSettingsPage(false)
+            workspace.setPage(null)
             if (row.path !== workspace.activePath()) workspace.openFile(row.path)
             editor.requestGoto(row.line, row.col)
             panes.setFocus('editor')

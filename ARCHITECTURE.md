@@ -75,6 +75,7 @@ scripts/
     definition.ts    the pure half of go-to-definition: any of the reply's three
                      shapes as one file position
     servers.ts       filetype → server command  ← add a language server here
+    status.ts        the shapes the LSP status page renders (state, log, docs)
   themes/
     index.ts         theme registry  ← add a theme here
     types.ts         Theme / ThemeUi shape
@@ -93,8 +94,8 @@ scripts/
   ui/                presentational components, no app state
     EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
     SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
-    SearchPanel, DiffView, ImageView, SettingsView, UpdateBanner, Overlay, TextInput,
-    PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
+    SearchPanel, DiffView, ImageView, SettingsView, LspStatusView, UpdateBanner,
+    Overlay, TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
     modal.ts         modal geometry: width, list rows, text wrapping
     list.ts          list behaviour: windowing, panel scroll, picker keys, row colour
 ```

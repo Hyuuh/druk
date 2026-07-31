@@ -11,6 +11,9 @@ import { createDecoder, encodeMessage } from '../../src/lsp/transport'
 
 const send = (message: object) => process.stdout.write(encodeMessage(message))
 
+// Chatter on stderr, the way real servers do — the status page's log shows it.
+process.stderr.write('fake-lsp standing by\n')
+
 const publish = (uri: string, text: string) => {
   const diagnostics: Diagnostic[] = []
   const lines = text.split('\n')

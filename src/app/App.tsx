@@ -23,6 +23,7 @@ import { EditorPane } from '../ui/EditorPane'
 import { FileTree } from '../ui/FileTree'
 import { GitPanel } from '../ui/GitPanel'
 import { ImageView } from '../ui/ImageView'
+import { LspStatusView } from '../ui/LspStatusView'
 import { MarkdownView } from '../ui/MarkdownView'
 import { SettingsView } from '../ui/SettingsView'
 import { SidebarTabs } from '../ui/SidebarTabs'
@@ -243,6 +244,11 @@ export function App(props: {
     return { errors, warnings }
   })
 
+  /** The status page's rows, in a stable order however the servers started. */
+  const serverList = createMemo(() =>
+    Object.values(lsp.servers).toSorted((a, b) => a.id.localeCompare(b.id)),
+  )
+
   /** The active tab when it is an image — a viewer page covers the editor slot. */
   const activeImage = () => {
     const path = workspace.activePath()
@@ -423,7 +429,7 @@ export function App(props: {
                     // Landing in a file is how a page closes — the tree stays
                     // interactive while one is up, like any other editor page.
                     workspace.setDiff(null)
-                    workspace.setSettingsPage(false)
+                    workspace.setPage(null)
                     workspace.activateNode(node)
                   }}
                   onPin={node => workspace.pinTab(node.path)}
@@ -521,7 +527,7 @@ export function App(props: {
             focused={
               panes.focus() === 'editor' &&
               !workspace.diff() &&
-              !workspace.settingsPage() &&
+              !workspace.page() &&
               !comparison.detailOpen() &&
               !activeImage() &&
               !workspace.renderedPath()
@@ -562,7 +568,7 @@ export function App(props: {
             blocked={
               overlays.overlay() ||
               workspace.diff() !== null ||
-              workspace.settingsPage() ||
+              workspace.page() !== null ||
               comparison.detailOpen() ||
               activeImage() !== null ||
               workspace.renderedPath() !== null
@@ -601,7 +607,7 @@ export function App(props: {
               </box>
             )}
           </Show>
-          <Show when={workspace.settingsPage()}>
+          <Show when={workspace.page() === 'settings'}>
             <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={60}>
               <SettingsView
                 rows={settings.rows()}
@@ -612,7 +618,20 @@ export function App(props: {
                 focused={panes.focus() === 'editor'}
                 blocked={overlays.overlay()}
                 onFocus={() => panes.setFocus('editor')}
-                onClose={() => workspace.setSettingsPage(false)}
+                onClose={() => workspace.setPage(null)}
+              />
+            </box>
+          </Show>
+          <Show when={workspace.page() === 'lspStatus'}>
+            <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={60}>
+              <LspStatusView
+                servers={serverList()}
+                width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                focused={panes.focus() === 'editor'}
+                blocked={overlays.overlay()}
+                onFocus={() => panes.setFocus('editor')}
+                onRestart={actions.restartLsp}
+                onClose={() => workspace.setPage(null)}
               />
             </box>
           </Show>

@@ -12,9 +12,11 @@ installer — and run as a CLI.
 
 Features: file tree with bulk file operations and opt-in hiding of dotfiles and
 git-ignored files, preview/pinned tabs, tree-sitter syntax
-highlighting, search (current file and project-wide), command palette, themes, vim mode,
-a caret shape (`cursorStyle` — block, line or underline, which vim mode overrides while
-it is on, since there the shape is what tells normal from insert),
+highlighting, search (current file and project-wide — the project scan and the fuzzy
+file picker both skip git-ignored paths, whatever the tree's `respectGitignore` says, so
+a build directory or an agent's worktree checkout is never a result), command palette,
+themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, which vim mode
+overrides while it is on, since there the shape is what tells normal from insert),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
 → / ←) and palette commands for commit/undo/stash/push/fetch/pull and for branches
@@ -69,7 +71,11 @@ server — which prefers the open project's own copy; the servers restart on
 demand, palette → Problems → Restart language servers, and by themselves once a
 dependency directory settles after an install, since druk registers no watched
 files and a server otherwise resolves imports against the `node_modules` it saw
-at startup forever), LSP autocomplete (a fuzzy-filtered menu that opens as you
+at startup forever), a language-server status page (palette →
+Problems → Language server status — each server's state, command and open
+documents over a live log of its stderr, `window/logMessage` traffic and
+lifecycle events; ↑↓ picks the server, `r` restarts them all, and the log
+survives a restart so the run before stays readable), LSP autocomplete (a fuzzy-filtered menu that opens as you
 type or on Ctrl+Space, applies auto-import edits, and is toggled by
 `lspCompletion`), go to definition (F12, the server's answer in whichever of the
 protocol's three shapes it comes) and open the file under the cursor

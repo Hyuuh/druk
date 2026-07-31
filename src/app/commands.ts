@@ -68,6 +68,7 @@ export interface CommandActions {
   problemsNext: () => void
   problemsPrev: () => void
   restartLsp: () => void
+  lspStatus: () => void
   gitDiffFile: () => void
   gitCompareBranches: () => void
   gitDiffBase: () => void
@@ -210,6 +211,11 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           id: 'problems.restart',
           label: 'Restart language servers',
           run: actions.restartLsp,
+        },
+        {
+          id: 'problems.servers',
+          label: 'Language server status',
+          run: actions.lspStatus,
         },
       ],
     },

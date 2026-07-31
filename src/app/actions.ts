@@ -86,7 +86,7 @@ export function createCommands(ctx: AppContext) {
     // and diffing it against the base is right either way.
     const file = diffFileFor(path, git.gitStatus().get(path) ?? 'modified')
     if (!file) return say('Cannot diff this file', 'warn')
-    ctx.workspace.setSettingsPage(false)
+    ctx.workspace.setPage(null)
     ctx.workspace.setDiff(file)
   }
 
@@ -123,7 +123,7 @@ export function createCommands(ctx: AppContext) {
     // record where it started — and the way back is what the jump is half of.
     if (path === workspace.activeView()) ctx.navigation.mark()
     workspace.setDiff(null)
-    workspace.setSettingsPage(false)
+    workspace.setPage(null)
     if (path !== workspace.activePath()) workspace.openFile(path)
     if (workspace.activePath() !== path) return
     editor.requestGoto(line, col)
@@ -228,13 +228,18 @@ export function createCommands(ctx: AppContext) {
       settings.setScope('user')
       // One page at a time: the slot under the settings page is the editor's.
       ctx.workspace.setDiff(null)
-      ctx.workspace.setSettingsPage(true)
+      ctx.workspace.setPage('settings')
       panes.setFocus('editor')
     },
     openProjectSettings: () => {
       settings.setScope('project')
       ctx.workspace.setDiff(null)
-      ctx.workspace.setSettingsPage(true)
+      ctx.workspace.setPage('settings')
+      panes.setFocus('editor')
+    },
+    lspStatus: () => {
+      ctx.workspace.setDiff(null)
+      ctx.workspace.setPage('lspStatus')
       panes.setFocus('editor')
     },
     problemsList: () => {
