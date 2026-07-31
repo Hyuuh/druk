@@ -60,8 +60,9 @@ typescript-language-server to drive and speaks LSP itself, so a 7 project is
 served by `tsc --lsp --stdio` and a 5/6 project by typescript-language-server; a
 server that is not on PATH and has an npm package offers to install
 itself — a confirm prompt, never a silent fetch, into `$XDG_DATA_HOME/druk/lsp`
-rather than a global prefix, gated by `lspAutoInstall`, and the servers that come
-with a language toolchain print their install line instead; `typescriptTsdk`
+rather than a global prefix, gated by `lspAutoInstall`; one that ships a
+release binary instead (elixir's expert) is fetched the same way; and the
+servers that come with a language toolchain print their install line instead; `typescriptTsdk`
 picks which TypeScript typescript-language-server drives, empty leaving it to the
 server — which prefers the open project's own copy; the servers restart on
 demand, palette → Problems → Restart language servers, and by themselves once a
@@ -204,7 +205,7 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
-| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts`, with `install: npm(…)` when druk can fetch it itself or `install: manual(…)` for a line to print (users override per-server with the `lspServers` setting; the settings page toggles them and edits their commands) — a server whose command depends on what the project installed goes in `projectCommand` in `src/lsp/project.ts` instead, which every server consults first |
+| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts`, with `install: npm(…)` or `install: download(…)` when druk can fetch it itself, or `install: manual(…)` for a line to print (users override per-server with the `lspServers` setting; the settings page toggles them and edits their commands) — a server whose command depends on what the project installed goes in `projectCommand` in `src/lsp/project.ts` instead, which every server consults first |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` — chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there, not listed per theme |
 | previewable value | `preview` + `restore` on the palette `Command` (`src/app/commands.ts`) or on a row's `select` (`src/ui/SettingsView.tsx`) — `preview` paints while the selection sits on the value, `restore` runs when the list is torn down, so it must put back what the config says rather than remember what it replaced |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `VALIDATORS` — one validator per key, since the project file is read key by key) + a row in `src/app/settings.ts` (`specs`, with the `key` it edits) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
