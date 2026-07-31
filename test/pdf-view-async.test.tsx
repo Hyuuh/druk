@@ -1,4 +1,5 @@
 import { afterEach, expect, mock, test } from 'bun:test'
+import { join } from 'node:path'
 
 import type { CapturedFrame } from '@opentui/core'
 import { testRender } from '@opentui/solid'
@@ -80,6 +81,7 @@ mock.module('../src/core/pdf', () => ({
 }))
 
 const { PdfView } = await import('../src/ui/PdfView')
+const { fixture, launch, openFile: openProjectFile, untilFrame } = await import('./helpers')
 
 type TestHarness = Awaited<ReturnType<typeof testRender>>
 const harnesses = new Set<TestHarness>()
@@ -181,6 +183,48 @@ test('coalesces path opens and closes a stale result before opening only the lat
   closeA.resolve()
   await until(t, () => openCalls.length === 2)
   expect(openCalls).toEqual(['A.pdf', 'B.pdf'])
+})
+
+test('serializes opens across the App PDF to source to PDF transition', async () => {
+  const openedA = deferred<FakePdf>()
+  const openedB = deferred<FakePdf>()
+  const closeA = deferred<void>()
+  const events: string[] = []
+  const dir = fixture({ 'A.pdf': '', 'B.pdf': '', 'main.ts': 'const source = true\n' })
+  const a = join(dir, 'A.pdf')
+  const b = join(dir, 'B.pdf')
+  openImpl = path => (path === a ? openedA.promise : openedB.promise)
+
+  const t = await launch(dir, {}, {}, { openFile: a })
+  await until(t, () => openCalls.length === 1)
+  await openProjectFile(t, 'main.ts')
+  await untilFrame(t, 'const source = true')
+  await openProjectFile(t, 'B.pdf')
+  expect(openCalls).toEqual([a])
+
+  openedA.resolve({
+    pageCount: 1,
+    bytes: 1,
+    renderPage: async () => solidImage(255, 0, 0),
+    close: () => {
+      events.push('close A')
+      return closeA.promise
+    },
+  })
+  await until(t, () => events.includes('close A'))
+  expect(openCalls).toEqual([a])
+
+  closeA.resolve()
+  await until(t, () => openCalls.length === 2)
+  expect(openCalls).toEqual([a, b])
+
+  openedB.resolve({
+    pageCount: 1,
+    bytes: 1,
+    renderPage: async () => solidImage(0, 0, 255),
+    close: async () => undefined,
+  })
+  await untilFrame(t, 'B.pdf — 1/1 · 100%')
 })
 
 test('closes a document whose open finishes after unmount', async () => {

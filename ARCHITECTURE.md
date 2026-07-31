@@ -410,6 +410,10 @@ is just a diff against the empty tree.
   stops handing them out a few thousand in, so a photo would blank the pane the way the
   unwindowed tree once did. OpenTUI detects `kitty_graphics`/`sixel` but exposes no way
   to emit them past the cell diff; when it does, that is the upgrade path.
+- **The PDF viewer has one owner per App lifetime.** `App` keeps `PdfView` mounted and
+  passes `null` while another kind of tab is active. The component hides its render tree,
+  but that one open/close drain remains alive, so PDF → non-PDF → PDF cannot queue a new
+  open from a second instance before the first instance's late document close.
 - **git queries are synchronous, mutations are not.** `core/git.ts` runs `diff`,
   `status` and `rev-parse`/`rev-list` with `spawnSync` — they sit behind the gutter and
   tree marks and finish in milliseconds. Everything that writes (commit, push, stash,

@@ -593,20 +593,16 @@ export function App(props: {
               </box>
             )}
           </Show>
-          <Show when={activePdf()}>
-            {(path: () => string) => (
-              <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={40}>
-                <PdfView
-                  path={path()}
-                  width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
-                  height={dimensions().height - 2}
-                  focused={panes.focus() === 'editor'}
-                  blocked={overlays.overlay()}
-                  onFocus={() => panes.setFocus('editor')}
-                />
-              </box>
-            )}
-          </Show>
+          {/* Keep one owner for the App lifetime: a remount can queue its open
+              before the previous instance's late document close. */}
+          <PdfView
+            path={activePdf()}
+            width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+            height={dimensions().height - 2}
+            focused={panes.focus() === 'editor'}
+            blocked={overlays.overlay()}
+            onFocus={() => panes.setFocus('editor')}
+          />
           <Show when={workspace.renderedPath()}>
             {(path: () => string) => (
               <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={40}>

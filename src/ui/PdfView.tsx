@@ -12,7 +12,7 @@ import type { PdfFile, PdfPan } from '../core/pdf'
 import { ui } from '../themes'
 
 export interface PdfViewProps {
-  path: string
+  path: string | null
   width: number
   height: number
   focused: boolean
@@ -66,7 +66,7 @@ export function PdfView(props: PdfViewProps) {
   let requestId = 0
   let wanted: RenderRequest | null = null
   let draining = false
-  let pendingPath: string | null = null
+  let pendingPath: string | null | undefined
   let opening = false
   let owned: PdfFile | null = null
   let disposed = false
@@ -75,26 +75,26 @@ export function PdfView(props: PdfViewProps) {
     if (opening) return
     opening = true
     try {
-      while (pendingPath) {
+      while (pendingPath !== undefined) {
         if (disposed) break
         const path = pendingPath
-        pendingPath = null
+        pendingPath = undefined
         const previous = owned
         owned = null
         if (previous) await closePdf(previous)
         if (disposed) break
-        if (pendingPath) continue
+        if (pendingPath !== undefined || !path) continue
 
         try {
           const opened = await openPdf(path)
-          if (disposed || pendingPath || props.path !== path) {
+          if (disposed || pendingPath !== undefined || props.path !== path) {
             await closePdf(opened)
             continue
           }
           owned = opened
           setPdf(opened)
         } catch (cause) {
-          if (!disposed && !pendingPath && props.path === path) {
+          if (!disposed && pendingPath === undefined && props.path === path) {
             setError((cause as Error).message)
             setLoading(false)
           }
@@ -102,7 +102,7 @@ export function PdfView(props: PdfViewProps) {
       }
     } finally {
       opening = false
-      if (!disposed && pendingPath) void drainOpen()
+      if (!disposed && pendingPath !== undefined) void drainOpen()
     }
   }
 
@@ -129,7 +129,7 @@ export function PdfView(props: PdfViewProps) {
     disposed = true
     requestId++
     wanted = null
-    pendingPath = null
+    pendingPath = undefined
     const live = owned
     owned = null
     if (live) void closePdf(live)
@@ -225,7 +225,7 @@ export function PdfView(props: PdfViewProps) {
   }
 
   useKeyboard((key: KeyEvent) => {
-    if (props.blocked || !props.focused || key.defaultPrevented) return
+    if (!props.path || props.blocked || !props.focused || key.defaultPrevented) return
     const name = key.name
     if (name === 'pageup' || name === 'k') movePage(-1)
     else if (name === 'pagedown' || name === 'j' || name === 'space') movePage(1)
@@ -270,10 +270,10 @@ export function PdfView(props: PdfViewProps) {
 
   const caption = () => {
     const failure = error()
-    if (failure) return `Cannot show ${basename(props.path)}: ${failure}`
+    if (failure) return `Cannot show ${basename(props.path ?? '')}: ${failure}`
     const opened = pdf()
-    if (!opened) return `${basename(props.path)} — loading…`
-    const base = `${basename(props.path)} — ${page() + 1}/${opened.pageCount} · ${zoom()}% · ${size()}`
+    if (!opened) return `${basename(props.path ?? '')} — loading…`
+    const base = `${basename(props.path ?? '')} — ${page() + 1}/${opened.pageCount} · ${zoom()}% · ${size()}`
     return loading() ? `${base} · rendering…` : base
   }
 
@@ -283,21 +283,27 @@ export function PdfView(props: PdfViewProps) {
   }
 
   return (
-    <box
-      width="100%"
-      height="100%"
-      flexDirection="column"
-      backgroundColor={ui.bg}
-      onMouseDown={() => props.onFocus()}
-    >
-      <box flexDirection="row" backgroundColor={ui.bg}>
-        <text fg={ui.dim} bg={ui.bg} flexShrink={0} content={` ${caption()}`} />
-        <box flexGrow={1} backgroundColor={ui.bg} />
-        <text fg={ui.faint} bg={ui.bg} flexShrink={0} content={hints()} />
+    <Show when={props.path}>
+      <box
+        position="absolute"
+        top={0}
+        left={0}
+        width="100%"
+        height="100%"
+        zIndex={40}
+        flexDirection="column"
+        backgroundColor={ui.bg}
+        onMouseDown={() => props.onFocus()}
+      >
+        <box flexDirection="row" backgroundColor={ui.bg}>
+          <text fg={ui.dim} bg={ui.bg} flexShrink={0} content={` ${caption()}`} />
+          <box flexGrow={1} backgroundColor={ui.bg} />
+          <text fg={ui.faint} bg={ui.bg} flexShrink={0} content={hints()} />
+        </box>
+        <Show when={painted()}>
+          <box flexGrow={1} backgroundColor={ui.bg} ref={setHost} renderAfter={draw} />
+        </Show>
       </box>
-      <Show when={painted()}>
-        <box flexGrow={1} backgroundColor={ui.bg} ref={setHost} renderAfter={draw} />
-      </Show>
-    </box>
+    </Show>
   )
 }
