@@ -207,6 +207,35 @@ describe('applyCompletion', () => {
     expect(got.content).toBe('foo(x)\n')
     expect(got.cursor).toEqual({ line: 0, character: 4 })
   })
+
+  test('multi-line snippets are re-indented to the line they land on', () => {
+    // expert's do/end block, accepted under an indented def: the body must sit
+    // one level deeper than the def and the end must line up with it, not
+    // land at the absolute columns the server authored.
+    const got = applyCompletion('  def name() do\n', { line: 0, character: 15 }, 13, {
+      label: 'do/end block',
+      textEdit: {
+        range: { start: { line: 0, character: 13 }, end: { line: 0, character: 15 } },
+        newText: 'do\n  $0\nend',
+      },
+      insertTextFormat: 2,
+    })
+    expect(got.content).toBe('  def name() do\n    \n  end\n')
+    expect(got.cursor).toEqual({ line: 1, character: 4 })
+  })
+
+  test('a multi-line insert at column 0 keeps the server text as-is', () => {
+    const got = applyCompletion('def name() do\n', { line: 0, character: 13 }, 11, {
+      label: 'do/end block',
+      textEdit: {
+        range: { start: { line: 0, character: 11 }, end: { line: 0, character: 13 } },
+        newText: 'do\n  $0\nend',
+      },
+      insertTextFormat: 2,
+    })
+    expect(got.content).toBe('def name() do\n  \nend\n')
+    expect(got.cursor).toEqual({ line: 1, character: 2 })
+  })
 })
 
 describe('matchRuns', () => {

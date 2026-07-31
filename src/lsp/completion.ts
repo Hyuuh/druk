@@ -192,6 +192,23 @@ function positionOf(content: string, offset: number): Position {
 }
 
 /**
+ * Prepends `indent` to every line after the first. Servers author multi-line
+ * snippets at column 0 — expert's do/end block is `do\n  $0\nend` — so
+ * accepted under an indented `def` the body and `end` would land at their
+ * absolute columns without this. The first line is left alone: the range
+ * starts after the indent that is already on the line, so its own leading
+ * whitespace is relative to that point. Empty lines stay empty — trailing
+ * whitespace is never wanted.
+ */
+function reindentContinuationLines(text: string, indent: string): string {
+  const lines = text.split('\n')
+  for (let at = 1; at < lines.length; at++) {
+    if (lines[at]!.length > 0) lines[at] = indent + lines[at]
+  }
+  return lines.join('\n')
+}
+
+/**
  * Apply `item` to the document: the primary edit replaces the server's range —
  * or, without one, the word from `anchorCol` to the cursor — and every
  * `additionalTextEdit` (auto-imports) lands too. All ranges address the
@@ -205,10 +222,6 @@ export function applyCompletion(
   item: CompletionItem,
 ): { content: string; cursor: Position } {
   const raw = item.textEdit?.newText ?? item.insertText ?? item.label
-  const { text: inserted, caret } =
-    item.insertTextFormat === 2 || raw.includes('$')
-      ? stripSnippet(raw)
-      : { text: raw, caret: null }
 
   let primaryRange =
     item.textEdit && 'range' in item.textEdit
@@ -230,6 +243,18 @@ export function applyCompletion(
   ) {
     primaryRange = { start: primaryRange.start, end: cursor }
   }
+
+  // Multi-line inserts are re-indented to the line they land on before the
+  // snippet stops are stripped, so the caret offset stays correct.
+  const lineStart = offsetOf(content, { line: primaryRange.start.line, character: 0 })
+  const lineEnd = content.indexOf('\n', lineStart)
+  const lineText = content.slice(lineStart, lineEnd < 0 ? undefined : lineEnd)
+  const indent = /^\s*/.exec(lineText)?.[0] ?? ''
+  const adjusted = raw.includes('\n') ? reindentContinuationLines(raw, indent) : raw
+  const { text: inserted, caret } =
+    item.insertTextFormat === 2 || adjusted.includes('$')
+      ? stripSnippet(adjusted)
+      : { text: adjusted, caret: null }
 
   const edits: { start: number; end: number; text: string; primary: boolean }[] = [
     {
