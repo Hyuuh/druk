@@ -5,6 +5,7 @@ import { APPEARANCE_ENV, detectAppearance } from '../core/appearance'
 import type { Appearance } from '../core/appearance'
 import {
   CONFIG_FILE,
+  CURSOR_STYLES,
   projectConfigFile,
   resolveConfig,
   saveProjectConfig,
@@ -190,6 +191,11 @@ export function createSettings(deps: {
   const applyTabSize = (size: number) => {
     patchConfig({ tabSize: size })
     status.say(`Tab size: ${size}`)
+  }
+
+  const applyCursorStyle = (style: Config['cursorStyle']) => {
+    patchConfig({ cursorStyle: style })
+    status.say(config.vim ? `Cursor: ${style} — vim mode overrides it` : `Cursor: ${style}`)
   }
 
   const applyVim = (enabled: boolean) => {
@@ -558,6 +564,24 @@ export function createSettings(deps: {
       label: 'Vim mode',
       value: onOff(view().vim),
       cycle: () => applyVim(!view().vim),
+    },
+    {
+      section: 'Editor',
+      key: 'cursorStyle',
+      label: 'Cursor',
+      // Said on the row rather than left to the status line, which is gone by the time
+      // anyone wonders why the caret did not change.
+      //
+      // `config.vim` and not `view().vim`, unlike the value beside it: the note is about
+      // the caret actually on screen, and a project file pinning vim on overrides it
+      // whatever the user's own file says. The shape stays `view()`'s, because that is
+      // the value this page edits and marks as overridden.
+      value: config.vim ? `${view().cursorStyle} (vim overrides)` : view().cursorStyle,
+      cycle: dir => applyCursorStyle(step(CURSOR_STYLES, view().cursorStyle, dir)),
+      select: {
+        options: [...CURSOR_STYLES],
+        pick: at => applyCursorStyle(CURSOR_STYLES[at]!),
+      },
     },
     {
       section: 'Editor',

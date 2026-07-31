@@ -532,6 +532,7 @@ export function App(props: {
             edit={editor.edit()}
             lineOp={editor.lineOp()}
             vim={config.vim}
+            cursorStyle={config.cursorStyle}
             tabSize={config.tabSize}
             gitLines={git.gitLines()}
             problems={problemLines()}

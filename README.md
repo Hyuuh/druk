@@ -192,6 +192,7 @@ instead of breaking startup.
 | `theme` | `"dark"` | `dark`, `light`, `ayu-dark`, `ayu-mirage`, `ayu-light`, `catppuccin-mocha`, `catppuccin-macchiato`, `catppuccin-frappe`, `catppuccin-latte`, `dracula`, `everforest-dark`, `everforest-light`, `gruvbox`, `gruvbox-light`, `kanagawa-wave`, `kanagawa-dragon`, `kanagawa-lotus`, `nord`, `one-dark`, `rose-pine`, `rose-pine-moon`, `rose-pine-dawn`, `solarized-dark`, `solarized-light`, `tokyo-night`, `vesper` |
 | `transparent` | `false` | set `true` to leave the editor, tab strip and sidebar unpainted, so a translucent terminal shows through |
 | `tabSize` | `2` | 1–16 |
+| `cursorStyle` | `"block"` | `block`, `line` or `underline` — the caret's shape, which vim mode overrides while it is on, since there the shape is what tells normal from insert |
 | `vim` | `false` | normal / insert / visual modes, `hjkl w b 0 $ gg G`, counts, `i a o`, `x dd dw cw`, `v` + `d y c`, `yy p P`, `u` / `Ctrl+R` |
 | `sidebarWidth` | `"auto"` | a quarter of the window, or pin 15–80 columns |
 | `trimOnSave` | `false` | on save: strip trailing spaces and end the file with one newline |

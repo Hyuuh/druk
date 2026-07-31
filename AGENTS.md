@@ -13,6 +13,8 @@ installer — and run as a CLI.
 Features: file tree with bulk file operations and opt-in hiding of dotfiles and
 git-ignored files, preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide), command palette, themes, vim mode,
+a caret shape (`cursorStyle` — block, line or underline, which vim mode overrides while
+it is on, since there the shape is what tells normal from insert),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
 → / ←) and palette commands for commit/undo/stash/push/fetch/pull and for branches
