@@ -201,8 +201,9 @@ on the tap and nothing else.
 
 Two things still have to be done by hand, once: create `letstri/homebrew-tap`, and set
 `TAP_TOKEN`. Until both exist the `tap` job skips and says so in the run's annotations —
-the formula is on the release either way, to be copied over by hand or installed from a
-local file. Skipping is safe here in a way it is not for the two steps above: nothing
+the formula is on the release either way, to be copied into a tap by hand (Homebrew
+refuses a formula that is not in one, so a downloaded `druk.rb` is not installable on its
+own). Skipping is safe here in a way it is not for the two steps above: nothing
 downstream reads the tap, so a formula left unupdated puts brew a version behind rather
 than breaking an install, and forks that cannot hold the secret release exactly as this
 repository does.
