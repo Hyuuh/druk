@@ -199,14 +199,20 @@ unattended: GITHUB_TOKEN is scoped to this repository, and no OIDC arrangement e
 pushing to another one, so it reads `TAP_TOKEN` — a fine-grained PAT with contents:write
 on the tap and nothing else.
 
-Two things still have to be done by hand, once: create `letstri/homebrew-tap`, and set
-`TAP_TOKEN`. Until both exist the `tap` job skips and says so in the run's annotations —
-the formula is on the release either way, to be copied into a tap by hand (Homebrew
-refuses a formula that is not in one, so a downloaded `druk.rb` is not installable on its
-own). Skipping is safe here in a way it is not for the two steps above: nothing
-downstream reads the tap, so a formula left unupdated puts brew a version behind rather
-than breaking an install, and forks that cannot hold the secret release exactly as this
-repository does.
+Both the tap and the secret exist, and 1.12.0 was the first release to reach them. A run
+without `TAP_TOKEN` skips the `tap` job and says so in the annotations rather than failing
+— which is what forks get, and is safe here in a way it is not for the two steps above:
+nothing downstream reads the tap, so a formula left unupdated puts brew a version behind
+rather than breaking an install. The formula is on the release either way, though it has
+to be copied into a tap to be usable — Homebrew refuses a formula that is not in one, so a
+downloaded `druk.rb` cannot be installed on its own.
+
+**The generated formula must keep its `version` stanza.** It reads as redundant beside a
+URL carrying the tag, and `brew audit` does warn about a redundant one — but not here.
+Homebrew scans the version out of the archive's *stem*: its `foobar4.5.1` parser matches
+trailing digits, and `druk-darwin-arm64` ends in `64`. Drop the stanza and every release
+alike reports `stable 64`, so `brew upgrade letstri/tap/druk` — what `core/upgrade.ts`
+tells brew users to run — never sees a new version.
 
 ## Architecture
 

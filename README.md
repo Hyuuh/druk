@@ -16,6 +16,10 @@ curl -fsSL https://druk.letstri.dev/install | bash
 Or through a package manager:
 
 ```bash
+brew install letstri/tap/druk
+```
+
+```bash
 npm install -g druk
 ```
 
