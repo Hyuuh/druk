@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from 'bun:test'
 import { once } from 'node:events'
+import { readdirSync } from 'node:fs'
 import type { Server } from 'node:http'
 import { createServer } from 'node:http'
 
@@ -82,5 +83,16 @@ describe('fetchBinary timeout', () => {
     const started = Date.now()
     expect(await fetchBinary({ timeout: 60_000 })).toBeNull()
     expect(Date.now() - started).toBeLessThan(5_000)
+  })
+})
+
+describe('the published package', () => {
+  // release.ts stages bin/ file by file, and `files: ['bin']` publishes whatever it
+  // staged: a module added here but not there leaves the shim importing nothing.
+  test('stages every module bin/ holds', async () => {
+    const release = await Bun.file(new URL('../scripts/release.ts', import.meta.url)).text()
+    const staged = [...release.matchAll(/cp\('\.\/bin\/([\w.-]+)'/g)].map(match => match[1])
+    const modules = readdirSync(new URL('../bin/', import.meta.url))
+    expect(staged.sort()).toEqual(modules.sort())
   })
 })
