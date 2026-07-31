@@ -55,6 +55,14 @@ export function sidebarColumns(width: number | 'auto', terminalWidth: number): n
   return Math.max(AUTO_MIN, Math.min(AUTO_MAX, Math.round(terminalWidth * AUTO_SHARE)))
 }
 
+/**
+ * The caret shapes OpenTUI draws. Its fourth, `default`, is left out: it defers to
+ * whatever the terminal was already set to, which is not a choice a settings row
+ * could show a value for.
+ */
+export const CURSOR_STYLES = ['block', 'line', 'underline'] as const
+export type CursorStyle = (typeof CURSOR_STYLES)[number]
+
 export interface Config {
   /** Color scheme id — see src/themes. */
   theme: ThemeName
@@ -81,7 +89,7 @@ export interface Config {
    * Shape of the caret. Ignored while `vim` is on, where the shape is how you tell
    * normal from insert and the mode has to win.
    */
-  cursorStyle: 'block' | 'line' | 'underline'
+  cursorStyle: CursorStyle
   /**
    * Columns per indent level for space indentation — the Tab key and the guides.
    * A literal tab is two columns whatever this says: OpenTUI's renderer fixes that
@@ -223,7 +231,7 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   themeDark: theme,
   transparent: bool,
   vim: bool,
-  cursorStyle: among('block', 'line', 'underline'),
+  cursorStyle: among(...CURSOR_STYLES),
   tabSize: raw => (typeof raw === 'number' && raw >= 1 && raw <= 16 ? Math.floor(raw) : undefined),
   sidebarWidth: raw => {
     if (raw === 'auto') return 'auto'

@@ -1,8 +1,11 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
+import { TextareaRenderable } from '@opentui/core'
+import type { Renderable } from '@opentui/core'
+
 import { CONFIG_FILE } from '../src/core/config'
-import { fixture, launch, press, runCommand } from './helpers'
+import { fixture, launch, openFile, press, pressEscape, runCommand } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = { 'a.ts': 'const a = 1\n' }
@@ -13,10 +16,23 @@ async function down(t: Harness, times: number) {
 }
 
 /**
- * The caret's shape is a terminal property, not a glyph, so a captured frame cannot
- * show it. What is assertable is the row and the file the row writes — and, for the
- * vim rule, that the page says the setting is not in charge.
+ * The caret's shape is a terminal property rather than a glyph, so a captured frame
+ * cannot show it — but the textarea it was set on is reachable from the harness, and
+ * that is the value OpenTUI hands the terminal.
  */
+function caretStyle(t: Harness) {
+  const find = (node: Renderable): TextareaRenderable | undefined => {
+    if (node instanceof TextareaRenderable) return node
+    for (const child of node.getChildren()) {
+      const found = find(child)
+      if (found) return found
+    }
+    return undefined
+  }
+  return find(t.renderer.root)?.cursorStyle.style
+}
+
+/** What the settings row says, which is the only place the vim rule is explained. */
 const cursorRow = (t: Harness) =>
   t
     .captureCharFrame()
@@ -64,6 +80,39 @@ test('a saved shape is what the row comes back showing', async () => {
   await runCommand(t, 'Settings')
   await down(t, CURSOR_ROW)
   expect(cursorRow(t).endsWith('line')).toBe(true)
+})
+
+test('the shape the setting names is the one the editor draws', async () => {
+  const t = await launch(fixture(PROJECT), { cursorStyle: 'underline' })
+  await openFile(t, 'a.ts')
+  expect(caretStyle(t)).toBe('underline')
+})
+
+test('vim takes the caret over, and gives it back in the shape the setting names', async () => {
+  const t = await launch(fixture(PROJECT), { vim: true, cursorStyle: 'line' })
+  await openFile(t, 'a.ts')
+  expect(caretStyle(t)).toBe('block')
+
+  await runCommand(t, 'Settings')
+  await down(t, 5) // Vim mode
+  await press(t, i => i.pressEnter())
+  await pressEscape(t)
+  expect(caretStyle(t)).toBe('line')
+})
+
+test('editing the setting while vim sits in insert mode leaves the insert caret alone', async () => {
+  const t = await launch(fixture(PROJECT), { vim: true })
+  await openFile(t, 'a.ts')
+  await press(t, i => i.pressKey('i'))
+  expect(caretStyle(t)).toBe('line')
+
+  await runCommand(t, 'Settings')
+  await down(t, CURSOR_ROW)
+  await press(t, i => i.pressArrow('right'))
+  await pressEscape(t)
+  // The mode never changed, so neither may the caret: the shape is what says which
+  // mode you are in, and nothing puts it back until the next mode swap.
+  expect(caretStyle(t)).toBe('line')
 })
 
 test('vim mode says on the row that it has taken the caret over', async () => {

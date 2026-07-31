@@ -5,6 +5,7 @@ import { APPEARANCE_ENV, detectAppearance } from '../core/appearance'
 import type { Appearance } from '../core/appearance'
 import {
   CONFIG_FILE,
+  CURSOR_STYLES,
   projectConfigFile,
   resolveConfig,
   saveProjectConfig,
@@ -31,10 +32,6 @@ import type { Status } from './status'
 const EDITOR_MIN = 20
 
 const TAB_SIZES = [2, 4, 8]
-/** The shapes OpenTUI draws. Its fourth, `default`, is left out: it defers to whatever
- * the terminal was already set to, which is not a choice this row could show a value
- * for. */
-const CURSOR_STYLES = ['block', 'line', 'underline'] as const
 const THEME_NAMES = Object.keys(THEMES) as ThemeName[]
 
 /** The entry `dir` steps to, wrapping at both ends. */
