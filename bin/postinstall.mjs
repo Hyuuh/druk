@@ -8,6 +8,7 @@
  * break because a download did.
  */
 import { fetchBinary, findBinary, supported, target } from './binary.mjs'
+import { removeWindowsBareShim } from './windows-shim.mjs'
 
 // Bounded: an install must never hang on a stalled download (undici waits on a
 // trickling body for hours, and pnpm shows only "Running postinstall script…").
@@ -16,3 +17,5 @@ if (supported && !findBinary()) {
   process.stderr.write(`druk: fetching the ${target} binary…\n`)
   await fetchBinary({ timeout: 60_000 })
 }
+
+removeWindowsBareShim()
