@@ -38,6 +38,20 @@ interface RenderRequest {
 const PAN_COLS = 4
 const PAN_ROWS = 2
 
+function cellColor(cells: Uint8Array, pane: RGBA, channel: number, alpha: number): RGBA {
+  return alpha === 0
+    ? pane
+    : RGBA.fromInts(cells[channel]!, cells[channel + 1]!, cells[channel + 2]!, alpha)
+}
+
+async function closePdf(pdf: PdfFile): Promise<void> {
+  try {
+    await pdf.close()
+  } catch {
+    // There is nowhere to report cleanup failure after a path leaves the viewer.
+  }
+}
+
 export function PdfView(props: PdfViewProps) {
   const renderer = useRenderer()
   const [host, setHost] = createSignal<BoxRenderable | null>(null)
@@ -52,15 +66,53 @@ export function PdfView(props: PdfViewProps) {
   let requestId = 0
   let wanted: RenderRequest | null = null
   let draining = false
+  let pendingPath: string | null = null
+  let opening = false
+  let owned: PdfFile | null = null
+  let disposed = false
+
+  const drainOpen = async () => {
+    if (opening) return
+    opening = true
+    try {
+      while (pendingPath) {
+        if (disposed) break
+        const path = pendingPath
+        pendingPath = null
+        const previous = owned
+        owned = null
+        if (previous) await closePdf(previous)
+        if (disposed) break
+        if (pendingPath) continue
+
+        try {
+          const opened = await openPdf(path)
+          if (disposed || pendingPath || props.path !== path) {
+            await closePdf(opened)
+            continue
+          }
+          owned = opened
+          setPdf(opened)
+        } catch (cause) {
+          if (!disposed && !pendingPath && props.path === path) {
+            setError((cause as Error).message)
+            setLoading(false)
+          }
+        }
+      }
+    } finally {
+      opening = false
+      if (!disposed && pendingPath) void drainOpen()
+    }
+  }
 
   createEffect(
     on(
       () => props.path,
       path => {
-        let disposed = false
-        let owned: PdfFile | null = null
         requestId++
         wanted = null
+        pendingPath = path
         setPdf(null)
         setPage(0)
         setZoom(100)
@@ -68,35 +120,20 @@ export function PdfView(props: PdfViewProps) {
         setCells(null)
         setError(null)
         setLoading(true)
-
-        void openPdf(path).then(
-          opened => {
-            if (disposed) {
-              void opened.close()
-              return undefined
-            }
-            owned = opened
-            setPdf(opened)
-            return undefined
-          },
-          cause => {
-            if (!disposed) {
-              setError((cause as Error).message)
-              setLoading(false)
-            }
-            return undefined
-          },
-        )
-
-        onCleanup(() => {
-          disposed = true
-          requestId++
-          wanted = null
-          if (owned) void owned.close()
-        })
+        void drainOpen()
       },
     ),
   )
+
+  onCleanup(() => {
+    disposed = true
+    requestId++
+    wanted = null
+    pendingPath = null
+    const live = owned
+    owned = null
+    if (live) void closePdf(live)
+  })
 
   const painted = createMemo<Painted | null>(() => {
     const image = cells()
@@ -111,18 +148,9 @@ export function PdfView(props: PdfViewProps) {
         colors[at] = null
         continue
       }
-      const color = (channel: number, alpha: number) =>
-        alpha === 0
-          ? pane
-          : RGBA.fromInts(
-              image.cells[channel]!,
-              image.cells[channel + 1]!,
-              image.cells[channel + 2]!,
-              alpha,
-            )
       colors[at] = {
-        fg: color(offset, upperAlpha),
-        bg: color(offset + 4, lowerAlpha),
+        fg: cellColor(image.cells, pane, offset, upperAlpha),
+        bg: cellColor(image.cells, pane, offset + 4, lowerAlpha),
       }
     }
     return { cols: image.cols, rows: image.rows, colors }

@@ -31,6 +31,23 @@ describe('PDF geometry', () => {
     expect(pdfRenderSize(20, 20, 0, 0, 100)).toEqual({ width: 1, height: 1 })
   })
 
+  test('rejects non-finite and unsafe render geometry', () => {
+    for (const pageSize of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+      expect(() => pdfRenderSize(pageSize, 20, 10, 5, 100)).toThrow('PDF page has no size')
+      expect(() => pdfRenderSize(20, pageSize, 10, 5, 100)).toThrow('PDF page has no size')
+    }
+    for (const viewport of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => pdfRenderSize(20, 20, viewport, 5, 100)).toThrow('PDF render size is invalid')
+      expect(() => pdfRenderSize(20, 20, 10, viewport, 100)).toThrow('PDF render size is invalid')
+    }
+    for (const zoom of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => pdfRenderSize(20, 20, 10, 5, zoom)).toThrow('PDF render size is invalid')
+    }
+    expect(() => pdfRenderSize(20, 20, Number.MAX_VALUE, Number.MAX_VALUE, 400)).toThrow(
+      'PDF render size is invalid',
+    )
+  })
+
   test('steps zoom within the approved bounds', () => {
     expect(stepPdfZoom(100, 1)).toBe(125)
     expect(stepPdfZoom(100, -1)).toBe(75)

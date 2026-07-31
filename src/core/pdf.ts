@@ -56,15 +56,27 @@ export function pdfRenderSize(
   maxRows: number,
   zoom: number,
 ): { width: number; height: number } {
-  if (!(pageWidth > 0) || !(pageHeight > 0)) throw new Error('PDF page has no size')
+  if (
+    !Number.isFinite(pageWidth) ||
+    !Number.isFinite(pageHeight) ||
+    pageWidth <= 0 ||
+    pageHeight <= 0
+  ) {
+    throw new TypeError('PDF page has no size')
+  }
+  if (!Number.isFinite(maxCols) || !Number.isFinite(maxRows) || !Number.isFinite(zoom)) {
+    throw new TypeError('PDF render size is invalid')
+  }
   const pixelWidth = Math.max(1, Math.floor(maxCols))
   const pixelHeight = Math.max(1, Math.floor(maxRows) * 2)
   const fit = Math.min(pixelWidth / pageWidth, pixelHeight / pageHeight)
   const scale = fit * (Math.min(PDF_ZOOM_MAX, Math.max(PDF_ZOOM_MIN, zoom)) / 100)
-  return {
-    width: Math.max(1, Math.round(pageWidth * scale)),
-    height: Math.max(1, Math.round(pageHeight * scale)),
+  const width = Math.max(1, Math.round(pageWidth * scale))
+  const height = Math.max(1, Math.round(pageHeight * scale))
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height)) {
+    throw new TypeError('PDF render size is invalid')
   }
+  return { width, height }
 }
 
 export function clampPdfPan(

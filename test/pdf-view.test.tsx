@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { copyFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import type { CapturedFrame } from '@opentui/core'
+
 import {
   fixture,
   F1,
@@ -13,7 +15,20 @@ import {
   untilFrame,
   untilGone,
 } from './helpers'
+import type { Harness } from './helpers'
 import { pdfFixture } from './pdf-fixture'
+
+function hasColor(t: Harness, [r, g, b]: [number, number, number]): boolean {
+  const frame: CapturedFrame = t.captureSpans()
+  return frame.lines.some(line =>
+    line.spans.some(span =>
+      [span.fg, span.bg].some(color => {
+        const [red, green, blue] = color.toInts()
+        return red === r && green === g && blue === b
+      }),
+    ),
+  )
+}
 
 const PAGE_UP = '\x1B[5~'
 const PAGE_DOWN = '\x1B[6~'
@@ -45,9 +60,13 @@ describe('PDF viewer', () => {
     const t = await launch(dir, {}, { width: 80, height: 24 })
     await openFile(t, 'sample')
     await untilFrame(t, 'sample.pdf — 1/2 · 100%')
+    expect(hasColor(t, [255, 0, 0])).toBe(true)
+    expect(hasColor(t, [0, 0, 255])).toBe(false)
 
     await pageKey(t, PAGE_DOWN)
     await untilFrame(t, 'sample.pdf — 2/2 · 100%')
+    expect(hasColor(t, [0, 0, 255])).toBe(true)
+    expect(hasColor(t, [255, 0, 0])).toBe(false)
     await press(t, input => input.pressKey('k'))
     await untilFrame(t, 'sample.pdf — 1/2 · 100%')
     await pageKey(t, PAGE_UP)

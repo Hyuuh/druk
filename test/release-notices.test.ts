@@ -46,6 +46,10 @@ test('release artifacts carry PDFium notices', () => {
   const npm = join(root, 'dist/npm/druk')
   expect(existsSync(join(npm, 'THIRD_PARTY_NOTICES.md'))).toBe(true)
   expect(existsSync(join(npm, 'PDFIUM_LICENSE'))).toBe(true)
+  const notice = readFileSync(join(npm, 'THIRD_PARTY_NOTICES.md'), 'utf8')
+  expect(notice).toContain('Copyright (c) 2012-2023 Scott Chacon and others')
+  expect(notice).toContain('Permission is hereby granted')
+  expect(notice).toContain('THE SOFTWARE IS PROVIDED "AS IS"')
   expect(JSON.parse(readFileSync(join(npm, 'package.json'), 'utf8')).files).toEqual([
     'bin',
     'THIRD_PARTY_NOTICES.md',
