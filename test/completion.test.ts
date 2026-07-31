@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   applyCompletion,
+  extendsWord,
   filterCompletions,
   fuzzyMatch,
   matchRuns,
@@ -32,6 +33,20 @@ describe('wordStart', () => {
     expect(wordStart('a.mem', 5)).toBe(2)
     expect(wordStart('a.', 2)).toBe(2)
     expect(wordStart('', 0)).toBe(0)
+  })
+})
+
+describe('extendsWord', () => {
+  test('word characters typed past the request keep the reply valid', () => {
+    expect(extendsWord('d.tab(', 2, 5)).toBe(true) // "tab" typed after asking at the dot
+    expect(extendsWord('d.tab(', 5, 5)).toBe(true) // nothing typed at all
+  })
+
+  test('a scope change or a retreat invalidates it', () => {
+    expect(extendsWord('d.snakeCase.', 2, 12)).toBe(false) // a `.` landed mid-flight
+    expect(extendsWord('druk(', 4, 5)).toBe(false) // a `(` landed mid-flight
+    expect(extendsWord('druk', 4, 2)).toBe(false) // cursor moved back past the ask
+    expect(extendsWord('ab', 1, 4)).toBe(false) // cursor past the line the ask saw
   })
 })
 

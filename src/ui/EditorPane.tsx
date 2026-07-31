@@ -25,6 +25,7 @@ import {
 import type { Highlighted, Segment } from '../languages/highlight'
 import {
   applyCompletion,
+  extendsWord,
   filterCompletions,
   isWordChar,
   TRIGGER_CHARS,
@@ -479,9 +480,12 @@ export function EditorPane(props: EditorPaneProps) {
     const reply = await props.complete(row, col)
     if (!editor || gen !== completionGen || props.path !== forPath || props.blocked) return
     const now = editor.logicalCursor
-    // The reply is aimed at the request line; a cursor that left it means the
-    // user moved on and whatever came back describes a place they are not.
+    // The reply is aimed at the request position; a cursor that left the line,
+    // or a `.`/`(` typed during the round trip, means it describes a scope the
+    // cursor is no longer in — shown anyway, it puts globals in a member list.
     if (now.row !== row) return
+    const lineText = lineTextAt(now.row)
+    if (!extendsWord(lineText, col, now.col)) return
     if (!reply || reply.items.length === 0) {
       // An explicit ask deserves an answer, so the empty menu shows its
       // "No suggestions" row; an automatic one just stays out of the way.
@@ -496,7 +500,6 @@ export function EditorPane(props: EditorPaneProps) {
       } else closeMenu()
       return
     }
-    const lineText = lineTextAt(now.row)
     const start = wordStart(lineText, now.col)
     menuAnchor = { line: now.row, col: start }
     menuIncomplete = reply.isIncomplete
@@ -531,7 +534,13 @@ export function EditorPane(props: EditorPaneProps) {
       const { row, col } = editor.logicalCursor
       if (row !== menuAnchor.line || col < menuAnchor.col) return closeMenu()
       const prefix = lineTextAt(row).slice(menuAnchor.col, col)
-      if (prefix.split('').some(char => !isWordChar(char))) return closeMenu()
+      if (prefix.split('').some(char => !isWordChar(char))) {
+        closeMenu()
+        // A trigger character typed over the open menu starts the member ask,
+        // as VS Code's widget does — closing alone would swallow the `.`.
+        if (typed && TRIGGER_CHARS.has(typed)) scheduleAutoCompletion()
+        return
+      }
       if (prefix !== menuPrefix()) {
         setMenuPrefix(prefix)
         setMenuSelected(0)

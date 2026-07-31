@@ -46,6 +46,19 @@ const COMPLETIONS: CompletionItem[] = [
   { label: 'drukLazy', kind: 7, detail: 'resolve-import' },
 ]
 
+/**
+ * Members answered when the position sits after a `.` — distinguishable from
+ * the global list above, so a test can tell which scope the server was asked
+ * about. sortText mimics tsserver's "own member" rank.
+ */
+const MEMBERS: CompletionItem[] = [
+  { label: 'memTable', kind: 2, detail: '(n: string) => void', sortText: '11' },
+  { label: 'memOther', kind: 5, detail: 'number', sortText: '11' },
+]
+
+/** Last synced text per uri, to see what character sits before a position. */
+const documents = new Map<string, string>()
+
 /** Where the definition answers point — the project root, from the handshake. */
 let rootUri = ''
 
@@ -83,7 +96,18 @@ process.stdin.on(
         ],
       })
     } else if (message.method === 'textDocument/completion') {
-      send({ jsonrpc: '2.0', id: message.id, result: { isIncomplete: false, items: COMPLETIONS } })
+      const { textDocument, position } = message.params as {
+        textDocument: { uri: string }
+        position: { line: number; character: number }
+      }
+      const line = (documents.get(textDocument.uri) ?? '').split('\n')[position.line] ?? ''
+      const wordAt = line.slice(0, position.character).search(/[A-Za-z0-9_$]*$/)
+      const reply = (items: CompletionItem[]) =>
+        send({ jsonrpc: '2.0', id: message.id, result: { isIncomplete: false, items } })
+      if (line[wordAt - 1] === '.') reply(MEMBERS)
+      // Globals answer slowly, the way a big project's server does — so a test
+      // can type past the request and prove the stale reply gets dropped.
+      else setTimeout(() => reply(COMPLETIONS), 400)
     } else if (message.method === 'completionItem/resolve') {
       const item = message.params as CompletionItem
       const result =
@@ -105,12 +129,14 @@ process.stdin.on(
       process.exit(0)
     } else if (message.method === 'textDocument/didOpen') {
       const params = message.params as { textDocument: { uri: string; text: string } }
+      documents.set(params.textDocument.uri, params.textDocument.text)
       publish(params.textDocument.uri, params.textDocument.text)
     } else if (message.method === 'textDocument/didChange') {
       const params = message.params as {
         textDocument: { uri: string }
         contentChanges: { text: string }[]
       }
+      documents.set(params.textDocument.uri, params.contentChanges[0]!.text)
       publish(params.textDocument.uri, params.contentChanges[0]!.text)
     }
   }),

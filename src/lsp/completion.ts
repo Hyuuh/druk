@@ -43,6 +43,18 @@ export function wordStart(lineText: string, col: number): number {
   return at
 }
 
+/**
+ * True when everything between `from` and `to` is word characters — a reply
+ * asked at `from` still describes the word the cursor sits in at `to`. A `.` or
+ * `(` typed during the round trip fails this: the reply was computed for the
+ * scope before it, and showing it puts globals in a member list.
+ */
+export function extendsWord(lineText: string, from: number, to: number): boolean {
+  if (to < from) return false
+  for (let at = from; at < to; at++) if (!WORD_CHAR.test(lineText[at] ?? ' ')) return false
+  return true
+}
+
 export interface Match {
   item: CompletionItem
   score: number

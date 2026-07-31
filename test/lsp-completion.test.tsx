@@ -88,6 +88,34 @@ test('Ctrl+Space asks without a prefix and ↓ walks the list', async () => {
   await untilFrame(t, 'import { drukImported } from "druk"', LSP_WAIT)
 }, 30_000)
 
+test('a dot typed over the open menu asks again at the member position', async () => {
+  const t = await readyEditor()
+
+  await press(t, input => void input.typeText('druk'))
+  await untilFrame(t, 'drukAlpha', LSP_WAIT)
+
+  // The dot closes the identifier menu and is itself the trigger for a member
+  // ask — the fake answers positions after a `.` with the member list.
+  await press(t, input => void input.typeText('.'))
+  await untilFrame(t, 'memTable', LSP_WAIT)
+  await untilGone(t, 'drukAlpha')
+  expect(t.captureCharFrame()).toContain('memOther')
+}, 30_000)
+
+test('a reply overtaken by a scope-changing keystroke is dropped', async () => {
+  const t = await readyEditor()
+
+  // The global ask departs after the debounce; the fake sits on its answer for
+  // 400ms, long enough for the `(` to land first. The reply then describes the
+  // scope before the paren and must not open a menu over the new one.
+  await press(t, input => void input.typeText('druk'))
+  await new Promise(resolve => setTimeout(resolve, 150))
+  await press(t, input => void input.typeText('('))
+  await new Promise(resolve => setTimeout(resolve, 600))
+  await press(t, input => input.pressArrow('right'))
+  expect(t.captureCharFrame()).not.toContain('drukAlpha')
+}, 30_000)
+
 test('the palette command triggers the menu, Escape dismisses it', async () => {
   const t = await readyEditor()
 
