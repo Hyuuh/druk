@@ -1,19 +1,20 @@
 /**
- * Installing a language server on the user's behalf, for the npm-shaped ones.
+ * Installing a language server on the user's behalf: an npm package, or a
+ * release binary downloaded from a URL.
  *
  * Three decisions worth keeping:
  *
  * - **A prefix of druk's own**, not `npm i -g`. A global install may need sudo,
  *   puts a binary somewhere the user did not choose, and cannot be undone by
  *   deleting a directory. This one can: `rm -rf ~/.local/share/druk/lsp`.
- * - **npm, not nypm's detection.** The servers are node scripts with a
- *   `#!/usr/bin/env node` shebang, so node has to be there to run them — and
+ * - **npm, not nypm's detection.** The npm-shaped servers are node scripts with
+ *   a `#!/usr/bin/env node` shebang, so node has to be there to run them — and
  *   where node is, npm is. The compiled druk binary bakes bun, not node, and
- *   cannot stand in for it.
+ *   cannot stand in for it. A downloaded binary needs neither.
  * - **PATH still wins.** `installedCommand` only answers for a binary druk put
  *   there itself, so a user who installs the server properly gets their copy.
  */
-import { chmodSync, existsSync, mkdirSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 
@@ -95,14 +96,20 @@ export async function downloadServer(
   root = SERVER_ROOT,
 ): Promise<string | null> {
   const target = join(root, 'bin', process.platform === 'win32' ? `${name}.exe` : name)
+  // Written under a scratch name and renamed once the body is whole: a transfer
+  // that dies mid-stream would otherwise leave a truncated file at `target`,
+  // which `installedCommand` then hands to `spawn` on every launch forever.
+  const partial = `${target}.part`
   try {
     mkdirSync(join(root, 'bin'), { recursive: true })
     const response = await fetch(url, { signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS) })
     if (!response.ok) return `HTTP ${response.status}`
-    await Bun.write(target, response)
-    if (process.platform !== 'win32') chmodSync(target, 0o755)
+    await Bun.write(partial, response)
+    if (process.platform !== 'win32') chmodSync(partial, 0o755)
+    renameSync(partial, target)
     return null
   } catch (error) {
+    rmSync(partial, { force: true })
     return error instanceof Error ? error.message : String(error)
   }
 }

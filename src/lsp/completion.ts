@@ -208,6 +208,13 @@ function reindentContinuationLines(text: string, indent: string): string {
   return lines.join('\n')
 }
 
+/** The leading whitespace of `line`, which `^\s*` always matches. */
+function indentOf(content: string, line: number): string {
+  const start = offsetOf(content, { line, character: 0 })
+  const end = content.indexOf('\n', start)
+  return /^\s*/.exec(content.slice(start, end < 0 ? undefined : end))![0]
+}
+
 /**
  * Apply `item` to the document: the primary edit replaces the server's range —
  * or, without one, the word from `anchorCol` to the cursor — and every
@@ -244,17 +251,18 @@ export function applyCompletion(
     primaryRange = { start: primaryRange.start, end: cursor }
   }
 
-  // Multi-line inserts are re-indented to the line they land on before the
-  // snippet stops are stripped, so the caret offset stays correct.
-  const lineStart = offsetOf(content, { line: primaryRange.start.line, character: 0 })
-  const lineEnd = content.indexOf('\n', lineStart)
-  const lineText = content.slice(lineStart, lineEnd < 0 ? undefined : lineEnd)
-  const indent = /^\s*/.exec(lineText)?.[0] ?? ''
-  const adjusted = raw.includes('\n') ? reindentContinuationLines(raw, indent) : raw
-  const { text: inserted, caret } =
-    item.insertTextFormat === 2 || adjusted.includes('$')
-      ? stripSnippet(adjusted)
-      : { text: adjusted, caret: null }
+  const isSnippet = item.insertTextFormat === 2 || raw.includes('$')
+  // Multi-line snippets are re-indented to the line they land on before the
+  // stops are stripped, so the caret offset stays correct. Plain text is
+  // inserted verbatim — newlines a server sends outside a snippet are the text
+  // it means, and VS Code adjusts whitespace only for snippet insertion.
+  const adjusted =
+    isSnippet && raw.includes('\n')
+      ? reindentContinuationLines(raw, indentOf(content, primaryRange.start.line))
+      : raw
+  const { text: inserted, caret } = isSnippet
+    ? stripSnippet(adjusted)
+    : { text: adjusted, caret: null }
 
   const edits: { start: number; end: number; text: string; primary: boolean }[] = [
     {

@@ -236,6 +236,17 @@ describe('applyCompletion', () => {
     expect(got.content).toBe('def name() do\n  \nend\n')
     expect(got.cursor).toEqual({ line: 1, character: 2 })
   })
+
+  test('a plain-text multi-line insert is not re-indented', () => {
+    // Only snippets are re-indented: newlines outside one are the text the
+    // server means, so adding the line's indent would corrupt it.
+    const got = applyCompletion('    foo\n', { line: 0, character: 7 }, 4, {
+      label: 'block',
+      insertText: 'a\nb\nc',
+      insertTextFormat: 1,
+    })
+    expect(got.content).toBe('    a\nb\nc\n')
+  })
 })
 
 describe('matchRuns', () => {

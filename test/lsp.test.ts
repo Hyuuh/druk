@@ -127,11 +127,12 @@ describe('protocol mapping', () => {
   test('elixir is served by expert, the official Elixir LSP', () => {
     const resolved = resolveServer('elixir', {})
     expect(resolved?.command).toEqual(['expert', '--stdio'])
-    // The arches expert builds for get a fetch offer; anything else a hint.
-    const supported =
-      ['x64', 'arm64'].includes(process.arch) &&
-      ['linux', 'darwin', 'win32'].includes(process.platform)
-    expect(resolved?.install?.kind).toBe(supported ? 'download' : 'manual')
+    // The machines expert publishes an asset for get a fetch offer; anything
+    // else — Windows on arm64, most of all — a hint.
+    const supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']
+    expect(resolved?.install?.kind).toBe(
+      supported.includes(`${process.platform}-${process.arch}`) ? 'download' : 'manual',
+    )
     // An override replaces the command and drops the hint, as with any server.
     expect(resolveServer('elixir', { elixir: ['next-ls'] })?.install).toBeUndefined()
   })

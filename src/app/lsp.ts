@@ -127,7 +127,7 @@ export function createLsp(deps: {
       (spec.kind === 'npm' || spec.kind === 'download') &&
       settings.config.lspAutoInstall &&
       !offered.has(resolved.id) &&
-      (spec.kind === 'npm' ? hasNodeRuntime() : true)
+      (spec.kind !== 'npm' || hasNodeRuntime())
     ) {
       offered.add(resolved.id)
       return prompts.setPrompt({
