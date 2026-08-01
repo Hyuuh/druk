@@ -9,7 +9,7 @@
  * To add a command: add an action to `CommandActions`, then an entry below. Set
  * `hint` when a keybinding also triggers it (keybindings live in App).
  */
-import { THEMES, themeLabels } from '../themes'
+import { themeLabel, themeNames } from '../themes'
 import type { ThemeName } from '../themes'
 import { ALT } from '../ui/keys'
 
@@ -68,6 +68,7 @@ export interface CommandActions {
   problemsNext: () => void
   problemsPrev: () => void
   restartLsp: () => void
+  lspStatus: () => void
   gitDiffFile: () => void
   gitCompareBranches: () => void
   gitDiffBase: () => void
@@ -93,6 +94,8 @@ export interface CommandActions {
   gitRenameBranch: () => void
   gitDeleteBranch: () => void
   gitDeleteBranchForce: () => void
+  listPlugins: () => void
+  reloadPlugins: () => void
   showHelp: () => void
   quit: () => void
 }
@@ -211,6 +214,11 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           label: 'Restart language servers',
           run: actions.restartLsp,
         },
+        {
+          id: 'problems.servers',
+          label: 'Language server status',
+          run: actions.lspStatus,
+        },
       ],
     },
     {
@@ -276,9 +284,11 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       // Only the picker: following the OS appearance, the light and dark slots
       // and the transparent background are set once, so they live on the settings
       // page. This list stays for the arrow-through live preview.
-      children: (Object.keys(THEMES) as ThemeName[]).map(name => ({
+      // `themeNames()`, not a constant: a plugin's themes are registered at
+      // startup and belong in this list exactly like the shipped ones.
+      children: themeNames().map(name => ({
         id: `themes.${name}`,
-        label: `${check(ctx.activeTheme === name)}${themeLabels[name]}`,
+        label: `${check(ctx.activeTheme === name)}${themeLabel(name)}`,
         preview: () => actions.previewTheme(name),
         restore: () => actions.restoreTheme(),
         run: () => actions.setTheme(name),
@@ -334,6 +344,18 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           hint: 'Ctrl+Space',
           run: actions.triggerCompletion,
         },
+      ],
+    },
+    {
+      id: 'plugins',
+      label: 'Plugins',
+      children: [
+        // What they contribute and where they come from; the settings page's
+        // Plugins section is what turns one off.
+        { id: 'plugins.list', label: 'Installed plugins', run: actions.listPlugins },
+        // Manifests are read once, at startup — this is how a theme being
+        // written is seen without restarting the editor.
+        { id: 'plugins.reload', label: 'Reload plugins', run: actions.reloadPlugins },
       ],
     },
     // Vim, tab size, trim, auto-save and the rest live on the settings page —

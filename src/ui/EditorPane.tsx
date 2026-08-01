@@ -4,6 +4,7 @@ import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show } from 'solid-js'
 
 import { copyToClipboard, readClipboard } from '../core/clipboard'
+import type { CursorStyle } from '../core/config'
 import type { LineChange } from '../core/git'
 import { changeRows } from '../editor/changes'
 import { History } from '../editor/history'
@@ -59,6 +60,8 @@ export interface EditorPaneProps {
   /** A line edit asked for from the palette; bumped `key` re-applies. */
   lineOp: { op: 'comment' | 'up' | 'down' | 'duplicate'; key: number } | null
   vim: boolean
+  /** Caret shape, for as long as vim is off — see the `cursorStyle` config key. */
+  cursorStyle: CursorStyle
   tabSize: number
   /** True while a modal owns the keyboard; the editor must ignore all keys. */
   blocked: boolean
@@ -262,6 +265,12 @@ export function EditorPane(props: EditorPaneProps) {
   /** Cursor offset before the edit in progress — where undo should land. */
   let cursorBeforeEdit = 0
   const vimState = initialVimState()
+  /**
+   * Vim's mode, mirrored as a signal. `vimState` is a plain object, so the caret's
+   * shape — which is how normal and insert are told apart — has nothing to derive
+   * itself from without this.
+   */
+  const [vimMode, setVimMode] = createSignal<VimMode>(vimState.mode)
 
   const [editorEl, setEditorEl] = createSignal<TextareaRenderable | null>(null)
   const [cursorLine, setCursorLine] = createSignal(0)
@@ -1233,10 +1242,7 @@ export function EditorPane(props: EditorPaneProps) {
     const stepped = { undo: () => stepHistory('undo'), redo: () => stepHistory('redo') }
     if (handleVimKey(editor, key, vimState, stepped)) key.preventDefault()
     if (vimState.mode !== before) {
-      editor.cursorStyle = {
-        style: vimState.mode === 'insert' ? 'line' : 'block',
-        blinking: true,
-      }
+      setVimMode(vimState.mode)
       props.onVimMode(vimState.mode)
     }
   })
@@ -1285,6 +1291,7 @@ export function EditorPane(props: EditorPaneProps) {
       () => [props.vim, props.path],
       () => {
         Object.assign(vimState, initialVimState())
+        setVimMode(vimState.mode)
         props.onVimMode(props.vim ? 'normal' : null)
       },
     ),
@@ -1482,6 +1489,18 @@ export function EditorPane(props: EditorPaneProps) {
               focusedBackgroundColor={ui.bg}
               focusedTextColor={ui.text}
               cursorColor={ui.cursor}
+              // Vim owns the caret while it is on: the shape is how normal and insert
+              // are told apart, so the setting yields to it. Every input to the shape
+              // is read here rather than some of them assigned when the mode changes —
+              // this runs again whenever any of the three moves, so a `cursorStyle`
+              // edit made while vim sits in insert mode would otherwise repaint the
+              // caret block and leave it there until the next mode change.
+              // `blinking: true` is OpenTUI's default, restated because this replaces
+              // the whole option object rather than one field of it.
+              cursorStyle={{
+                style: props.vim ? (vimMode() === 'insert' ? 'line' : 'block') : props.cursorStyle,
+                blinking: true,
+              }}
               // Always wrapping: OpenTUI's textarea scrolls sideways only by
               // dragging the caret along, so unwrapped long lines have no way to be
               // read that does not move the cursor.

@@ -16,6 +16,10 @@ curl -fsSL https://druk.letstri.dev/install | bash
 Or through a package manager:
 
 ```bash
+brew install letstri/tap/druk
+```
+
+```bash
 npm install -g druk
 ```
 
@@ -195,7 +199,9 @@ instead of breaking startup.
 | --- | --- | --- |
 | `theme` | `"dark"` | `dark`, `light`, `ayu-dark`, `ayu-mirage`, `ayu-light`, `catppuccin-mocha`, `catppuccin-macchiato`, `catppuccin-frappe`, `catppuccin-latte`, `dracula`, `everforest-dark`, `everforest-light`, `gruvbox`, `gruvbox-light`, `kanagawa-wave`, `kanagawa-dragon`, `kanagawa-lotus`, `nord`, `one-dark`, `rose-pine`, `rose-pine-moon`, `rose-pine-dawn`, `solarized-dark`, `solarized-light`, `tokyo-night`, `vesper` |
 | `transparent` | `false` | set `true` to leave the editor, tab strip and sidebar unpainted, so a translucent terminal shows through |
+| `iconTheme` | `"none"` | file icons in the tree: `unicode` (shapes any font has), `nerd` (needs a patched font), or one a plugin adds |
 | `tabSize` | `2` | 1–16 |
+| `cursorStyle` | `"block"` | `block`, `line` or `underline` — the caret's shape, which vim mode overrides while it is on, since there the shape is what tells normal from insert |
 | `vim` | `false` | normal / insert / visual modes, `hjkl w b 0 $ gg G`, counts, `i a o`, `x dd dw cw`, `v` + `d y c`, `yy p P`, `u` / `Ctrl+R` |
 | `sidebarWidth` | `"auto"` | a quarter of the window, or pin 15–80 columns |
 | `trimOnSave` | `false` | on save: strip trailing spaces and end the file with one newline |
@@ -206,3 +212,59 @@ instead of breaking startup.
 
 druk also remembers each project's open tabs, active file and expanded folders, and
 restores them the next time you open that directory.
+
+## Plugins
+
+A plugin is a JSON file. Drop one in `~/.config/druk/plugins/` — either
+`<name>.json`, or `<name>/plugin.json` — and it can add themes, file-icon themes and
+language servers. A project can carry its own in `<project>/.druk/plugins/`.
+
+```json
+{
+  "id": "my-pack",
+  "name": "My Pack",
+  "version": "1.0.0",
+  "themes": [
+    {
+      "id": "my-theme",
+      "name": "My Theme",
+      "ui": { "bg": "#0d1117", "text": "#e6edf3", "...": "every colour, as #rrggbb" },
+      "syntax": { "keyword": { "fg": "#ff7b72" }, "comment": { "fg": "#8b949e", "italic": true } }
+    }
+  ],
+  "icons": [
+    {
+      "id": "my-icons",
+      "name": "My Icons",
+      "file": "·",
+      "folder": "▸",
+      "folderOpen": "▾",
+      "extensions": { "ts": { "glyph": "▲", "color": "#3178c6" } },
+      "names": { "package.json": "▤" },
+      "folders": { "src": "▸" }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "nim",
+      "command": ["nimlangserver"],
+      "filetypes": ["nim"],
+      "install": { "kind": "manual", "command": "nimble install nimlangserver" }
+    }
+  ]
+}
+```
+
+Copy the colours of a shipped theme out of
+[`src/themes`](https://github.com/letstri/druk/tree/main/src/themes) to see every `ui`
+key and the syntax groups worth styling. Each icon must be a single-cell character —
+an emoji is refused, because it would shift every name in the tree by a column. An
+`id` that matches something druk ships replaces it while the plugin is installed, so
+this is also how to repaint a built-in theme or swap a default language server for
+another.
+
+Manifests are data, never code: installing a plugin runs nothing. They are read at
+startup — `F1` → `Plugins` → `Reload plugins` picks up a change without restarting,
+and lists what is installed. The settings page's Plugins section turns one off
+(`disabledPlugins` in the config), and a manifest with a mistake in it says so in the
+status bar rather than failing quietly.

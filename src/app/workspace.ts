@@ -147,8 +147,9 @@ export function createWorkspace(deps: {
     setDiffTab(file)
     setDiffShown(file !== null)
   }
-  /** The settings page, which covers the editor slot the same way. */
-  const [settingsPage, setSettingsPage] = createSignal(false)
+  /** The full-slot pages — settings, LSP status — which cover the editor the
+   * same way the diff does. One at a time: each is a view of the editor slot. */
+  const [page, setPage] = createSignal<'settings' | 'lspStatus' | null>(null)
   /** A file that would not open, shown over the editor until the next keypress. */
   const [notice, setNotice] = createSignal<{ name: string; reason: string } | null>(null)
   const [conflict, setConflict] = createSignal<Conflict | null>(null)
@@ -169,7 +170,7 @@ export function createWorkspace(deps: {
     // The file is what the editor slot shows now. The diff tab stays on the strip,
     // as a file tab would — it is switched away from, not closed.
     setDiffShown(false)
-    setSettingsPage(false)
+    setPage(null)
     // Images and PDFs get a viewer tab and no buffer — the door stays shut to a
     // FileBuffer for anything that is not text, which is what keeps "never written
     // back" structural. The tab itself uses the same preview/pin/session logic.
@@ -306,7 +307,7 @@ export function createWorkspace(deps: {
   const showView = (id: string) => {
     if (isDiffView(id)) {
       setDiffShown(true)
-      setSettingsPage(false)
+      setPage(null)
       return panes.setFocus('editor')
     }
     openFile(id)
@@ -588,8 +589,8 @@ export function createWorkspace(deps: {
     diff,
     diffTab,
     setDiff,
-    settingsPage,
-    setSettingsPage,
+    page,
+    setPage,
     views,
     activeView,
     showView,

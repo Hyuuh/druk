@@ -93,6 +93,6 @@ describe('the published package', () => {
     const release = await Bun.file(new URL('../scripts/release.ts', import.meta.url)).text()
     const staged = [...release.matchAll(/cp\('\.\/bin\/([\w.-]+)'/g)].map(match => match[1])
     const modules = readdirSync(new URL('../bin/', import.meta.url))
-    expect(staged.sort()).toEqual(modules.sort())
+    expect(staged.toSorted()).toEqual(modules.toSorted())
   })
 })

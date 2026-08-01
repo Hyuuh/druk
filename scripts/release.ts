@@ -84,6 +84,9 @@ await cp('./bin/windows-shim.mjs', `${rootDir}/bin/windows-shim.mjs`)
 await cp('./README.md', `${rootDir}/README.md`)
 await cp(NOTICE, `${rootDir}/THIRD_PARTY_NOTICES.md`)
 await cp(PDFIUM_LICENSE, `${rootDir}/PDFIUM_LICENSE`)
+// Not in `files` below, and does not need to be: npm always packs README, LICENSE
+// and package.json whatever `files` says.
+await cp('./LICENSE', `${rootDir}/LICENSE`)
 
 const rootPkg = await Bun.file('./package.json').json()
 await Bun.write(

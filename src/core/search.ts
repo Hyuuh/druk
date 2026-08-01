@@ -1,4 +1,5 @@
 import { listDir, readFile } from './fs'
+import { ignoredPaths } from './git'
 
 export interface Match {
   path: string
@@ -39,24 +40,15 @@ export interface Context {
   lines: string[]
 }
 
-/** As `contextAround`, for text already in hand (the open buffer). */
+/**
+ * `radius` lines either side of `line`. The text is passed in rather than carried on
+ * every `Match`: a 200-match scan would drag the surroundings of each along, and only
+ * the selected one is ever shown.
+ */
 export function contextIn(text: string, line: number, radius: number): Context {
   const lines = text.split('\n')
   const start = Math.max(0, line - radius)
   return { start, lines: lines.slice(start, line + radius + 1) }
-}
-
-/**
- * `radius` lines either side of `line`. Reads the file rather than carrying context
- * on every `Match`: a 200-match scan would drag five extra lines along for each, and
- * only the selected one is ever shown.
- */
-export function contextAround(path: string, line: number, radius: number): Context | null {
-  try {
-    return contextIn(readFile(path), line, radius)
-  } catch {
-    return null // deleted or unreadable since the scan
-  }
 }
 
 const DEFAULT_LIMIT = 200
@@ -102,12 +94,22 @@ export function searchText(
   return matches
 }
 
-// Breadth-first, so the files nearest the root are found before any limit cuts off.
+/*
+ * Breadth-first, so the files nearest the root are found before any limit cuts off.
+ *
+ * Git-ignored entries are left out whatever `respectGitignore` says — that setting
+ * is about what the tree *shows*, and a build directory or a worktree checkout
+ * parked inside the project is nobody's search result either way. `ignoredPaths`
+ * collapses a fully-ignored directory to a single entry, which is all this needs:
+ * a directory that is skipped is never queued, so nothing under it is walked.
+ */
 function* filesUnder(root: string): Generator<string> {
+  const ignored = ignoredPaths(root)
   const queue: string[] = [root]
   while (queue.length > 0) {
     const dir = queue.shift()!
     for (const node of listDir(dir)) {
+      if (ignored.has(node.path)) continue
       if (node.isDir) {
         if (!SKIPPED_DIRS.has(node.name)) queue.push(node.path)
       } else {

@@ -825,11 +825,14 @@ export function stagedPaths(cwd: string): Set<string> {
  * it hides an ignored directory at its top and never descends, so the collapsed
  * entry is the only key it ever asks about. Dimming cannot use these keys for
  * exactly that reason — see `ignoredAmong`.
+ *
+ * Keyed off `cwd`, not `keyBase`: `ls-files` names paths relative to the
+ * directory it runs in, unlike porcelain's repo-relative ones, and it lists
+ * nothing outside that directory either. A druk opened on a subdirectory of a
+ * repository would otherwise key every entry under the repository root.
  */
 export function ignoredPaths(cwd: string): Set<string> {
   const ignored = new Set<string>()
-  const base = keyBase(cwd)
-  if (base === null) return ignored
   // `-z` for the same reason as `statusMap`: quoted paths would never match its keys.
   const run = git(cwd, [
     'ls-files',
@@ -843,7 +846,7 @@ export function ignoredPaths(cwd: string): Set<string> {
   for (const rel of run.stdout.split('\0')) {
     if (rel.length === 0) continue
     // A collapsed directory keeps git's trailing separator; the tree's paths have none.
-    ignored.add(join(base, rel.endsWith('/') ? rel.slice(0, -1) : rel))
+    ignored.add(join(cwd, rel.endsWith('/') ? rel.slice(0, -1) : rel))
   }
   return ignored
 }
@@ -894,6 +897,12 @@ export function failureLine(text: string): string {
 }
 
 /**
+ * The one failure druk offers to fix rather than report: `gitPush` recognises it
+ * by this exact string, so the row in KNOWN below has to keep using the constant.
+ */
+export const PUSH_REJECTED = "origin has commits you don't — pull first, then push"
+
+/**
  * Failures worth naming, in the terms of what to do next. Git's own wording
  * assumes a shell where the fix is one command away, and druk runs a fixed set
  * of commands with no shell to offer — so each of these says what happened and
@@ -910,10 +919,7 @@ export const KNOWN: ReadonlyArray<readonly [RegExp, string]> = [
     /Not possible to fast-forward|Need to specify how to reconcile/i,
     'Branch and origin have both moved on — merge or rebase in a terminal',
   ],
-  [
-    /\[rejected\].*(?:non-fast-forward|fetch first)/i,
-    "origin has commits you don't — pull first, then push",
-  ],
+  [/\[rejected\].*(?:non-fast-forward|fetch first)/i, PUSH_REJECTED],
   [
     /local changes to the following files would be overwritten/i,
     'Commit or stash your changes first — this would overwrite them',
@@ -1045,6 +1051,25 @@ export function stashPop(cwd: string): Promise<GitResult> {
 
 export function push(cwd: string, branch: string, hasUpstream: boolean): Promise<GitResult> {
   return mutate(cwd, hasUpstream ? ['push'] : ['push', '--set-upstream', 'origin', branch])
+}
+
+/**
+ * The fix for a rejected push, as one operation.
+ *
+ * Deliberately not `pull()`: a push is rejected precisely when the two sides
+ * have diverged, which is the one case `--ff-only` refuses, so the merge is the
+ * whole point of this. `--no-edit` keeps git from opening an editor druk cannot
+ * host, and a conflicted merge stops here with git's own reason — the working
+ * tree is left mid-merge, as it is after "Merge branch", and the push never runs.
+ */
+export async function pullAndPush(
+  cwd: string,
+  branch: string,
+  hasUpstream: boolean,
+): Promise<GitResult> {
+  const pulled = await mutate(cwd, ['pull', '--no-rebase', '--no-edit'])
+  if (!pulled.ok) return pulled
+  return push(cwd, branch, hasUpstream)
 }
 
 export function fetchRemote(cwd: string): Promise<GitResult> {

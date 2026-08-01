@@ -36,7 +36,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'file.newDir': () => prompts.setPrompt({ kind: 'newFolder', dir: tree.targetDir() }),
     'tabs.close': () => {
       // A page is the frontmost "tab": close it before any file tab.
-      if (workspace.settingsPage()) return workspace.setSettingsPage(false)
+      if (workspace.page()) return workspace.setPage(null)
       if (workspace.diff()) return workspace.setDiff(null)
       if (comparison.detailOpen()) return comparison.closeDetail()
       if (workspace.activePath()) workspace.closeTab(workspace.activePath()!)
@@ -124,7 +124,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       // Same when the completion menu is open: Esc dismisses it in EditorPane.
       const pageUp =
         workspace.diff() !== null ||
-        workspace.settingsPage() ||
+        workspace.page() !== null ||
         comparison.detailOpen() ||
         workspace.renderedPath() !== null
       if (
@@ -257,7 +257,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         // Shift+Tab walks the tab strip above the sidebar (see the panel's copy).
         if (key.shift) panes.showView('git')
         // A page counts as an editor to hand focus to, file open or not.
-        else if (workspace.activePath() || workspace.diff() || workspace.settingsPage()) {
+        else if (workspace.activePath() || workspace.diff() || workspace.page()) {
           panes.setFocus('editor')
         }
         break

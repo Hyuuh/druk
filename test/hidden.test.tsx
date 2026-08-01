@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 import { listDir } from '../src/core/fs'
 import { ignoredPaths } from '../src/core/git'
-import { listFiles } from '../src/core/search'
+import { listFiles, searchProject } from '../src/core/search'
 import { fixture, launch, toggleSetting } from './helpers'
 
 const PROJECT = { 'src/main.ts': 'const a = 1\n', '.DS_Store': 'junk\n', '.gitignore': 'dist\n' }
@@ -89,6 +89,47 @@ describe('respectGitignore: true', () => {
     expect(t.captureCharFrame()).toContain('dist')
     await toggleSetting(t, 'Hide git-ignored')
     expect(t.captureCharFrame()).not.toContain('dist')
+  })
+})
+
+/**
+ * Not the same question as the tree's `respectGitignore`, and not gated on it:
+ * a hit in `dist/` or in an agent's worktree checkout is noise nobody asked for,
+ * and the checkout is a second copy of every file in the project.
+ */
+describe('project search and the fuzzy picker skip ignored files', () => {
+  function repo() {
+    const dir = mkdtempSync(join(tmpdir(), 'druk-searchignore-'))
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir })
+    // Deliberately not `dist`: SKIPPED_DIRS drops that by name, which would pass
+    // this test without gitignore being consulted at all.
+    writeFileSync(join(dir, '.gitignore'), 'generated\n.worktrees\n')
+    writeFileSync(join(dir, 'a.ts'), 'const alpha = 1\n')
+    mkdirSync(join(dir, 'generated'))
+    writeFileSync(join(dir, 'generated', 'bundle.js'), 'var alpha = 1\n')
+    mkdirSync(join(dir, '.worktrees', 'copy'), { recursive: true })
+    writeFileSync(join(dir, '.worktrees', 'copy', 'a.ts'), 'const alpha = 1\n')
+    return dir
+  }
+
+  test('a search finds the source file and neither copy of it', () => {
+    const dir = repo()
+    const hits = searchProject(dir, 'alpha').map(match => match.path.slice(dir.length + 1))
+    expect(hits).toEqual(['a.ts'])
+  })
+
+  test('the picker lists neither', () => {
+    const dir = repo()
+    const files = listFiles(dir).map(path => path.slice(dir.length + 1))
+    expect(files).toEqual(['.gitignore', 'a.ts'])
+  })
+
+  test('outside a repository everything is listed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'druk-searchplain-'))
+    writeFileSync(join(dir, '.gitignore'), 'generated\n')
+    mkdirSync(join(dir, 'generated'))
+    writeFileSync(join(dir, 'generated', 'bundle.js'), 'var alpha = 1\n')
+    expect(searchProject(dir, 'alpha')).toHaveLength(1)
   })
 })
 

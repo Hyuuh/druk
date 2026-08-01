@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
 import { LANGUAGES, languageFor, languageLabel } from '../src/languages'
-import { computeHighlights, getSyntaxStyle, segmentsIn, STALE } from '../src/languages/highlight'
+import {
+  computeHighlights,
+  filetypeForPath,
+  getSyntaxStyle,
+  segmentsIn,
+  STALE,
+} from '../src/languages/highlight'
 import type { Highlighted, Segment } from '../src/languages/highlight'
 import { allSegments, parseHighlights, WHOLE } from './syntax'
 
@@ -35,6 +41,8 @@ const SAMPLES: Record<string, string> = {
   sql: '-- c\nSELECT id FROM users WHERE age > 18;\n',
   ini: '; c\n[section]\nkey = value\n',
   dotenv: '# c\nexport PORT=3000\nURL="https://x.dev"\n',
+  terraform: '# c\nresource "aws_instance" "web" {\n  ami = var.ami_id\n}\n',
+  hcl: '# c\njob "web" {\n  type = "service"\n}\n',
 }
 
 describe('languages', () => {
@@ -311,4 +319,92 @@ describe('segmenting a window instead of the document', () => {
     }
     expect(stitched.toSorted()).toEqual(whole)
   }, 20000)
+})
+
+// The `${var...}` below is Terraform interpolation, not a template literal.
+/* oxlint-disable no-template-curly-in-string */
+describe('terraform', () => {
+  const SOURCE = [
+    'terraform {',
+    '  required_version = ">= 1.0"',
+    '}',
+    '',
+    '# a commented-out attribute',
+    '# ami = "abc"',
+    '',
+    'variable "prefix" {',
+    '  type    = string',
+    '  default = null',
+    '}',
+    '',
+    'resource "aws_instance" "web" {',
+    '  instance_type = "t3.micro"',
+    '  count         = var.enabled ? 1 : 0',
+    '  colour        = "#ffffff"',
+    '  docs          = "https://x.dev/path.html#anchor"',
+    '  name          = "${var.prefix}-web" // trailing',
+    '  tags          = merge(local.common, {})',
+    '}',
+    '',
+  ].join('\n')
+
+  const styleAt = styleLookup(SOURCE)
+  const segsFor = () => allSegments(SOURCE, 'terraform')
+
+  test('block heads, keys, types, values and calls each take their own colour', async () => {
+    const segs = await segsFor()
+    expect(isStyle(styleAt(segs, 'resource'), 'keyword')).toBe(true)
+    expect(isStyle(styleAt(segs, 'variable'), 'keyword')).toBe(true)
+    expect(isStyle(styleAt(segs, 'instance_type'), 'property')).toBe(true)
+    expect(isStyle(styleAt(segs, 'string'), 'type')).toBe(true)
+    expect(isStyle(styleAt(segs, 'null'), 'boolean')).toBe(true)
+    expect(isStyle(styleAt(segs, '"t3.micro"'), 'string')).toBe(true)
+    expect(isStyle(styleAt(segs, 'merge('), 'function')).toBe(true)
+  })
+
+  test('a reference inside an interpolation survives the string around it', async () => {
+    const segs = await segsFor()
+    // The whole point of `string` painting before `variable`.
+    expect(isStyle(styleAt(segs, 'var.prefix'), 'variable')).toBe(true)
+    // Its own theme entry, not the `punctuation` fallback — the closing brace a
+    // line below is the one that lands on plain punctuation.
+    expect(isStyle(styleAt(segs, '${'), 'punctuation.special')).toBe(true)
+    expect(isStyle(styleAt(segs, 'local.common'), 'variable')).toBe(true)
+    expect(isStyle(styleAt(segs, 'var.enabled'), 'variable')).toBe(true)
+  })
+
+  test('a # that is not a comment is left alone', async () => {
+    const segs = await segsFor()
+    // Both are `#` inside a string, and both are why the comment pattern insists
+    // on a leading space or tab rather than matching a bare `#`.
+    expect(isStyle(styleAt(segs, '"#ffffff"'), 'string')).toBe(true)
+    expect(isStyle(styleAt(segs, '#anchor'), 'string')).toBe(true)
+  })
+
+  test('comments win the line, including one that comments out code', async () => {
+    const segs = await segsFor()
+    // `ami` and its string would otherwise keep property and string colours.
+    expect(isStyle(styleAt(segs, 'ami ='), 'comment')).toBe(true)
+    expect(isStyle(styleAt(segs, '"abc"'), 'comment')).toBe(true)
+    expect(isStyle(styleAt(segs, '// trailing'), 'comment')).toBe(true)
+  })
+
+  test('the extensions route to a filetype at all', () => {
+    // OpenTUI resolves none of these, so without the lines in `filetypeForPath`
+    // every assertion above would still pass and a real `.tf` would render plain.
+    expect(filetypeForPath('main.tf')).toBe('terraform')
+    expect(filetypeForPath('infra/prod.tfvars')).toBe('terraform')
+    expect(filetypeForPath('terraform.tfvars')).toBe('terraform')
+    expect(filetypeForPath('packer.hcl')).toBe('hcl')
+    // Not swept up by a suffix that merely ends in the same letters.
+    expect(filetypeForPath('shelf.ts')).toBe('typescript')
+  })
+
+  test('hcl paints the same, under its own name', async () => {
+    const segs = await allSegments('# c\njob "web" {\n  type = "service"\n}\n', 'hcl')
+    const styles = styleLookup('# c\njob "web" {\n  type = "service"\n}\n')
+    expect(isStyle(styles(segs, '"service"'), 'string')).toBe(true)
+    expect(languageFor('hcl')).toBeDefined()
+    expect(languageLabel('terraform')).toBe('tf')
+  })
 })

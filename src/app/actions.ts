@@ -1,4 +1,4 @@
-import { dirname, relative } from 'node:path'
+import { basename, dirname, relative } from 'node:path'
 
 import { createMemo } from 'solid-js'
 
@@ -10,6 +10,7 @@ import {
   lastCommitSubject,
   pull,
   push,
+  PUSH_REJECTED,
   refText,
   stagedPaths,
   stashPop,
@@ -18,6 +19,7 @@ import {
 } from '../core/git'
 import type { FileStatus } from '../core/git'
 import { pathTokenAt, resolveImportPath } from '../core/imports'
+import { contributionSummary, plugins, PLUGINS_DIR } from '../plugins'
 import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
@@ -86,7 +88,7 @@ export function createCommands(ctx: AppContext) {
     // and diffing it against the base is right either way.
     const file = diffFileFor(path, git.gitStatus().get(path) ?? 'modified')
     if (!file) return say('Cannot diff this file', 'warn')
-    ctx.workspace.setSettingsPage(false)
+    ctx.workspace.setPage(null)
     ctx.workspace.setDiff(file)
   }
 
@@ -123,7 +125,7 @@ export function createCommands(ctx: AppContext) {
     // record where it started — and the way back is what the jump is half of.
     if (path === workspace.activeView()) ctx.navigation.mark()
     workspace.setDiff(null)
-    workspace.setSettingsPage(false)
+    workspace.setPage(null)
     if (path !== workspace.activePath()) workspace.openFile(path)
     if (workspace.activePath() !== path) return
     editor.requestGoto(line, col)
@@ -228,13 +230,18 @@ export function createCommands(ctx: AppContext) {
       settings.setScope('user')
       // One page at a time: the slot under the settings page is the editor's.
       ctx.workspace.setDiff(null)
-      ctx.workspace.setSettingsPage(true)
+      ctx.workspace.setPage('settings')
       panes.setFocus('editor')
     },
     openProjectSettings: () => {
       settings.setScope('project')
       ctx.workspace.setDiff(null)
-      ctx.workspace.setSettingsPage(true)
+      ctx.workspace.setPage('settings')
+      panes.setFocus('editor')
+    },
+    lspStatus: () => {
+      ctx.workspace.setDiff(null)
+      ctx.workspace.setPage('lspStatus')
       panes.setFocus('editor')
     },
     problemsList: () => {
@@ -339,6 +346,13 @@ export function createCommands(ctx: AppContext) {
       gitOp('Pushing', () => push(rootDir, name, hasUpstream), {
         done: () =>
           hasUpstream ? `Pushed ${name}` : `Pushed ${name} — upstream set to origin/${name}`,
+        // Rejected because origin moved on: the fix is the same two commands
+        // every time, so offer to run them rather than name them and stop.
+        handleFailure: result => {
+          if (result.detail !== PUSH_REJECTED) return false
+          ctx.prompts.setPrompt({ kind: 'pullPush', branch: name, hasUpstream })
+          return true
+        },
       })
     },
     gitFetch: () => gitOp('Fetching', () => fetchRemote(rootDir), { done: () => 'Fetched' }),
@@ -352,6 +366,30 @@ export function createCommands(ctx: AppContext) {
     gitRenameBranch: () => ctx.branches.open('rename'),
     gitDeleteBranch: () => ctx.branches.open('delete'),
     gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
+    listPlugins: () => {
+      const found = plugins()
+      if (found.length === 0) return say(`No plugins — manifests go in ${PLUGINS_DIR}`)
+      say(
+        found
+          .map(
+            plugin =>
+              `${plugin.name} ${plugin.version} (${contributionSummary(plugin)})${plugin.disabled ? ' — off' : ''}`,
+          )
+          .join(' · '),
+      )
+    },
+    reloadPlugins: () => {
+      const load = settings.reloadPlugins()
+      const problem = load.problems[0]
+      if (problem) {
+        return say(`${basename(dirname(problem.source))}: ${problem.reason}`, 'warn')
+      }
+      say(
+        load.plugins.length === 0
+          ? `No plugins — manifests go in ${PLUGINS_DIR}`
+          : `${load.plugins.length} plugin${load.plugins.length === 1 ? '' : 's'} reloaded`,
+      )
+    },
     showHelp: () => ctx.overlays.setHelp(true),
     quit: ctx.prompts.quit,
   }
