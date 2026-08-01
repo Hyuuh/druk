@@ -77,6 +77,18 @@ export function createGit(rootDir: string, panelView: () => 'tree' | 'list') {
       return next
     })
 
+  /**
+   * Fold every folder the panel can draw.
+   *
+   * Taken from a fully expanded pass rather than from the changes' own ancestors:
+   * a chain of single-child folders is drawn as one row keyed on the outermost of
+   * them, so a deeper rel in the set would hide a subtree leaving no row to press.
+   */
+  const collapseAll = () =>
+    setCollapsed(
+      new Set(changeRows(changes(), 'tree').flatMap(row => (row.kind === 'dir' ? [row.rel] : []))),
+    )
+
   /** Unfold every folder on the way to `rel`, so its row is on screen to land on. */
   const revealChange = (rel: string) =>
     setCollapsed(previous => {
@@ -112,6 +124,7 @@ export function createGit(rootDir: string, panelView: () => 'tree' | 'list') {
     rows,
     collapsed,
     toggleCollapsed,
+    collapseAll,
     revealChange,
   }
 }

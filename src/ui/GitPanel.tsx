@@ -1,11 +1,10 @@
 import { TextAttributes } from '@opentui/core'
-import { useTerminalDimensions } from '@opentui/solid'
-import { createMemo, For, Show } from 'solid-js'
+import { createEffect, createMemo, For, on, Show } from 'solid-js'
 
 import type { ChangeRow, DirRow, FileRow } from '../core/changeTree'
 import { ui } from '../themes'
 import { MARKS, statusColor } from './FileTree'
-import { createPanelWindow, rowBg } from './list'
+import { createScrollList, rowBg, scrollbarOptions } from './list'
 
 /** `Show`'s `when` takes a value, not a predicate: these hand it the narrowed row
  * (or nothing) so the block inside needs no cast. */
@@ -31,6 +30,8 @@ export interface GitPanelProps {
   onFocus: () => void
   /** A row clicked: move the cursor there, and diff it or fold it. */
   onActivate: (index: number) => void
+  /** The header's ▴: fold every folder at once. */
+  onCollapseAll: () => void
 }
 
 /**
@@ -40,21 +41,17 @@ export interface GitPanelProps {
  * tree's, so this renders and reports clicks, nothing more.
  */
 export function GitPanel(props: GitPanelProps) {
-  const dimensions = useTerminalDimensions()
-
   const cursor = () => Math.max(0, Math.min(props.cursor, props.rows.length - 1))
 
-  // Header (2) + hint line (1) + sidebar tabs (1) + tabs/status chrome (3).
-  const pageRows = () => Math.max(3, dimensions().height - 7)
+  const list = createScrollList(() => props.rows.length)
+  const visible = createMemo(() => props.rows.slice(list.window().start, list.window().end))
 
   /**
-   * First row on screen. Change lists are usually shorter than the panel, but
-   * `git status` after a big refactor is not, and a cursor below the fold reads
-   * as no cursor at all.
+   * Change lists are usually shorter than the panel, but `git status` after a big
+   * refactor is not — and against a comparison base every file the branch touches
+   * is a row. A cursor below the fold reads as no cursor at all.
    */
-  const top = createPanelWindow(cursor, () => props.rows.length, pageRows)
-
-  const visible = createMemo(() => props.rows.slice(top(), top() + pageRows()))
+  createEffect(on(cursor, row => list.reveal(row)))
 
   const headline = () => {
     if (!props.inRepo) return 'not a git repository'
@@ -90,6 +87,13 @@ export function GitPanel(props: GitPanelProps) {
           attributes={TextAttributes.BOLD}
         />
         <box flexGrow={1} backgroundColor={ui.sidebarBg} />
+        {/* Only tree view has folders to fold, and only while one is open: the
+            flat list draws no folder rows at all. */}
+        <Show when={props.rows.some(row => row.kind === 'dir' && !row.collapsed)}>
+          <box flexShrink={0} backgroundColor={ui.sidebarBg} onMouseDown={props.onCollapseAll}>
+            <text fg={ui.dim} bg={ui.sidebarBg} content="▴ " />
+          </box>
+        </Show>
         {/* The base has to be said somewhere: against another branch every file
             it touches is marked, which reads as a broken tree until you know why. */}
         <text
@@ -111,10 +115,17 @@ export function GitPanel(props: GitPanelProps) {
           </box>
         }
       >
-        <box flexGrow={1} flexDirection="column" backgroundColor={ui.sidebarBg}>
+        <scrollbox
+          ref={list.ref}
+          flexGrow={1}
+          backgroundColor={ui.sidebarBg}
+          scrollbarOptions={scrollbarOptions()}
+        >
+          {/* Spacers keep the scrollable extent honest while only a window exists. */}
+          <box height={list.window().start} flexShrink={0} backgroundColor={ui.sidebarBg} />
           <For each={visible()}>
             {(row, at) => {
-              const index = () => top() + at()
+              const index = () => list.window().start + at()
               const bg = () => rowBg(index() === cursor(), props.focused)
               return (
                 <box
@@ -176,7 +187,12 @@ export function GitPanel(props: GitPanelProps) {
               )
             }}
           </For>
-        </box>
+          <box
+            height={Math.max(0, props.rows.length - list.window().end)}
+            flexShrink={0}
+            backgroundColor={ui.sidebarBg}
+          />
+        </scrollbox>
       </Show>
       <Show when={props.inRepo}>
         <box height={1} backgroundColor={ui.sidebarBg} paddingLeft={1}>

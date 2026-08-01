@@ -78,6 +78,19 @@ export function createTree(
     setAnchor(null)
   }
 
+  /**
+   * Shut every folder. The cursor is usually inside one of them, and a selection
+   * with no row on screen reads as no selection at all — so it walks out to the
+   * top-level entry that swallowed it.
+   */
+  const collapseAll = () => {
+    setExpanded(new Set<string>())
+    clearMarks()
+    const path = selectedPath()
+    if (!path?.startsWith(`${rootDir}/`)) return
+    setSelectedPath(join(rootDir, path.slice(rootDir.length + 1).split('/')[0]!))
+  }
+
   const moveSelection = (delta: number) => {
     const rows = nodes()
     if (rows.length === 0) return
@@ -140,6 +153,7 @@ export function createTree(
     refreshTree,
     expand,
     toggleExpand,
+    collapseAll,
     reveal,
     clearMarks,
     moveSelection,

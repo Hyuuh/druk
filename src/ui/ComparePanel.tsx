@@ -1,11 +1,10 @@
 import { TextAttributes } from '@opentui/core'
-import { useTerminalDimensions } from '@opentui/solid'
-import { createMemo, For, Show } from 'solid-js'
+import { createEffect, createMemo, For, on, Show } from 'solid-js'
 
 import type { BranchComparison, ComparisonCommit, ComparisonFile } from '../core/git'
 import { ui } from '../themes'
 import { diffMark, diffStatusColor } from './DiffView'
-import { createPanelWindow, rowBg } from './list'
+import { createScrollList, rowBg, scrollbarOptions } from './list'
 
 export interface ComparePanelProps {
   state: 'idle' | 'loading' | 'ready' | 'empty' | 'error'
@@ -23,20 +22,19 @@ export interface ComparePanelProps {
 
 /** Branch-comparison mode inside the existing source-control sidebar. */
 export function ComparePanel(props: ComparePanelProps) {
-  const dimensions = useTerminalDimensions()
   const rows = () => (props.mode === 'files' ? props.files : props.commits)
   const cursor = () => Math.max(0, Math.min(props.cursor, rows().length - 1))
-  // Sidebar tabs + five header rows + footer + tabs/status chrome.
-  const pageRows = () => Math.max(3, dimensions().height - 10)
-  const top = createPanelWindow(cursor, () => rows().length, pageRows)
+
+  const list = createScrollList(() => rows().length)
+  createEffect(on(cursor, row => list.reveal(row)))
 
   // One window over whichever list is showing: slicing both meant the hidden one
   // was re-sliced on every cursor move for nothing.
   const visibleFiles = createMemo(() =>
-    props.mode === 'files' ? props.files.slice(top(), top() + pageRows()) : [],
+    props.mode === 'files' ? props.files.slice(list.window().start, list.window().end) : [],
   )
   const visibleCommits = createMemo(() =>
-    props.mode === 'commits' ? props.commits.slice(top(), top() + pageRows()) : [],
+    props.mode === 'commits' ? props.commits.slice(list.window().start, list.window().end) : [],
   )
   const summary = () => {
     const comparison = props.comparison
@@ -94,13 +92,20 @@ export function ComparePanel(props: ComparePanelProps) {
           </box>
         }
       >
-        <box flexGrow={1} flexDirection="column" backgroundColor={ui.sidebarBg}>
+        <scrollbox
+          ref={list.ref}
+          flexGrow={1}
+          backgroundColor={ui.sidebarBg}
+          scrollbarOptions={scrollbarOptions()}
+        >
+          {/* Spacers keep the scrollable extent honest while only a window exists. */}
+          <box height={list.window().start} flexShrink={0} backgroundColor={ui.sidebarBg} />
           <Show
             when={props.mode === 'files'}
             fallback={
               <For each={visibleCommits()}>
                 {(commit, row) => {
-                  const index = () => top() + row()
+                  const index = () => list.window().start + row()
                   const bg = () => rowBg(index() === cursor(), props.focused)
                   return (
                     <box
@@ -124,7 +129,7 @@ export function ComparePanel(props: ComparePanelProps) {
           >
             <For each={visibleFiles()}>
               {(file, row) => {
-                const index = () => top() + row()
+                const index = () => list.window().start + row()
                 const bg = () => rowBg(index() === cursor(), props.focused)
                 const totals = () =>
                   file.binary ? 'binary' : `+${file.additions} −${file.deletions}`
@@ -148,7 +153,12 @@ export function ComparePanel(props: ComparePanelProps) {
               }}
             </For>
           </Show>
-        </box>
+          <box
+            height={Math.max(0, rows().length - list.window().end)}
+            flexShrink={0}
+            backgroundColor={ui.sidebarBg}
+          />
+        </scrollbox>
       </Show>
       <box height={1} backgroundColor={ui.sidebarBg} paddingLeft={1}>
         <text

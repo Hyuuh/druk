@@ -2,7 +2,7 @@ import { basename, relative } from 'node:path'
 
 import { TextAttributes } from '@opentui/core'
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show } from 'solid-js'
 
 import { readFile } from '../core/fs'
@@ -21,6 +21,7 @@ import { windowAround } from './list'
 import { modalWidth, PAD } from './modal'
 import { ModalPanel, topInset } from './Overlay'
 import { TextInput } from './TextInput'
+import { useKeys } from './useKeys'
 
 export type SearchScope = 'file' | 'project'
 
@@ -288,8 +289,8 @@ export function SearchPanel(props: SearchPanelProps) {
     return Math.max(MIN_CONTEXT, Math.min(MAX_CONTEXT, Math.floor(spare / 5)))
   }
 
-  /** Rows the preview spends: the lines themselves plus the gap above them. */
-  const previewRows = () => contextLines() * 2 + 2
+  /** Rows the preview spends: the lines themselves plus the gap and rule above them. */
+  const previewRows = () => contextLines() * 2 + 3
 
   /** Surroundings of the selected match, or null when there is no room to show them. */
   const preview = createMemo<Context | null>(() => {
@@ -346,7 +347,7 @@ export function SearchPanel(props: SearchPanelProps) {
     r: 'regex',
   }
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     const k = key.name
     const option = key.ctrl ? OPTION_KEYS[k] : undefined
     if (option) {
@@ -590,40 +591,50 @@ export function SearchPanel(props: SearchPanelProps) {
 
       <Show when={preview()}>
         {(around: () => Context) => (
-          <box flexDirection="column" backgroundColor={ui.solidBg} marginTop={1}>
-            {/* Index, not For: the rows are a fixed column whose *values* change as
+          <box flexDirection="column" marginTop={1}>
+            {/* The list and the preview are both source lines on near-identical
+                  backgrounds; without a rule between them the eye reads one column of
+                  code where there are two unrelated ones. */}
+            <text
+              fg={ui.border}
+              bg={ui.panelBg}
+              content={'─'.repeat(Math.max(0, contentWidth()))}
+            />
+            <box flexDirection="column" backgroundColor={ui.solidBg}>
+              {/* Index, not For: the rows are a fixed column whose *values* change as
                   the selection moves, and keying by value tears every line down and
                   rebuilds it on each step. */}
-            <Index each={around().lines}>
-              {(line, i) => {
-                const at = () => around().start + i
-                const isMatch = () => at() === current()?.line
-                const bg = () => (isMatch() ? ui.currentLine : ui.solidBg)
-                return (
-                  <box flexDirection="row" backgroundColor={bg()}>
-                    <text
-                      fg={ui.gutter}
-                      bg={bg()}
-                      flexShrink={0}
-                      content={`${`${at() + 1}`.padStart(5)} `}
-                    />
-                    <Index each={previewLine(line(), at())}>
-                      {span => (
-                        <text
-                          fg={span().fg}
-                          bg={bg()}
-                          flexShrink={0}
-                          content={span().text}
-                          attributes={span().attributes}
-                        />
-                      )}
-                    </Index>
-                    {/* Spacer, so the line's background reaches the panel's edge. */}
-                    <box flexGrow={1} backgroundColor={bg()} />
-                  </box>
-                )
-              }}
-            </Index>
+              <Index each={around().lines}>
+                {(line, i) => {
+                  const at = () => around().start + i
+                  const isMatch = () => at() === current()?.line
+                  const bg = () => (isMatch() ? ui.currentLine : ui.solidBg)
+                  return (
+                    <box flexDirection="row" backgroundColor={bg()}>
+                      <text
+                        fg={ui.gutter}
+                        bg={bg()}
+                        flexShrink={0}
+                        content={`${`${at() + 1}`.padStart(5)} `}
+                      />
+                      <Index each={previewLine(line(), at())}>
+                        {span => (
+                          <text
+                            fg={span().fg}
+                            bg={bg()}
+                            flexShrink={0}
+                            content={span().text}
+                            attributes={span().attributes}
+                          />
+                        )}
+                      </Index>
+                      {/* Spacer, so the line's background reaches the panel's edge. */}
+                      <box flexGrow={1} backgroundColor={bg()} />
+                    </box>
+                  )
+                }}
+              </Index>
+            </box>
           </box>
         )}
       </Show>

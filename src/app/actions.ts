@@ -2,6 +2,7 @@ import { basename, dirname, relative } from 'node:path'
 
 import { createMemo } from 'solid-js'
 
+import { ancestorDirs } from '../core/changeTree'
 import { readFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import {
@@ -105,6 +106,22 @@ export function createCommands(ctx: AppContext) {
     if (!target) return
     panes.setGitCursor(at)
     if (target.kind === 'file') showDiff(target.change.path)
+  }
+
+  /**
+   * Fold every folder in the source-control panel. The cursor is moved rather
+   * than clamped: its row is usually one of the ones just hidden, and the folder
+   * that swallowed it is where it was. Deliberately not `gitMoveTo`, which would
+   * throw a diff over whatever page is up for a mere fold.
+   */
+  const gitCollapseAll = () => {
+    const row = git.rows()[panes.gitCursor()]
+    const rel = row ? (row.kind === 'dir' ? row.rel : row.change.rel) : null
+    git.collapseAll()
+    const rows = git.rows()
+    const top = rel ? (ancestorDirs(rel)[0] ?? rel) : null
+    const at = rows.findIndex(r => (r.kind === 'dir' ? r.rel : r.change.rel) === top)
+    panes.setGitCursor(at >= 0 ? at : Math.min(panes.gitCursor(), Math.max(0, rows.length - 1)))
   }
 
   /** Enter, or a click: a file diffs, a folder folds. */
@@ -219,6 +236,10 @@ export function createCommands(ctx: AppContext) {
     navForward: ctx.navigation.forward,
     toggleFocus: () => (panes.focus() === 'tree' ? panes.setFocus('editor') : panes.focusTree()),
     toggleSidebar: panes.toggleSidebar,
+    // One command for the button both sidebar views carry: which of them is up
+    // is what "collapse everything" means.
+    collapseSidebar: () => (panes.view() === 'git' ? gitCollapseAll() : tree.collapseAll()),
+    gitCollapseAll,
     toggleGitView: panes.toggleGitView,
     toggleMarkdown: workspace.toggleRendered,
     setTheme: settings.applyTheme,

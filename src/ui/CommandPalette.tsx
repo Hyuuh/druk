@@ -1,5 +1,5 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 
 import type { Command, FlatCommand } from '../app/commands'
@@ -9,6 +9,7 @@ import { windowAround } from './list'
 import { listRows, modalWidth } from './modal'
 import { ModalPanel, topInset } from './Overlay'
 import { TextInput } from './TextInput'
+import { useKeys } from './useKeys'
 
 export interface CommandPaletteProps {
   commands: Command[]
@@ -86,7 +87,7 @@ export function CommandPalette(props: CommandPaletteProps) {
     setIndex(0)
   }
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     const k = key.name
     if (k === 'up') {
       key.preventDefault()

@@ -76,6 +76,7 @@ export const BINDABLE: Bindable[] = [
   { id: 'tabs.closeAll', label: 'Close all tabs', defaults: [] },
   { id: 'view.sidebar', label: 'Show / hide sidebar', defaults: ['Ctrl+B'] },
   { id: 'view.git', label: 'Source control panel', defaults: [`Ctrl+${ALT}+G`] },
+  { id: 'view.collapse', label: 'Collapse folders in sidebar', defaults: [] },
   {
     id: 'view.markdown',
     label: 'Markdown: rendered / source',

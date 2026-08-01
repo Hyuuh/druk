@@ -1,10 +1,11 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createSignal, For } from 'solid-js'
 
 import { ui } from '../themes'
 import { modalWidth, PAD, wrapText } from './modal'
 import { ModalPanel } from './Overlay'
+import { useKeys } from './useKeys'
 
 export interface Choice {
   id: string
@@ -26,7 +27,7 @@ export function ChoiceModal(props: ChoiceModalProps) {
   const width = () => modalWidth(dimensions().width, 0.54, 64, 88)
   const lines = () => wrapText(props.message, width() - PAD * 2)
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     const k = key.name
     if (k === 'up') {
       key.preventDefault()

@@ -451,6 +451,7 @@ export function App(props: {
                   }}
                   onPin={node => workspace.pinTab(node.path)}
                   onFocus={() => panes.setFocus('tree')}
+                  onCollapseAll={tree.collapseAll}
                 />
               }
             >
@@ -469,6 +470,7 @@ export function App(props: {
                     inRepo={git.inRepo()}
                     onFocus={() => panes.setFocus('tree')}
                     onActivate={actions.gitActivateRow}
+                    onCollapseAll={actions.gitCollapseAll}
                   />
                 }
               >

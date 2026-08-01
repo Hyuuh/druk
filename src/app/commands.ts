@@ -57,6 +57,7 @@ export interface CommandActions {
   navForward: () => void
   toggleFocus: () => void
   toggleSidebar: () => void
+  collapseSidebar: () => void
   toggleGitView: () => void
   toggleMarkdown: () => void
   setTheme: (name: ThemeName) => void
@@ -303,6 +304,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           label: 'Source control (commit / push)',
           hint: `Ctrl+${ALT}+G`,
           run: actions.toggleGitView,
+        },
+        {
+          id: 'view.collapse',
+          label: 'Collapse folders in sidebar',
+          hint: '▴ in its header',
+          run: actions.collapseSidebar,
         },
         {
           id: 'view.markdown',

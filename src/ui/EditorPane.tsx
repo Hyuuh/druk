@@ -1,6 +1,6 @@
 import { TextAttributes } from '@opentui/core'
 import type { KeyEvent, MouseEvent, TextareaRenderable } from '@opentui/core'
-import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/solid'
+import { useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show } from 'solid-js'
 
 import { copyToClipboard, readClipboard } from '../core/clipboard'
@@ -36,6 +36,7 @@ import type { CompletionReply } from '../lsp/completion'
 import type { CompletionItem, ProblemSeverity } from '../lsp/protocol'
 import { paintedTheme, ui } from '../themes'
 import { CompletionMenu, MENU_ROWS, menuWidth } from './CompletionMenu'
+import { useKeys } from './useKeys'
 import { Welcome } from './Welcome'
 
 export interface EditorPaneProps {
@@ -1062,7 +1063,7 @@ export function EditorPane(props: EditorPaneProps) {
   onCleanup(releaseEditor)
 
   // Clipboard and typing helpers, ahead of the textarea's own handling.
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     // preventDefault only stops the textarea, not sibling global handlers, so a
     // key already claimed elsewhere (the tree's Enter) must be ignored here too.
     if (key.defaultPrevented) return
@@ -1235,7 +1236,7 @@ export function EditorPane(props: EditorPaneProps) {
     if (handleTyping(editor, key, props.tabSize)) key.preventDefault()
   })
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     if (key.defaultPrevented) return
     if (props.blocked || !props.vim || !editor || !props.focused) return
     const before = vimState.mode

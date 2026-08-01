@@ -1,10 +1,11 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { For } from 'solid-js'
 
 import { ui } from '../themes'
 import { modalWidth, PAD, wrapText } from './modal'
 import { ModalPanel } from './Overlay'
+import { useKeys } from './useKeys'
 
 export interface ConfirmModalProps {
   message: string
@@ -22,7 +23,7 @@ export function ConfirmModal(props: ConfirmModalProps) {
   const width = () => modalWidth(dimensions().width, 0.5, 60, 84)
   const lines = () => wrapText(props.message, width() - PAD * 2)
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     if (key.name === 'return' || key.name === 'enter') {
       key.preventDefault()
       props.onConfirm()

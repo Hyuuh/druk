@@ -1,5 +1,5 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createSignal, For, Show } from 'solid-js'
 
 import type { FileStatus } from '../core/git'
@@ -7,6 +7,7 @@ import { ui } from '../themes'
 import { MARKS, statusColor } from './FileTree'
 import { listRows, modalWidth, PAD } from './modal'
 import { ModalPanel } from './Overlay'
+import { useKeys } from './useKeys'
 
 export interface CommitFile {
   path: string
@@ -64,7 +65,7 @@ export function CommitModal(props: CommitModalProps) {
       prev.size > 0 ? new Set<string>() : new Set(props.files.map(file => file.path)),
     )
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     const k = key.name
     if (k === 'up') {
       key.preventDefault()

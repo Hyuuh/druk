@@ -1,9 +1,9 @@
 import { dirname } from 'node:path'
 
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
 
 import { parentRow } from '../core/changeTree'
+import { useKeys } from '../ui/useKeys'
 import type { CommandActions } from './commands'
 import type { AppContext } from './context'
 import { matchKeymap } from './keymap'
@@ -51,6 +51,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'tabs.closeAll': actions.closeAll,
     'view.sidebar': panes.toggleSidebar,
     'view.git': panes.toggleGitView,
+    'view.collapse': actions.collapseSidebar,
     'view.markdown': workspace.toggleRendered,
     'view.focus': actions.toggleFocus,
     'git.diffFile': actions.gitDiffFile,
@@ -66,7 +67,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'quit': prompts.quit,
   }
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     const k = key.name
 
     // Overlays own their keys (handled inside their own components).

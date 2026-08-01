@@ -1,10 +1,11 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 
 import { ui } from '../themes'
 import { modalWidth } from './modal'
 import { ModalPanel } from './Overlay'
 import { TextInput } from './TextInput'
+import { useKeys } from './useKeys'
 
 export interface CompareFilterProps {
   value: string
@@ -16,7 +17,7 @@ export function CompareFilter(props: CompareFilterProps) {
   const dimensions = useTerminalDimensions()
   const width = () => modalWidth(dimensions().width, 0.55, 40, 80)
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     if (key.name === 'return' || key.name === 'enter') {
       key.preventDefault()
       props.onClose(false)

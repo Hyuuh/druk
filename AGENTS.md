@@ -11,7 +11,10 @@ reconciler on a native Zig core). Shipped as a standalone binary — npm, Homebr
 installer — and run as a CLI.
 
 Features: file tree with bulk file operations and opt-in hiding of dotfiles and
-git-ignored files, preview/pinned tabs, tree-sitter syntax
+git-ignored files, a `▴` in the sidebar header that shuts every folder at once
+(palette → View → Collapse folders in sidebar, which folds whichever of the two
+sidebar views is up, and the button is drawn only while there is something to fold),
+preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide — the project scan and the fuzzy
 file picker both skip git-ignored paths, whatever the tree's `respectGitignore` says, so
 a build directory or an agent's worktree checkout is never a result; the panel previews
@@ -278,17 +281,22 @@ dependency rule, and recipes for the extension points:
 
 | Want to add a… | Edit |
 | --- | --- |
-| language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
-| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts`, with `install: npm(…)` when druk can fetch it itself or `install: manual(…)` for a line to print (users override per-server with the `lspServers` setting; the settings page toggles them and edits their commands) — a server whose command depends on what the project installed goes in `projectCommand` in `src/lsp/project.ts` instead, which every server consults first |
-| theme | new file in `src/themes/` + register in `src/themes/index.ts` — chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there, not listed per theme |
-| icon theme | an entry in `BUILTIN_ICON_THEMES` in `src/icons/index.ts` — one codepoint per glyph, since the tree gives it the arrow's single column |
+| language | a `languages` entry in a market manifest — `plugins/<language>/plugin.json`, then `bun run plugins`. `grammar` is `{"vendored": "<key in src/languages/grammars.ts>"}` for one druk embeds, `{"bundled": true}` for one OpenTUI carries, or `{"wasm": "…", "query": "…"}` for files in the plugin folder. `patterns` are `{group, re, flags}` (regex as a string) for a format with no usable grammar; `extensions` / `filenames` / `filenamePattern` claim the names OpenTUI resolves none of. Adding a *vendored* grammar is still a source change: two static imports in `src/languages/grammars.ts` |
+| language server | a `languageServers` entry in a market manifest — `plugins/<language>/plugin.json`, then `bun run plugins`. `install` is `{"kind": "npm", "packages": […]}` when druk can fetch it itself and `{"kind": "manual", "command": "…"}` for a line to print; users override per-server with the `lspServers` setting, which can only *replace* a command some plugin declared. A server whose command depends on what the project installed goes in `projectCommand` (`src/lsp/project.ts`) instead, which every server consults first — that part is code, and stays in `src/` |
+| theme | a `themes` entry in a market manifest — `plugins/<family>/plugin.json`, one plugin per palette family (catppuccin carries its four flavors), then `bun run plugins`. Only `dark` and `light` are built in, in `src/themes/`, because the defaults name them. Chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there and are never listed by a theme |
+| icon theme | an `icons` entry in a market manifest — one codepoint per glyph, since the tree gives it the arrow's single column, and a two-cell glyph is dropped rather than drawn. `unicode` alone is built in (`src/icons/index.ts`), being the set any font already has |
 | plugin contribution kind | a list on the manifest (`src/plugins/manifest.ts`) parsed into `Plugin` (`src/plugins/types.ts`), registered in `loadPlugins` (`src/plugins/index.ts`), and a `register…`/`clearPlugin…` pair on whichever registry owns it — the registry has to be read through a function everywhere, since plugins load after the modules that list its contents are evaluated |
 | previewable value | `preview` + `restore` on the palette `Command` (`src/app/commands.ts`) or on a row's `select` (`src/ui/SettingsView.tsx`) — `preview` paints while the selection sits on the value, `restore` runs when the list is torn down, so it must put back what the config says rather than remember what it replaced |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `VALIDATORS` — one validator per key, since the project file is read key by key) + a row in `src/app/settings.ts` (`specs`, with the `key` it edits) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | a row in `BINDABLE` (`src/app/keymap.ts`) plus a handler under the same id in `src/app/keyboard.ts` — or, for an editor-only key, `src/ui/EditorPane.tsx` — advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Ctrl+K peek and the welcome screen), with the row's `ids` naming the commands it spells out |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
+| market plugin | a folder under `plugins/` holding `plugin.json`, then `bun run plugins` to regenerate `plugins/index.json` — `test/plugins-repo.test.ts` fails when the committed index is stale, and bumping the manifest `version` is what makes installed copies see an update |
 | branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
+
+Key handlers subscribe through `useKeys` (`src/ui/useKeys.ts`), never OpenTUI's
+`useKeyboard` directly: it renames a Ctrl chord to the US key the character sits on, so
+a shortcut still fires with a Cyrillic layout up (`src/core/keylayout.ts`).
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 
