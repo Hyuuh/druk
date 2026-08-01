@@ -71,6 +71,7 @@ export async function launch(
   options: {
     openFile?: string
     openLine?: number
+    openCol?: number
     checkUpdates?: boolean
     /** Encode keys as the kitty protocol, which is what a modern terminal sends. */
     kittyKeyboard?: boolean
@@ -82,6 +83,7 @@ export async function launch(
         rootDir: dir,
         openFile: options.openFile ?? null,
         openLine: options.openLine ?? null,
+        openCol: options.openCol ?? null,
         // LSP is off unless a test opts in: the default would spawn whatever
         // real language server the machine has on PATH, per launch. The install
         // offer is off for a sharper reason — it is a modal, so on a machine
