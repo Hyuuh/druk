@@ -3,6 +3,10 @@
  *
  * To add one: copy `github-dark.ts`, adjust the colors, then register it in
  * `THEMES` below. It shows up in the command palette automatically.
+ *
+ * A plugin adds one at runtime through `registerTheme`, so every lookup goes
+ * through `registry` rather than through `THEMES` itself — `THEMES` is the
+ * built-in table, `registry` is what is actually on offer.
  */
 import type { StyleDefinitionInput } from '@opentui/core'
 import { createSignal } from 'solid-js'
@@ -69,13 +73,60 @@ export const THEMES = {
   vesper,
 }
 
-export type ThemeName = keyof typeof THEMES
+/**
+ * A theme id. Not `keyof typeof THEMES`: a plugin's theme is as real as a
+ * built-in one and its id is not known at compile time. `isThemeName` is what
+ * says an id is registered, and the config validator runs it.
+ */
+export type ThemeName = string
 
-export const themeLabels = Object.fromEntries(
-  Object.entries(THEMES).map(([id, theme]) => [id, theme.name]),
-) as Record<ThemeName, string>
+/**
+ * The shipped themes, keyed loosely so an id computed at runtime can reach them.
+ * Kept beside the registry because a plugin may register *over* a built-in id —
+ * dropping that plugin has to put the shipped theme back rather than leave a
+ * hole where `dark` used to be.
+ */
+const BUILTIN: Record<string, Theme> = { ...THEMES }
+
+/** Every theme on offer — the built-ins, plus whatever plugins registered. */
+const registry: Record<string, Theme> = { ...THEMES }
+
+/** Registered by a plugin, and dropped again when plugins reload. */
+const fromPlugins = new Set<string>()
+
+// A signal, not `Object.keys(registry)` on demand: the palette's command tree and
+// the settings page's theme lists are built inside reactive scopes, and a plugin
+// reload that only mutated the object would leave both showing the old set.
+const [names, setNames] = createSignal<ThemeName[]>(Object.keys(registry))
+
+export function registerTheme(id: string, theme: Theme): void {
+  registry[id] = theme
+  fromPlugins.add(id)
+  setNames(Object.keys(registry))
+}
+
+export function clearPluginThemes(): void {
+  for (const id of fromPlugins) {
+    const shipped = BUILTIN[id]
+    if (shipped) registry[id] = shipped
+    else delete registry[id]
+  }
+  fromPlugins.clear()
+  setNames(Object.keys(registry))
+}
+
+export const themeNames = (): ThemeName[] => names()
 
 const DEFAULT: ThemeName = 'dark'
+
+/**
+ * The theme `name` stands for, falling back to the default: a plugin can be
+ * uninstalled while the config still names one of its themes, and every reader
+ * here has to end up with colors rather than with a hole.
+ */
+export const themeFor = (name: ThemeName): Theme => registry[name] ?? registry[DEFAULT]!
+
+export const themeLabel = (name: ThemeName): string => registry[name]?.name ?? name
 
 /** Whether the app paints its own background at all — the `transparent` setting. */
 let seeThrough = false
@@ -96,7 +147,7 @@ function mix(base: string, tint: string, amount: number): string {
 
 /** The store's contents for a theme, with `transparent` applied or not. */
 function colorsFor(name: ThemeName, transparent: boolean): UiColors {
-  const theme = THEMES[name].ui
+  const theme = themeFor(name).ui
   return {
     ...theme,
     sidebarBg: transparent ? 'transparent' : theme.panelBg,
@@ -124,21 +175,24 @@ const [paintedTheme, setPaintedTheme] = createSignal<ThemeName>(DEFAULT)
 export { paintedTheme }
 
 // Read imperatively when the syntax style table is rebuilt, so a plain object is fine.
-export const syntaxTheme: Record<string, StyleDefinitionInput> = { ...THEMES[DEFAULT].syntax }
+export const syntaxTheme: Record<string, StyleDefinitionInput> = { ...themeFor(DEFAULT).syntax }
 
 export function isThemeName(value: unknown): value is ThemeName {
-  return typeof value === 'string' && value in THEMES
+  return typeof value === 'string' && value in registry
 }
 
 export function setTheme(name: ThemeName): void {
+  // What is really on screen, which is the default when the config names a
+  // theme no plugin is registering any more.
+  const painted = name in registry ? name : DEFAULT
   // Replace, never merge: a group the new theme omits would otherwise keep the
   // previous theme's color and render invisible when light/dark flips.
   // Data before the signal: reactive readers of `paintedTheme` rebuild the
   // syntax table, and must see this theme's colors when they do.
   for (const group of Object.keys(syntaxTheme)) delete syntaxTheme[group]
-  Object.assign(syntaxTheme, THEMES[name].syntax)
-  setUi(colorsFor(name, seeThrough))
-  setPaintedTheme(name)
+  Object.assign(syntaxTheme, themeFor(painted).syntax)
+  setUi(colorsFor(painted, seeThrough))
+  setPaintedTheme(painted)
 }
 
 /** Paint the app's own background, or leave the terminal's showing through. */

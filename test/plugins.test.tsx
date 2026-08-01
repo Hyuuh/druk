@@ -1,0 +1,290 @@
+import { afterEach, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import {
+  CONFIG_FILE,
+  DEFAULTS,
+  loadConfig,
+  parsePartial,
+  PROJECT_CONFIG_DIR,
+  projectConfigFile,
+  readDisabledPlugins,
+} from '../src/core/config'
+import { iconFor, isIconThemeName } from '../src/icons'
+import { resolveServer } from '../src/lsp/servers'
+import { loadPlugins, parseManifest, PLUGINS_DIR, projectPluginsDir } from '../src/plugins'
+import { isThemeName, themeFor, themeNames } from '../src/themes'
+import { fixture, launch, openPalette, press, runCommand, settle } from './helpers'
+
+/** The smallest theme a manifest can carry: every ui color, one syntax group. */
+const themeColors = (color: string) =>
+  Object.fromEntries(Object.keys(themeFor('dark').ui).map(key => [key, color]))
+
+const MANIFEST = {
+  id: 'pack',
+  name: 'Test Pack',
+  version: '2.1.0',
+  themes: [
+    {
+      id: 'neon',
+      name: 'Neon',
+      ui: themeColors('#123456'),
+      syntax: { keyword: { fg: '#ff00ff', bold: true } },
+    },
+  ],
+  icons: [
+    {
+      id: 'blocks',
+      name: 'Blocks',
+      file: '■',
+      folder: '□',
+      extensions: { ts: { glyph: '▲', color: '#3178c6' } },
+    },
+  ],
+  languageServers: [
+    {
+      id: 'nim',
+      command: ['nimlangserver'],
+      filetypes: ['nim'],
+      install: { kind: 'manual', command: 'nimble install nimlangserver' },
+    },
+  ],
+}
+
+/** Write a manifest into the user plugins folder and load it. */
+function install(manifest: unknown, id = 'pack') {
+  const dir = join(PLUGINS_DIR, id)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'plugin.json'), JSON.stringify(manifest))
+  return dir
+}
+
+afterEach(() => {
+  rmSync(PLUGINS_DIR, { recursive: true, force: true })
+  // The registries are module state, so a plugin left registered would leak
+  // into every test after this one — and into the frames they capture.
+  loadPlugins(mkdtempSync(join(tmpdir(), 'druk-no-plugins-')))
+})
+
+test('a manifest contributes a theme, an icon theme and a language server', () => {
+  install(MANIFEST)
+  const { plugins, problems } = loadPlugins(fixture({}))
+
+  expect(problems).toEqual([])
+  expect(plugins.map(plugin => `${plugin.name} ${plugin.version}`)).toEqual(['Test Pack 2.1.0'])
+
+  expect(isThemeName('neon')).toBe(true)
+  expect(themeNames()).toContain('neon')
+  expect(themeFor('neon').ui.bg).toBe('#123456')
+  expect(themeFor('neon').syntax.keyword).toEqual({ fg: '#ff00ff', bold: true })
+
+  expect(isIconThemeName('blocks')).toBe(true)
+  expect(iconFor('blocks', { name: 'a.ts', isDir: false })).toEqual({
+    glyph: '▲',
+    color: '#3178c6',
+  })
+  expect(iconFor('blocks', { name: 'notes.txt', isDir: false })?.glyph).toBe('■')
+  expect(iconFor('blocks', { name: 'src', isDir: true })?.glyph).toBe('□')
+
+  const server = resolveServer('nim', {})
+  expect(server?.command).toEqual(['nimlangserver'])
+  expect(server?.install).toEqual({ kind: 'manual', command: 'nimble install nimlangserver' })
+})
+
+test('a plugin server replaces the built-in entry with its id', () => {
+  install({
+    id: 'deno',
+    languageServers: [{ id: 'typescript', command: ['deno', 'lsp'], filetypes: ['typescript'] }],
+  })
+  loadPlugins(fixture({}))
+  expect(resolveServer('typescript', {})?.command).toEqual(['deno', 'lsp'])
+})
+
+test('a project carries its own plugins', () => {
+  const dir = fixture({})
+  mkdirSync(projectPluginsDir(dir), { recursive: true })
+  writeFileSync(join(projectPluginsDir(dir), 'local.json'), JSON.stringify(MANIFEST))
+
+  expect(loadPlugins(dir).plugins).toHaveLength(1)
+  expect(isThemeName('neon')).toBe(true)
+})
+
+test('a disabled plugin is listed but registers nothing', () => {
+  install(MANIFEST)
+  const { plugins } = loadPlugins(fixture({}), ['pack'])
+  expect(plugins[0]?.disabled).toBe(true)
+  expect(isThemeName('neon')).toBe(false)
+  expect(resolveServer('nim', {})).toBeNull()
+})
+
+test('reloading drops what an uninstalled plugin contributed', () => {
+  const dir = install(MANIFEST)
+  const project = fixture({})
+  loadPlugins(project)
+  expect(isThemeName('neon')).toBe(true)
+
+  rmSync(dir, { recursive: true, force: true })
+  loadPlugins(project)
+  expect(isThemeName('neon')).toBe(false)
+  expect(themeNames()).not.toContain('neon')
+})
+
+test('a plugin may register over a shipped id, and dropping it puts that back', () => {
+  install({
+    id: 'over',
+    themes: [{ id: 'dark', name: 'My Dark', ui: themeColors('#010203'), syntax: {} }],
+    icons: [{ id: 'unicode', name: 'Mine', file: '#' }],
+  })
+  const project = fixture({})
+  loadPlugins(project)
+  expect(themeFor('dark').ui.bg).toBe('#010203')
+  expect(iconFor('unicode', { name: 'a.ts', isDir: false })?.glyph).toBe('#')
+
+  rmSync(PLUGINS_DIR, { recursive: true, force: true })
+  loadPlugins(project)
+  // Not deleted with the plugin: `dark` is the fallback every other lookup ends
+  // at, so losing it would leave the editor with no colors at all.
+  expect(themeFor('dark').name).toBe('GitHub Dark')
+  expect(themeNames()).toContain('dark')
+  expect(iconFor('unicode', { name: 'a.ts', isDir: false })?.glyph).toBe('◆')
+})
+
+test('a bad contribution is reported and costs the plugin only that entry', () => {
+  const { plugin, problems } = parseManifest(
+    {
+      id: 'half',
+      themes: [{ id: 'broken', ui: { bg: 'red' }, syntax: {} }],
+      icons: [
+        { id: 'wide', file: '👍' },
+        { id: 'ok', file: '#' },
+      ],
+      languageServers: [{ id: 'nocmd', filetypes: ['nim'] }],
+    },
+    '/plugins/half/plugin.json',
+  )
+
+  expect(plugin?.themes).toEqual([])
+  expect(plugin?.servers).toEqual([])
+  // The two-cell glyph is refused, not drawn: it would shift every name in the
+  // tree by a column. The theme it belongs to keeps its other icons.
+  expect(plugin?.icons.map(icons => icons.id)).toEqual(['wide', 'ok'])
+  expect(plugin?.icons[0]?.file.glyph).not.toBe('👍')
+  expect(problems.map(problem => problem.reason)).toEqual([
+    'theme "broken" needs a #rrggbb bg',
+    'server "nocmd" needs a command, e.g. ["nimlangserver"]',
+  ])
+})
+
+test('a manifest that is not JSON is a reported problem, not a crash', () => {
+  const dir = join(PLUGINS_DIR, 'bad')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'plugin.json'), '{ not json')
+
+  const { plugins, problems } = loadPlugins(fixture({}))
+  expect(plugins).toEqual([])
+  expect(problems).toHaveLength(1)
+})
+
+test('the config takes a plugin theme, and drops one no plugin registers', () => {
+  install(MANIFEST)
+  loadPlugins(fixture({}))
+  expect(parsePartial({ theme: 'neon', iconTheme: 'blocks' })).toEqual({
+    theme: 'neon',
+    iconTheme: 'blocks',
+  })
+
+  rmSync(PLUGINS_DIR, { recursive: true, force: true })
+  loadPlugins(fixture({}))
+  expect(parsePartial({ theme: 'neon', iconTheme: 'blocks' })).toEqual({})
+})
+
+test('startup order: plugins load, then the config keeps their theme', () => {
+  // What main.tsx does, in the order it does it — the one arrangement no UI test
+  // covers, and the one that decides whether a plugin theme survives a restart.
+  install(MANIFEST)
+  const dir = fixture({})
+  mkdirSync(join(dir, PROJECT_CONFIG_DIR), { recursive: true })
+  writeFileSync(projectConfigFile(dir), JSON.stringify({ disabledPlugins: [] }))
+  writeFileSync(CONFIG_FILE, JSON.stringify({ theme: 'neon', disabledPlugins: ['pack'] }))
+
+  // The project's empty list wins over the user's, so nothing is disabled.
+  expect(readDisabledPlugins(dir)).toEqual([])
+  loadPlugins(dir, readDisabledPlugins(dir))
+  expect(loadConfig().theme).toBe('neon')
+
+  // And with the project file gone, the user's own list shelves the plugin —
+  // which takes its theme with it, so the config falls back.
+  rmSync(projectConfigFile(dir))
+  expect(readDisabledPlugins(dir)).toEqual(['pack'])
+  loadPlugins(dir, readDisabledPlugins(dir))
+  expect(loadConfig().theme).toBe(DEFAULTS.theme)
+})
+
+test('icons take the arrow column in the tree', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n', 'notes.md': '# hi\n' })
+  const t = await launch(dir, { iconTheme: 'unicode' })
+
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('◆ a.ts')
+  expect(frame).toContain('¶ notes.md')
+  // The row is no wider than it was: the glyph replaced the arrow.
+  expect(frame).not.toContain('· a.ts')
+})
+
+test('a plugin icon theme is a value of the setting', async () => {
+  install(MANIFEST)
+  loadPlugins(fixture({}))
+  const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }), { iconTheme: 'blocks' })
+  expect(t.captureCharFrame()).toContain('▲ a.ts')
+})
+
+test('a plugin theme is in the palette and the settings page', async () => {
+  install(MANIFEST)
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  loadPlugins(dir)
+  const t = await launch(dir)
+
+  await openPalette(t)
+  await press(t, input => void input.typeText('Neon'))
+  expect(t.captureCharFrame()).toContain('Neon')
+})
+
+test('the settings page counts the plugins and turns one off', async () => {
+  install(MANIFEST)
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  loadPlugins(dir)
+  // Tall enough to reach the Plugins section, which is the last one on the page.
+  const t = await launch(dir, {}, { height: 60 })
+
+  await runCommand(t, 'Settings')
+  await settle(t)
+  expect(t.captureCharFrame()).toContain('1/1 enabled')
+})
+
+test('the palette lists what is installed', async () => {
+  install(MANIFEST)
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  loadPlugins(dir)
+  const t = await launch(dir)
+
+  await runCommand(t, 'Installed plugins')
+  expect(t.captureCharFrame()).toContain('Test Pack 2.1.0')
+})
+
+test('every icon glyph druk ships is one cell wide', () => {
+  // A two-cell glyph shifts every name in the tree, and the frame captures in
+  // these tests would drift with it.
+  for (const theme of ['unicode', 'nerd']) {
+    for (const name of ['a.ts', 'a.js', 'readme.md', 'package.json', 'photo.png', 'x.unknown']) {
+      const glyph = iconFor(theme, { name, isDir: false })?.glyph ?? ''
+      expect(`${theme}/${name}:${[...glyph].length}`).toBe(`${theme}/${name}:1`)
+    }
+  }
+})
+
+test('the default config draws no icons at all', () => {
+  expect(DEFAULTS.iconTheme).toBe('none')
+  expect(iconFor('none', { name: 'a.ts', isDir: false })).toBeNull()
+})

@@ -22,6 +22,7 @@ import { isUnnecessary, severityOf } from '../lsp/protocol'
 import type { CompletionItem, Diagnostic, ProblemSeverity } from '../lsp/protocol'
 import { installHint, resolveServer } from '../lsp/servers'
 import type { FetchableInstall } from '../lsp/servers'
+import type { ServerLogLine, ServerView } from '../lsp/status'
 import type { PromptState } from './prompts'
 import type { Settings } from './settings'
 import type { Status } from './status'
@@ -57,6 +58,13 @@ const CHANGE_DEBOUNCE_MS = 150
  */
 const DEPENDENCY_QUIET_MS = 2_000
 
+/**
+ * Lines a server's log keeps. Enough to hold a whole startup plus a while of
+ * chatter; the page renders every line it has, so the cap is also what keeps a
+ * chatty server from growing the render without bound.
+ */
+const MAX_SERVER_LOG = 300
+
 /** Language servers: one per language, diagnostics per open file. */
 export function createLsp(deps: {
   rootDir: string
@@ -82,6 +90,18 @@ export function createLsp(deps: {
   const [restarts, setRestarts] = createSignal(0)
   /** Server ids already offered this session, so a decline is not re-asked. */
   const offered = new Set<string>()
+
+  /** What the status page shows: state, command, log and open documents per server. */
+  const [servers, setServers] = createStore<Record<string, ServerView>>({})
+
+  const timeStamp = () => new Date().toTimeString().slice(0, 8)
+
+  const appendLog = (id: string, entry: Omit<ServerLogLine, 'time'>) => {
+    setServers(id, 'logs', logs => {
+      const next = [...logs, { time: timeStamp(), ...entry }]
+      return next.length > MAX_SERVER_LOG ? next.slice(next.length - MAX_SERVER_LOG) : next
+    })
+  }
 
   const onDiagnostics = (uri: string, diagnostics: Diagnostic[]) => {
     let path: string
@@ -167,13 +187,41 @@ export function createLsp(deps: {
     const project = projectCommand(resolved.id, resolved.command, rootDir)
     const fetched = project ? null : installedCommand(resolved.command)
     const command = project ?? fetched ?? resolved.command
+    // The log survives a restart — the run before is the context for this one —
+    // but state and error start over with the new process.
+    setServers(resolved.id, {
+      id: resolved.id,
+      command,
+      state: 'starting',
+      error: null,
+      logs: servers[resolved.id]?.logs ?? [],
+      docs: [],
+    })
+    /** Assigned right below; the spawn's own synchronous log lines miss it, which
+     * only costs them the docs/state sync no one needs that early. */
+    let spawned: LspClient | null = null
     const client = spawnLspClient({
       command,
       rootDir,
       initializationOptions: initializationOptionsFor(resolved.id),
       onDiagnostics,
+      onLog: entry => {
+        appendLog(resolved.id, entry)
+        if (!spawned) return
+        setServers(resolved.id, 'docs', spawned.documents())
+        // 'failed' is onFail's to set — it knows the reason; a deliberate
+        // dispose never gets there and reads as 'stopped'.
+        if (servers[resolved.id]?.state !== 'failed') {
+          setServers(
+            resolved.id,
+            'state',
+            spawned.dead() ? 'stopped' : spawned.ready() ? 'ready' : 'starting',
+          )
+        }
+      },
       onFail: (reason, missing) => {
         clients.set(resolved.id, null)
+        setServers(resolved.id, { state: 'failed', error: reason })
         if (missing) return reportMissing(resolved)
         status.say(
           // A copy druk fetched can be broken in ways the user cannot see and did
@@ -188,6 +236,7 @@ export function createLsp(deps: {
         )
       },
     })
+    spawned = client
     clients.set(resolved.id, client)
     return client
   }
@@ -308,6 +357,7 @@ export function createLsp(deps: {
 
   return {
     problems,
+    servers,
     clearProblems,
     clientFor,
     complete,

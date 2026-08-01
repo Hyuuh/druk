@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { contextAround, contextIn } from '../src/core/search'
+import { contextIn } from '../src/core/search'
 import { fixture, launch, press, settle } from './helpers'
 import type { Harness } from './helpers'
 
@@ -112,14 +112,16 @@ describe('folding a file in the results', () => {
     let rows = panel(t)
 
     expect(rows.some(row => row.includes('docs/long.md') && row.includes('▸'))).toBe(true)
-    expect(rows.some(row => row.includes('…') && row.includes('capture'))).toBe(false)
+    // The hit's row is gone; the one left is the preview, which a folded heading
+    // still stands in for.
+    expect(rows.filter(row => row.includes('…') && row.includes('capture')).length).toBe(1)
     // The other files are untouched.
     expect(rows.some(row => row.includes('const capture = 1'))).toBe(true)
 
     await press(t, input => input.pressTab())
     rows = panel(t)
     expect(rows.some(row => row.includes('docs/long.md') && row.includes('▾'))).toBe(true)
-    expect(rows.some(row => row.includes('…') && row.includes('capture'))).toBe(true)
+    expect(rows.filter(row => row.includes('…') && row.includes('capture')).length).toBe(2)
   })
 
   test('the selection lands on the heading, and moves past the hidden matches', async () => {
@@ -135,6 +137,24 @@ describe('folding a file in the results', () => {
     // One step down skips all three and reaches src/beta.ts, not alpha's second hit.
     await press(t, input => input.pressArrow('down'))
     expect(panel(t).some(row => row.includes('5 of 5'))).toBe(true)
+  })
+
+  test('Shift+Tab folds every file, leaving a list of files to walk', async () => {
+    const t = await search('capture')
+    await press(t, input => input.pressTab({ shift: true }))
+    let rows = panel(t)
+
+    expect(rows.filter(row => row.includes('▸')).length).toBe(3)
+    expect(rows.some(row => row.includes('const capture = 1'))).toBe(false)
+    // One step down is now the next file, not the next hit in this one.
+    await press(t, input => input.pressArrow('down'))
+    expect(panel(t).some(row => row.includes('2 of 5'))).toBe(true)
+
+    // And again to open them all back up, with the selection still in that file.
+    await press(t, input => input.pressTab({ shift: true }))
+    rows = panel(t)
+    expect(rows.some(row => row.includes('▸'))).toBe(false)
+    expect(rows.some(row => row.includes('2 of 5'))).toBe(true)
   })
 
   test('Enter on a folded file opens it back up instead of jumping', async () => {
@@ -160,7 +180,7 @@ describe('folding a file in the results', () => {
   })
 })
 
-describe('contextAround', () => {
+describe('contextIn', () => {
   const TEXT = 'one\ntwo\nthree\nfour\nfive\n'
 
   test('clamps at the top of the file', () => {
@@ -169,14 +189,5 @@ describe('contextAround', () => {
 
   test('clamps at the end of the file', () => {
     expect(contextIn(TEXT, 4, 2)).toEqual({ start: 2, lines: ['three', 'four', 'five', ''] })
-  })
-
-  test('reads from disk, and answers null when the file is gone', () => {
-    const dir = fixture({ 'a.ts': TEXT })
-    expect(contextAround(`${dir}/a.ts`, 2, 1)).toEqual({
-      start: 1,
-      lines: ['two', 'three', 'four'],
-    })
-    expect(contextAround(`${dir}/gone.ts`, 2, 1)).toBeNull()
   })
 })

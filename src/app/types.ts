@@ -39,6 +39,8 @@ export type Prompt =
   | { kind: 'renameBranch'; from: string }
   | { kind: 'deleteBranch'; name: string; force: boolean }
   | { kind: 'mergeBranch'; name: string }
+  /** A push origin refused; `hasUpstream` is what the retry after the pull needs. */
+  | { kind: 'pullPush'; branch: string; hasUpstream: boolean }
   /** A language server is missing and druk can fetch it; `id` is the server id. */
   | { kind: 'installServer'; id: string; name: string; install: FetchableInstall }
   | null

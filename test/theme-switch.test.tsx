@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from 'bun:test'
 
 import { getSyntaxStyle, invalidateSyntaxStyle } from '../src/languages/highlight'
-import { setTheme, syntaxTheme, THEMES } from '../src/themes'
+import { setTheme, syntaxTheme, themeFor, THEMES } from '../src/themes'
 import type { ThemeName } from '../src/themes'
 import { fixture, launch, openPalette, press } from './helpers'
 import type { Harness } from './helpers'
@@ -70,7 +70,9 @@ test("switching themes never leaves a previous theme's colors behind", async () 
   for (const name of Object.keys(THEMES) as ThemeName[]) {
     setTheme(name)
     invalidateSyntaxStyle()
-    expect(Object.keys(syntaxTheme).toSorted()).toEqual(Object.keys(THEMES[name].syntax).toSorted())
+    expect(Object.keys(syntaxTheme).toSorted()).toEqual(
+      Object.keys(themeFor(name).syntax).toSorted(),
+    )
   }
 })
 
@@ -91,10 +93,10 @@ test('plain identifiers stay readable against the background in every theme', as
       ...(style as unknown as { getAllStyles: () => Map<string, unknown> }).getAllStyles().keys(),
     ]
 
-    const bg = luminance(THEMES[name].ui.bg)
+    const bg = luminance(themeFor(name).ui.bg)
     for (const segment of segments) {
       const group = groups.find(g => style.getStyleId(g) === segment.styleId)
-      const fg = group ? (THEMES[name].syntax[group] as { fg?: string })?.fg : undefined
+      const fg = group ? (themeFor(name).syntax[group] as { fg?: string })?.fg : undefined
       if (!fg) continue
       expect(`${name}/${group}:${Math.abs(luminance(fg) - bg) > 0.08}`).toBe(
         `${name}/${group}:true`,

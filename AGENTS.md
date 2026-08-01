@@ -12,10 +12,20 @@ installer — and run as a CLI.
 
 Features: file tree with bulk file operations and opt-in hiding of dotfiles and
 git-ignored files, preview/pinned tabs, tree-sitter syntax
-highlighting, search (current file and project-wide), command palette, themes, vim mode,
+highlighting, search (current file and project-wide — the project scan and the fuzzy
+file picker both skip git-ignored paths, whatever the tree's `respectGitignore` says, so
+a build directory or an agent's worktree checkout is never a result; the panel previews
+the selected hit in its file, syntax-coloured and with the hit picked out, over as many
+lines either side as the terminal has room for, and folds a file behind its heading with
+Tab or every file at once with Shift+Tab, which turns the results into a list of files),
+command palette,
+themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, which vim mode
+overrides while it is on, since there the shape is what tells normal from insert),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
-→ / ←) and palette commands for commit/undo/stash/push/fetch/pull and for branches
+→ / ←) and palette commands for commit/undo/stash/push/fetch/pull — a push origin
+rejects offers to merge origin in and push again, VS Code's prompt, rather than
+naming the two commands and stopping — and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
 side-by-side) for whichever change the panel's cursor is on — the arrows page through
 them, the panel is the only way in, and the diff is a tab of its own in the strip
@@ -68,7 +78,11 @@ server — which prefers the open project's own copy; the servers restart on
 demand, palette → Problems → Restart language servers, and by themselves once a
 dependency directory settles after an install, since druk registers no watched
 files and a server otherwise resolves imports against the `node_modules` it saw
-at startup forever), LSP autocomplete (a fuzzy-filtered menu that opens as you
+at startup forever), a language-server status page (palette →
+Problems → Language server status — each server's state, command and open
+documents over a live log of its stderr, `window/logMessage` traffic and
+lifecycle events; ↑↓ picks the server, `r` restarts them all, and the log
+survives a restart so the run before stays readable), LSP autocomplete (a fuzzy-filtered menu that opens as you
 type or on Ctrl+Space, applies auto-import edits, and is toggled by
 `lspCompletion`), go to definition (F12, the server's answer in whichever of the
 protocol's three shapes it comes) and open the file under the cursor
@@ -91,6 +105,18 @@ command id to one chord, replacing whatever it had — the settings page's Short
 row lists every bindable command with the key it answers to, refuses a chord another
 custom binding holds and names whatever default a rebind takes the key from, while a
 clash or a value that is not a chord is reported on startup),
+file icons in the tree (`iconTheme` — `unicode` shapes any font has, `nerd` for a
+patched one, or a theme a plugin contributes; the glyph takes the expansion
+arrow's column, since a folder icon has an open and a closed form, and the
+default is `none` because nothing can ask a terminal what its font holds),
+a plugin system (JSON manifests in `$XDG_CONFIG_HOME/druk/plugins/<id>/plugin.json`
+— or `<id>.json` for a one-file plugin — and in `<project>/.druk/plugins/` for a
+project's own; a manifest contributes themes, icon themes and language servers,
+and is data rather than code, so installing one runs nothing and the compiled
+binary needs no loader; `disabledPlugins` shelves one without deleting it, the
+settings page's Plugins section toggles them, palette → Plugins lists and reloads
+them, and a malformed manifest costs its plugin that one contribution and is
+reported on startup),
 file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
@@ -122,7 +148,7 @@ bun run build            # compile a binary for this machine into dist/<target>/
 ./dist/*/druk .          # run what you just built (bin/druk.js finds it too)
 bun run build linux-x64  # …or for a named target, if its native package is installed
 bun run release          # package dist/ for npm + release archives (--publish to ship)
-bun run formula          # Homebrew formula for those archives (not published anywhere yet)
+bun run formula          # Homebrew formula for those archives, into dist/release/druk.rb
 bun run test             # unit + UI, one file per process, sequential (~4 min)
 bun test test/foo.tsx    # a single file, where the flag buys nothing
 bun run check            # check-types + lint + format + test — the one to run
@@ -168,7 +194,8 @@ the suite writes to your real `~/.config/druk`.
   to `druk` itself. One package is what makes the release run unattended.
 
 The repo's own `package.json` is `private`: what npm publishes is staged into
-`dist/npm/druk` by `scripts/release.ts` — the shim, the postinstall and nothing else.
+`dist/npm/druk` by `scripts/release.ts` — the shim, the postinstall, the README and the
+LICENSE, and nothing else.
 Versions come from `package.json` — bump it and `.github/workflows/release.yml` builds
 every platform, uploads the archives to the release and publishes to npm, with no manual
 step. Two ways to start it: push a tag `v<version>`, or run the workflow from the Actions
@@ -192,10 +219,28 @@ release upload was skipped, and the published shim spent its life fetching a rel
 did not exist. Re-running a shipped version is safe — `release.ts` skips a version already
 on the registry and the upload clobbers its assets.
 
-Homebrew is not wired up yet. `scripts/formula.ts` generates a working formula from the
-archives in `dist/release/`, but nothing publishes it: that needs a `letstri/homebrew-tap`
-repository and a `TAP_TOKEN` secret, then a step in the release workflow to commit the
-formula there.
+**Homebrew needs the one credential the rest of the release does without.** The workflow
+runs `bun run formula` after packaging, so `druk.rb` — checksummed against the archives
+actually uploaded — is an asset of every release, and the `tap` job copies that asset to
+`letstri/homebrew-tap` as `Formula/druk.rb`. That copy is the exception to publishing
+unattended: GITHUB_TOKEN is scoped to this repository, and no OIDC arrangement exists for
+pushing to another one, so it reads `TAP_TOKEN` — a fine-grained PAT with contents:write
+on the tap and nothing else.
+
+Both the tap and the secret exist, and 1.12.0 was the first release to reach them. A run
+without `TAP_TOKEN` skips the `tap` job and says so in the annotations rather than failing
+— which is what forks get, and is safe here in a way it is not for the two steps above:
+nothing downstream reads the tap, so a formula left unupdated puts brew a version behind
+rather than breaking an install. The formula is on the release either way, though it has
+to be copied into a tap to be usable — Homebrew refuses a formula that is not in one, so a
+downloaded `druk.rb` cannot be installed on its own.
+
+**The generated formula must keep its `version` stanza.** It reads as redundant beside a
+URL carrying the tag, and `brew audit` does warn about a redundant one — but not here.
+Homebrew scans the version out of the archive's *stem*: its `foobar4.5.1` parser matches
+trailing digits, and `druk-darwin-arm64` ends in `64`. Drop the stanza and every release
+alike reports `stable 64`, so `brew upgrade letstri/tap/druk` — what `core/upgrade.ts`
+tells brew users to run — never sees a new version.
 
 ## Architecture
 
@@ -207,6 +252,8 @@ dependency rule, and recipes for the extension points:
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
 | language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts`, with `install: npm(…)` or `install: download(…)` when druk can fetch it itself, or `install: manual(…)` for a line to print (users override per-server with the `lspServers` setting; the settings page toggles them and edits their commands) — a server whose command depends on what the project installed goes in `projectCommand` in `src/lsp/project.ts` instead, which every server consults first |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` — chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there, not listed per theme |
+| icon theme | an entry in `BUILTIN_ICON_THEMES` in `src/icons/index.ts` — one codepoint per glyph, since the tree gives it the arrow's single column |
+| plugin contribution kind | a list on the manifest (`src/plugins/manifest.ts`) parsed into `Plugin` (`src/plugins/types.ts`), registered in `loadPlugins` (`src/plugins/index.ts`), and a `register…`/`clearPlugin…` pair on whichever registry owns it — the registry has to be read through a function everywhere, since plugins load after the modules that list its contents are evaluated |
 | previewable value | `preview` + `restore` on the palette `Command` (`src/app/commands.ts`) or on a row's `select` (`src/ui/SettingsView.tsx`) — `preview` paints while the selection sits on the value, `restore` runs when the list is torn down, so it must put back what the config says rather than remember what it replaced |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `VALIDATORS` — one validator per key, since the project file is read key by key) + a row in `src/app/settings.ts` (`specs`, with the `key` it edits) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |

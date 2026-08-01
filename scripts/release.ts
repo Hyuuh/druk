@@ -74,6 +74,9 @@ await cp('./bin/postinstall.mjs', `${rootDir}/bin/postinstall.mjs`)
 await cp('./bin/binary.mjs', `${rootDir}/bin/binary.mjs`)
 await cp('./bin/windows-shim.mjs', `${rootDir}/bin/windows-shim.mjs`)
 await cp('./README.md', `${rootDir}/README.md`)
+// Not in `files` below, and does not need to be: npm always packs README, LICENSE
+// and package.json whatever `files` says.
+await cp('./LICENSE', `${rootDir}/LICENSE`)
 
 const rootPkg = await Bun.file('./package.json').json()
 await Bun.write(

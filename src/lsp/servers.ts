@@ -138,6 +138,28 @@ export const DEFAULT_SERVERS: ServerSpec[] = [
   },
 ]
 
+/** Contributed by a plugin, and dropped again when plugins reload. */
+let fromPlugins: ServerSpec[] = []
+
+export function registerServer(spec: ServerSpec): void {
+  fromPlugins = [...fromPlugins.filter(server => server.id !== spec.id), spec]
+}
+
+export function clearPluginServers(): void {
+  fromPlugins = []
+}
+
+/**
+ * Every server on offer, plugins first: a plugin entry whose id or filetype
+ * matches a built-in replaces it, which is how one teaches druk about a server
+ * for a language it ships no entry for *and* how one swaps out the entry it
+ * does ship.
+ */
+export function servers(): ServerSpec[] {
+  const shadowed = new Set(fromPlugins.map(spec => spec.id))
+  return [...fromPlugins, ...DEFAULT_SERVERS.filter(spec => !shadowed.has(spec.id))]
+}
+
 /** The line that tells a user how to install `spec` themselves. */
 export function installHint(install: ServerInstall): string {
   if (install.kind === 'npm') return `npm i -g ${install.packages.join(' ')}`
@@ -155,7 +177,7 @@ export function resolveServer(
   overrides: Record<string, string[]>,
 ): { id: string; command: string[]; install?: ServerInstall } | null {
   if (!filetype) return null
-  const spec = DEFAULT_SERVERS.find(server => server.filetypes.includes(filetype))
+  const spec = servers().find(server => server.filetypes.includes(filetype))
   if (!spec) return null
   const override = overrides[spec.id]
   const command = override ?? spec.command

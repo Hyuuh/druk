@@ -3,11 +3,20 @@ import { basename, relative } from 'node:path'
 import { TextAttributes } from '@opentui/core'
 import type { KeyEvent } from '@opentui/core'
 import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
-import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show } from 'solid-js'
 
+import { readFile } from '../core/fs'
 import type { Context, Match, SearchOptions } from '../core/search'
-import { buildQuery, contextAround, contextIn, searchProject, searchText } from '../core/search'
-import { ui } from '../themes'
+import { buildQuery, contextIn, searchProject, searchText } from '../core/search'
+import {
+  computeHighlights,
+  filetypeForPath,
+  segmentsIn,
+  STALE,
+  styleForId,
+} from '../languages/highlight'
+import type { Highlighted } from '../languages/highlight'
+import { paintedTheme, ui } from '../themes'
 import { windowAround } from './list'
 import { modalWidth, PAD } from './modal'
 import { ModalPanel, topInset } from './Overlay'
@@ -34,8 +43,33 @@ export interface SearchPanelProps {
 
 const MIN_QUERY = 2
 
-/** Lines either side of the selected match in the preview. */
-const CONTEXT = 2
+/** Lines either side of the selected match in the preview, at its smallest. */
+const MIN_CONTEXT = 2
+/** …and at its largest: past this the list is the thing being starved. */
+const MAX_CONTEXT = 9
+
+/**
+ * A preview needs the lines around the hit to be worth reading at all, and a
+ * three-line window rarely is. Below this height there is no room for one.
+ */
+const PREVIEW_MIN_HEIGHT = 24
+
+/** Rows left unclaimed, so the panel never grows into the edge of the screen. */
+const SLACK = 2
+
+/**
+ * Documents past this size are shown uncoloured. Parsing one costs a worker
+ * round-trip on every step through the results, and the preview is eleven lines
+ * of a file whose colour nobody is reading it for.
+ */
+const MAX_HIGHLIGHT_BYTES = 512 * 1024
+
+/** A run of preview text painted as one `<text>`. */
+interface Span {
+  text: string
+  fg?: string
+  attributes?: number
+}
 
 /**
  * A project scan reads every file in the tree — around 90ms across 2 600 files, and
@@ -56,6 +90,23 @@ type Row =
 
 /** An open file's heading is scenery; a folded one stands in for its matches. */
 const selectable = (row: Row) => row.kind === 'match' || row.folded
+
+/**
+ * The pieces of a painted line between columns `from` and `to`, splitting whichever
+ * spans straddle them. Cutting the hit out of its coloured line and trimming the
+ * line to the panel's width are the same operation on different bounds.
+ */
+function sliceSpans(spans: readonly Span[], from: number, to: number): Span[] {
+  const out: Span[] = []
+  let col = 0
+  for (const span of spans) {
+    const start = Math.max(from, col)
+    const end = Math.min(to, col + span.text.length)
+    if (end > start) out.push({ ...span, text: span.text.slice(start - col, end - col) })
+    col += span.text.length
+  }
+  return out
+}
 
 export function SearchPanel(props: SearchPanelProps) {
   const dimensions = useTerminalDimensions()
@@ -149,6 +200,24 @@ export function SearchPanel(props: SearchPanelProps) {
     setIndex(at)
   }
 
+  /**
+   * Every file at once: fold them all, or open them all again once they are. What
+   * it buys is a list of files to walk with ↑↓ — with a hundred hits across ten
+   * files, reaching the next file otherwise means scrolling past every match in
+   * this one.
+   */
+  const toggleFoldAll = () => {
+    const paths = [...new Set(matches().map(match => match.path))]
+    const shut = paths.length > 0 && paths.every(path => folded().has(path))
+    // The file the selection is in, read before the rows move under it: afterwards
+    // the same index is a different row, and the selection would follow it.
+    const row = cursor()
+    const path = row && (row.kind === 'file' ? row.path : row.match.path)
+    setFolded(shut ? new Set<string>() : new Set(paths))
+    const heading = rows().findIndex(other => other.kind === 'file' && other.path === path)
+    if (heading >= 0) setIndex(shut ? heading + 1 : heading)
+  }
+
   const toggleFold = () => {
     const row = cursor()
     if (!row) return
@@ -181,14 +250,74 @@ export function SearchPanel(props: SearchPanelProps) {
    */
   const swap = () => (replacing() ? replacement() : '')
 
+  /**
+   * The selected match's whole file, or null when it cannot be read. The preview is
+   * a window on it and the highlighter wants the document rather than the window:
+   * tree-sitter's error recovery misreads a fragment that starts mid-expression, so
+   * a slice would come back with half its captures missing (the same reason the
+   * diff view highlights the full texts and remaps).
+   */
+  type Source = { path: string; text: string } | null
+  const source = createMemo<Source, Source>(
+    () => {
+      const match = current()
+      if (!match) return null
+      if (props.scope !== 'project') return { path: match.path, text: props.activeContent }
+      try {
+        return { path: match.path, text: readFile(match.path) }
+      } catch {
+        return null // deleted or unreadable since the scan
+      }
+    },
+    null,
+    // Stepping between two matches in one file is not a new document; without this
+    // the parse below would be restarted, and the colours dropped, on every step.
+    { equals: (a, b) => a?.path === b?.path && a?.text === b?.text },
+  )
+
+  /** Rows the panel spends on everything that is neither the list nor the preview. */
+  const chromeRows = () => 7 + topInset(dimensions().height) + (replacing() ? 1 : 0)
+
+  /**
+   * How far the preview reaches either side of the hit. It grows with the terminal:
+   * the preview is how you decide whether this is the match you were after, and on
+   * a tall window there is no reason to answer that from five lines.
+   */
+  const contextLines = () => {
+    const spare = dimensions().height - chromeRows() - SLACK
+    return Math.max(MIN_CONTEXT, Math.min(MAX_CONTEXT, Math.floor(spare / 5)))
+  }
+
+  /** Rows the preview spends: the lines themselves plus the gap above them. */
+  const previewRows = () => contextLines() * 2 + 2
+
   /** Surroundings of the selected match, or null when there is no room to show them. */
   const preview = createMemo<Context | null>(() => {
     const match = current()
-    if (!match || dimensions().height < 18) return null
-    return props.scope === 'project'
-      ? contextAround(match.path, match.line, CONTEXT)
-      : contextIn(props.activeContent, match.line, CONTEXT)
+    const file = source()
+    if (!match || !file || dimensions().height < PREVIEW_MIN_HEIGHT) return null
+    return contextIn(file.text, match.line, contextLines())
   })
+
+  /** The parsed document behind the preview's colours, once it lands. */
+  const [parsed, setParsed] = createSignal<Highlighted | null>(null)
+
+  createEffect(
+    on(source, file => {
+      // Dropped up front: the previous file's captures are wrong for this one, and
+      // colouring one file's lines with another's is worse than no colour at all.
+      setParsed(null)
+      if (!file || file.text.length > MAX_HIGHLIGHT_BYTES) return
+      let dropped = false
+      onCleanup(() => {
+        dropped = true
+      })
+      void (async () => {
+        const doc = await computeHighlights(file.text, filetypeForPath(file.path), 2, () => dropped)
+        if (!dropped && doc !== STALE) setParsed(doc)
+      })()
+    }),
+  )
 
   /**
    * Rows the list may use. Named apart from `modal.ts`'s `listRows` on purpose: this
@@ -197,8 +326,7 @@ export function SearchPanel(props: SearchPanelProps) {
    * but a list of two rows is still a list.
    */
   const resultRows = () => {
-    const chrome =
-      7 + topInset(dimensions().height) + (replacing() ? 1 : 0) + (preview() ? CONTEXT * 2 + 2 : 0)
+    const chrome = chromeRows() + SLACK + (preview() ? previewRows() : 0)
     return Math.max(2, Math.min(18, dimensions().height - chrome))
   }
 
@@ -230,6 +358,9 @@ export function SearchPanel(props: SearchPanelProps) {
     } else if (k === 'down') {
       key.preventDefault()
       move(1)
+    } else if (k === 'tab' && key.shift && props.scope === 'project') {
+      key.preventDefault()
+      toggleFoldAll()
     } else if (k === 'tab' && props.onReplaceAll) {
       key.preventDefault()
       setReplacing(r => !r)
@@ -289,6 +420,82 @@ export function SearchPanel(props: SearchPanelProps) {
     if (text.length <= room) return { text, col, cut: false }
     const start = Math.max(0, Math.min(col - 12, text.length - room))
     return { text: text.slice(start, start + room), col: col - start, cut: start > 0 }
+  }
+
+  /**
+   * Preview line `at` as coloured pieces: the parsed document's segments, with the
+   * gaps between them left in `plain`. A segment carrying only a background — the
+   * indent guides — is passed over, or the preview would come out striped with a
+   * fill nothing here asked for.
+   */
+  const painted = (line: string, at: number, plain: string): Span[] => {
+    // Read so the pieces are rebuilt when the theme changes: the style ids a
+    // segment carries are the previous theme's until the table behind them is.
+    paintedTheme()
+    const doc = parsed()
+    const out: Span[] = []
+    let col = 0
+    for (const segment of doc ? segmentsIn(doc, at, at) : []) {
+      const style = styleForId(segment.styleId)
+      const fg = typeof style?.fg === 'string' ? style.fg : undefined
+      if (!style || !fg || segment.start < col) continue
+      if (segment.start > col) out.push({ text: line.slice(col, segment.start), fg: plain })
+      out.push({
+        text: line.slice(segment.start, segment.end),
+        fg,
+        attributes:
+          (style.bold ? TextAttributes.BOLD : 0) | (style.italic ? TextAttributes.ITALIC : 0),
+      })
+      col = segment.end
+    }
+    if (col < line.length) out.push({ text: line.slice(col), fg: plain })
+    return out
+  }
+
+  /** Columns of a preview line left for text, after its line number. */
+  const previewRoom = () => contentWidth() - 6
+
+  /**
+   * Columns scrolled off the left of the hit's own line, so a match 200 columns
+   * into a minified line is in the preview at all. Only that line moves: shifting
+   * its neighbours by the same amount empties them, and a preview of blank rows
+   * says less about the hit than an unaligned one does.
+   */
+  const previewShift = () => {
+    const match = current()
+    if (!match || match.col + match.length <= previewRoom()) return 0
+    return Math.max(0, match.col - 12)
+  }
+
+  /**
+   * A preview line, ready to paint: syntax colours, and on the selected match's own
+   * line the hit picked out — struck through beside its replacement once there is
+   * one, so the preview and the row above it agree about what the file will say.
+   */
+  const previewLine = (line: string, at: number): Span[] => {
+    const match = current()
+    const hit = match && at === match.line
+    const spans = painted(line, at, hit ? ui.text : ui.dim)
+    if (!hit) return sliceSpans(spans, 0, previewRoom())
+    const shift = previewShift()
+    const room = previewRoom() - (shift > 0 ? 1 : 0)
+    const cut: Span[] = shift > 0 ? [{ text: '…', fg: ui.dim }] : []
+    const text = line.slice(match.col, match.col + match.length)
+    return [
+      ...cut,
+      ...sliceSpans(
+        [
+          ...sliceSpans(spans, shift, match.col),
+          swap()
+            ? { text, fg: ui.gitDeleted, attributes: TextAttributes.STRIKETHROUGH }
+            : { text, fg: ui.accent, attributes: TextAttributes.BOLD },
+          ...(swap() ? [{ text: swap(), fg: ui.gitAdded, attributes: TextAttributes.BOLD }] : []),
+          ...sliceSpans(spans, match.col + match.length, line.length),
+        ],
+        0,
+        room,
+      ),
+    ]
   }
 
   return (
@@ -384,72 +591,39 @@ export function SearchPanel(props: SearchPanelProps) {
       <Show when={preview()}>
         {(around: () => Context) => (
           <box flexDirection="column" backgroundColor={ui.solidBg} marginTop={1}>
-            <For each={around().lines}>
+            {/* Index, not For: the rows are a fixed column whose *values* change as
+                  the selection moves, and keying by value tears every line down and
+                  rebuilds it on each step. */}
+            <Index each={around().lines}>
               {(line, i) => {
-                const at = () => around().start + i()
+                const at = () => around().start + i
                 const isMatch = () => at() === current()?.line
+                const bg = () => (isMatch() ? ui.currentLine : ui.solidBg)
                 return (
-                  <box
-                    flexDirection="row"
-                    backgroundColor={isMatch() ? ui.currentLine : ui.solidBg}
-                  >
+                  <box flexDirection="row" backgroundColor={bg()}>
                     <text
                       fg={ui.gutter}
-                      bg={isMatch() ? ui.currentLine : ui.solidBg}
+                      bg={bg()}
                       flexShrink={0}
                       content={`${`${at() + 1}`.padStart(5)} `}
                     />
-                    <box flexGrow={1} backgroundColor={isMatch() ? ui.currentLine : ui.solidBg}>
-                      {/* The selected line carries the same before/after as its row
-                            above it, or the two would disagree about what the file is
-                            about to say. */}
-                      <Show
-                        when={isMatch() && swap() && current()}
-                        fallback={
-                          <text
-                            fg={isMatch() ? ui.text : ui.faint}
-                            bg={isMatch() ? ui.currentLine : ui.solidBg}
-                            content={line.slice(0, contentWidth() - 6)}
-                          />
-                        }
-                      >
-                        {(match: () => Match) => (
-                          <box flexDirection="row" backgroundColor={ui.currentLine}>
-                            <text
-                              fg={ui.text}
-                              bg={ui.currentLine}
-                              flexShrink={0}
-                              content={line.slice(0, match().col)}
-                            />
-                            <text
-                              fg={ui.gitDeleted}
-                              bg={ui.currentLine}
-                              flexShrink={0}
-                              content={line.slice(match().col, match().col + match().length)}
-                              attributes={TextAttributes.STRIKETHROUGH}
-                            />
-                            <text
-                              fg={ui.gitAdded}
-                              bg={ui.currentLine}
-                              flexShrink={0}
-                              content={swap()}
-                              attributes={TextAttributes.BOLD}
-                            />
-                            <box flexGrow={1} backgroundColor={ui.currentLine}>
-                              <text
-                                fg={ui.text}
-                                bg={ui.currentLine}
-                                content={line.slice(match().col + match().length)}
-                              />
-                            </box>
-                          </box>
-                        )}
-                      </Show>
-                    </box>
+                    <Index each={previewLine(line(), at())}>
+                      {span => (
+                        <text
+                          fg={span().fg}
+                          bg={bg()}
+                          flexShrink={0}
+                          content={span().text}
+                          attributes={span().attributes}
+                        />
+                      )}
+                    </Index>
+                    {/* Spacer, so the line's background reaches the panel's edge. */}
+                    <box flexGrow={1} backgroundColor={bg()} />
                   </box>
                 )
               }}
-            </For>
+            </Index>
           </box>
         )}
       </Show>
@@ -462,7 +636,7 @@ export function SearchPanel(props: SearchPanelProps) {
             ? replacing()
               ? '↑↓ move · Enter replace · Ctrl+A replace all · Tab back · Esc close'
               : '↑↓ move · Enter jump · Tab replace · Ctrl+C/W/R case/word/regex · Esc close'
-            : '↑↓ move · Enter jump · Tab fold · Ctrl+C/W/R case/word/regex · Esc close'
+            : '↑↓ move · Enter jump · Tab fold · Shift+Tab all · Ctrl+C/W/R case/word/regex · Esc close'
         }
       />
     </ModalPanel>

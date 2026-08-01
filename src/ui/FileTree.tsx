@@ -5,6 +5,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from
 
 import type { TreeNode } from '../core/fs'
 import type { FileStatus } from '../core/git'
+import { iconFor } from '../icons'
 import { ui } from '../themes'
 
 export interface FileTreeProps {
@@ -22,6 +23,8 @@ export interface FileTreeProps {
   cutPaths: string[]
   /** Picked out with Shift+↑/↓, and what delete and move act on. */
   markedPaths: string[]
+  /** `iconTheme`: the glyph column, or `'none'` for the plain arrow. */
+  iconTheme: string
   onActivate: (node: TreeNode) => void
   onPin: (node: TreeNode) => void
   onFocus: () => void
@@ -237,7 +240,17 @@ export function FileTree(props: FileTreeProps) {
               selected() ? (props.focused ? ui.treeSelectedBg : ui.treeFocusBg) : ui.sidebarBg
             /** Taken with `x` and waiting for a destination: drawn as already gone. */
             const leaving = () => props.cutPaths.includes(node.path)
-            const arrow = () => (node.isDir ? (props.expanded.has(node.path) ? '▾' : '▸') : '·')
+            const open = () => props.expanded.has(node.path)
+            /**
+             * The icon takes the arrow's column rather than a column of its own:
+             * a folder glyph has an open and a closed form, so expansion stays
+             * readable and a row costs the same width either way.
+             */
+            const icon = () =>
+              iconFor(props.iconTheme, { name: node.name, isDir: node.isDir, expanded: open() })
+            const glyph = () => icon()?.glyph ?? (node.isDir ? (open() ? '▾' : '▸') : '·')
+            const glyphColor = () =>
+              leaving() ? ui.faint : (icon()?.color ?? (node.isDir ? ui.dim : ui.faint))
             const status = () => statusOf(node)
             const ignored = () => props.gitIgnored.has(node.path)
             // Cut → status → ignored → ordinary. A status mark is more useful than
@@ -271,12 +284,7 @@ export function FileTree(props: FileTreeProps) {
                   flexShrink={0}
                   content={` ${'│ '.repeat(node.depth)}`}
                 />
-                <text
-                  fg={node.isDir ? ui.dim : ui.faint}
-                  bg={bg()}
-                  flexShrink={0}
-                  content={`${arrow()} `}
-                />
+                <text fg={glyphColor()} bg={bg()} flexShrink={0} content={`${glyph()} `} />
                 {/* The name takes the slack, so the mark is pushed to the panel's
                     right edge and every mark lines up in one column. */}
                 <box flexGrow={1} flexDirection="row" backgroundColor={bg()}>
