@@ -5,6 +5,7 @@
     "": {
       "name": "druk",
       "dependencies": {
+        "@hyzyla/pdfium": "^2.1.13",
         "@opentui/core": "^0.4.5",
         "@opentui/solid": "^0.4.5",
         "fast-png": "^8.0.0",
@@ -85,6 +86,8 @@
     "@clack/core": ["@clack/core@1.4.3", "", { "dependencies": { "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-/kr3UWNtdJfxZtPgDqUOmG2pvwlmcLGheex5yiZKdwbzZJxhV+HMNR9QNmyY5cGwTNV6LrR7Jtp+KjhUAP1qBQ=="],
 
     "@clack/prompts": ["@clack/prompts@1.7.0", "", { "dependencies": { "@clack/core": "1.4.3", "fast-string-width": "^3.0.2", "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A=="],
+
+    "@hyzyla/pdfium": ["@hyzyla/pdfium@2.1.13", "", {}, "sha512-4J+xMFJW6V+jktxor6Lsk/2YdPCpeY+Ga69J98uyNQwYESkAsUDxz8BeFU0ZbZJIJ+fK3J6bm61gmwWnUzVU1g=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

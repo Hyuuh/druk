@@ -1,7 +1,7 @@
 # Druk
 
-A code editor for the terminal. File tree, tabs, search, git marks and syntax highlighting
-for 30+ languages — keyboard and mouse.
+A code editor for the terminal. File tree, tabs, search, PDF viewing, git marks and syntax
+highlighting for 30+ languages — keyboard and mouse.
 
 ![druk editing a TypeScript file](./screenshot.png)
 
@@ -132,6 +132,14 @@ two views, not two tabs: the strip marks the rendered one `¶ name`, and what it
 the buffer, so unsaved edits show up without saving first. `Tab` or `Esc` goes back to the
 source; `↑` `↓`, `PgUp` / `PgDn` and `Ctrl+U` / `Ctrl+D` scroll it. Each file remembers
 which of the two it was left in.
+
+## PDF
+
+Open a `.pdf` like any other file. Druk renders the current page directly in the
+terminal: `PageUp` / `k` and `PageDown` / `j` move between pages, `+` / `-` zoom,
+the arrows pan a zoomed page, and `0` fits it to the editor again. PDF tabs are
+read-only; corrupt, encrypted, or unsupported documents stay closable and show the
+reason they could not be rendered.
 
 ## Search
 
