@@ -142,7 +142,7 @@ export function createPromptHandlers(deps: {
           done: () => `Pulled and pushed ${p.branch}`,
         })
       case 'installServer':
-        return void lsp.install(p.id, p.name, p.packages)
+        return void lsp.install(p.id, p.name, p.install)
     }
   }
 
@@ -155,7 +155,7 @@ export function createPromptHandlers(deps: {
     const p = prompt()
     setPrompt(null)
     if (p?.kind === 'installServer') {
-      say(`LSP: ${p.name} not installed — ${installHint({ kind: 'npm', packages: p.packages })}`)
+      say(`LSP: ${p.name} not installed — ${installHint(p.install)}`)
     }
     if (p?.kind === 'pullPush') say(PUSH_REJECTED, 'error')
   }
@@ -247,7 +247,10 @@ export function createPromptHandlers(deps: {
           danger: false,
           // Where it lands is the part worth showing: nothing global is touched,
           // and deleting that one directory undoes the whole thing.
-          message: `${p.name} is not installed. Fetch it with npm into ${SERVER_ROOT}?`,
+          message:
+            p.install.kind === 'npm'
+              ? `${p.name} is not installed. Fetch it with npm into ${SERVER_ROOT}?`
+              : `${p.name} is not installed. Download it into ${SERVER_ROOT}?`,
         }
       default:
         return null

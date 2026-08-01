@@ -1,8 +1,8 @@
 /**
  * Which language server serves which filetype. druk ships no servers: these are
  * commands looked up on the user's PATH, and a missing one just means no
- * diagnostics for that language — though druk offers to install the npm ones
- * into a prefix of its own (see `./install`).
+ * diagnostics for that language — though druk offers to fetch the ones it can,
+ * an npm package or a release binary, into a prefix of its own (see `./install`).
  *
  * The `id` is the key the `lspServers` config setting overrides — a user points
  * it at another command (`{ "typescript": ["deno", "lsp"] }`) or disables the
@@ -10,14 +10,19 @@
  */
 
 /**
- * How a missing server is obtained. `npm` is the case druk can carry out itself;
- * `manual` is a line to print, for servers that come with a language toolchain.
- * Servers with neither (clangd, zls, sourcekit-lsp) ship with an SDK, and no one
- * command installs them on every OS.
+ * How a missing server is obtained. `npm` and `download` are the cases druk can
+ * carry out itself — a package install, or a release binary fetched from a URL
+ * (see `./install.ts`); `manual` is a line to print, for servers that come with
+ * a language toolchain. Servers with neither (clangd, zls, sourcekit-lsp) ship
+ * with an SDK, and no one command installs them on every OS.
  */
 export type ServerInstall =
   | { kind: 'npm'; packages: string[] }
   | { kind: 'manual'; command: string }
+  | { kind: 'download'; url: string }
+
+/** The kinds druk can install itself — what a confirm prompt ever carries. */
+export type FetchableInstall = Exclude<ServerInstall, { kind: 'manual' }>
 
 export interface ServerSpec {
   id: string
@@ -29,6 +34,30 @@ export interface ServerSpec {
 
 const npm = (...packages: string[]): ServerInstall => ({ kind: 'npm', packages })
 const manual = (command: string): ServerInstall => ({ kind: 'manual', command })
+const download = (url: string): ServerInstall => ({ kind: 'download', url })
+
+/**
+ * Expert ships a self-contained binary per OS/arch on its releases page — no npm
+ * package. Spelled out rather than assembled from `platform`/`arch`: the release
+ * carries no Windows arm64 build, so composing a name would offer a download that
+ * 404s. A machine with no entry gets the manual hint.
+ */
+const EXPERT_ASSETS: Record<string, string | undefined> = {
+  'darwin-arm64': 'expert_darwin_arm64',
+  'darwin-x64': 'expert_darwin_amd64',
+  'linux-arm64': 'expert_linux_arm64',
+  'linux-x64': 'expert_linux_amd64',
+  'win32-x64': 'expert_windows_amd64.exe',
+}
+
+function expertInstall(): ServerInstall {
+  const asset = EXPERT_ASSETS[`${process.platform}-${process.arch}`]
+  return asset
+    ? download(`https://github.com/expert-lsp/expert/releases/latest/download/${asset}`)
+    : manual(
+        'Download the binary from https://github.com/expert-lsp/expert/releases and put it on your $PATH',
+      )
+}
 
 export const DEFAULT_SERVERS: ServerSpec[] = [
   {
@@ -74,6 +103,13 @@ export const DEFAULT_SERVERS: ServerSpec[] = [
     command: ['solargraph', 'stdio'],
     filetypes: ['ruby'],
     install: manual('gem install solargraph'),
+  },
+  {
+    id: 'elixir',
+    // `--stdio` is required: without it expert waits for a port argument.
+    command: ['expert', '--stdio'],
+    filetypes: ['elixir'],
+    install: expertInstall(),
   },
   {
     id: 'php',
@@ -126,7 +162,9 @@ export function servers(): ServerSpec[] {
 
 /** The line that tells a user how to install `spec` themselves. */
 export function installHint(install: ServerInstall): string {
-  return install.kind === 'npm' ? `npm i -g ${install.packages.join(' ')}` : install.command
+  if (install.kind === 'npm') return `npm i -g ${install.packages.join(' ')}`
+  if (install.kind === 'download') return `Download it from ${install.url}`
+  return install.command
 }
 
 /**
