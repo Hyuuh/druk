@@ -34,8 +34,8 @@ comparison base that points marks, gutter, panel and diff at another branch inst
 HEAD (palette → Git → Compare against branch…), branch comparison against the
 repository's default branch or any selected base (palette → Git → Compare branches, or
 `B` in the panel) with merge-base file scoping, a commit list and lazily loaded diffs,
-an image viewer (PNG/JPEG as half-block
-cells), a rendered view for markdown files (`Ctrl+Opt+M`, palette → View — OpenTUI's
+an image viewer (PNG/JPEG as half-block cells), a PDF viewer (page, zoom and pan controls
+rendered into terminal cells), a rendered view for markdown files (`Ctrl+Opt+M`, palette → View — OpenTUI's
 `<markdown>` renderable over the editor slot, per path so each tab keeps the view it
 was left in, rendering the buffer rather than the file so unsaved edits show), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
 `themeLight` / `themeDark` picked separately and defaulting to the GitHub pair —
@@ -166,12 +166,15 @@ the suite writes to your real `~/.config/druk`.
 ## Shipping
 
 `bun run build` produces one executable; `bun run release` turns the executables in
-`dist/` into npm packages and release archives. Six things about that are easy to break:
+`dist/` into an npm package and release archives carrying each binary and its third-party
+notices. Six things about that are easy to break:
 
 - **Assets must be static `with { type: 'file' }` imports.** Bun embeds only what it can
   see at build time, so a computed specifier or an `import.meta.resolve` call leaves the
   binary without that file. Every grammar and query goes through
-  `src/languages/grammars.ts` for this reason.
+  `src/languages/grammars.ts` for this reason. PDFium's WASM is likewise imported with
+  `with { type: 'file' }` in `src/core/pdf.ts` and passed as `wasmBinary`, because its
+  implicit sibling lookup cannot work inside Bun's compiled filesystem.
 - **`index.tsx` must keep the app behind its dynamic import.** `core/assets.ts` stages
   the native library to a per-build cache and points `OTUI_ASSET_ROOT` at it — worth
   ~250ms of startup on macOS, which otherwise re-validates a freshly extracted dylib on
@@ -194,8 +197,8 @@ the suite writes to your real `~/.config/druk`.
   to `druk` itself. One package is what makes the release run unattended.
 
 The repo's own `package.json` is `private`: what npm publishes is staged into
-`dist/npm/druk` by `scripts/release.ts` — the shim, the postinstall, the README and the
-LICENSE, and nothing else.
+`dist/npm/druk` by `scripts/release.ts` — the shim, the postinstall, the README, the
+LICENSE and the third-party notices, and nothing else.
 Versions come from `package.json` — bump it and `.github/workflows/release.yml` builds
 every platform, uploads the archives to the release and publishes to npm, with no manual
 step. Two ways to start it: push a tag `v<version>`, or run the workflow from the Actions
@@ -250,6 +253,7 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
+| PDF viewer | rendering in `src/core/pdf.ts`, UI in `src/ui/PdfView.tsx`, and bufferless routing in `src/app/workspace.ts` |
 | language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts`, with `install: npm(…)` or `install: download(…)` when druk can fetch it itself, or `install: manual(…)` for a line to print (users override per-server with the `lspServers` setting; the settings page toggles them and edits their commands) — a server whose command depends on what the project installed goes in `projectCommand` in `src/lsp/project.ts` instead, which every server consults first |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` — chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there, not listed per theme |
 | icon theme | an entry in `BUILTIN_ICON_THEMES` in `src/icons/index.ts` — one codepoint per glyph, since the tree gives it the arrow's single column |
