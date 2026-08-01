@@ -1,11 +1,16 @@
+import type { TextEncoding } from '../core/fs'
+
 /** Which pane owns the keyboard when no overlay is open. */
 export type Focus = 'tree' | 'editor'
 
 export interface FileBuffer {
+  /** Always LF and never BOM-prefixed — see `TextEncoding` for why. */
   content: string
   dirty: boolean
   /** Disk mtime this buffer was last in sync with; used to detect outside edits. */
   mtime: number
+  /** What the file was spelled as on disk, restored by every write. */
+  encoding: TextEncoding
 }
 
 /** Dirty buffers a disk sync refused to touch, split by what happened to the file. */
@@ -18,6 +23,8 @@ export interface DiskSync {
 export interface Conflict {
   path: string
   disk: string
+  /** How the disk version is spelled, so accepting it adopts that too. */
+  encoding: TextEncoding
   /** The file is gone: there is no outside version to accept. */
   deleted: boolean
 }

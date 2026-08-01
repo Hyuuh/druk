@@ -434,6 +434,18 @@ is just a diff against the empty tree.
   the watcher still see every file, and an ignored directory is pruned at its top row
   (never descended into), which is why `ignoredPaths` can match git's collapsed
   `--directory` output by exact path.
+- **A buffer's text is always LF and never BOM-prefixed; the file's own spelling rides
+  along beside it.** `readTextFile` strips both and reports them as a `TextEncoding` on
+  the `FileBuffer`, and `writeFile` puts them back. This is not tidiness: OpenTUI's edit
+  buffer drops the `\r` of every CRLF break and rejoins lines with `\n`, and `TextDecoder`
+  eats a leading BOM — so a raw CRLF or BOM buffer comes back from the engine different
+  from what was read, and `onEditorChange`, which marks the buffer dirty on any difference,
+  reads that as an edit. That was a file dirty the moment it opened and a Ctrl+S that
+  rewrote every line of it (issue #38). Anything that re-reads a file has to carry the new
+  encoding with the new text — `formatAfterSave` especially, since prettier writes LF and a
+  buffer still claiming CRLF would convert its work straight back. `refText` normalizes for
+  the same reason: the other side of a diff is a buffer, so a blob committed with CRLF
+  would otherwise diff as every line changed.
 - **Image tabs are viewer tabs: a tab without a buffer.** `isImagePath` branches before
   the `readFile` in `openFile`, so a PNG/JPEG gets a tab that flows through the normal
   preview/pin/session logic while `buffers` never learns about it — the no-buffer

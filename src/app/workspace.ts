@@ -4,7 +4,14 @@ import { createEffect, createSignal, on } from 'solid-js'
 import { createStore, produce, unwrap } from 'solid-js/store'
 
 import { formatterFor, runFormatter } from '../core/format'
-import { BinaryFileError, exists, mtimeOf, readFile, writeFile } from '../core/fs'
+import {
+  BinaryFileError,
+  DEFAULT_ENCODING,
+  exists,
+  mtimeOf,
+  readTextFile,
+  writeFile,
+} from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import { isImagePath } from '../core/image'
 import { isMarkdownPath } from '../core/markdown'
@@ -32,6 +39,12 @@ const unreadableReason = (e: unknown) =>
     ? 'It is binary, or uses an encoding druk cannot read.'
     : (e as Error).message
 
+/** A clean buffer for a file on disk. Throws whatever reading it throws. */
+const loadBuffer = (path: string): FileBuffer => {
+  const { text, encoding } = readTextFile(path)
+  return { content: text, dirty: false, mtime: mtimeOf(path), encoding }
+}
+
 /**
  * What the editor mounts with. Restored synchronously: the editor must mount with
  * its buffers already in place, otherwise it renders an empty document and marks
@@ -46,7 +59,7 @@ export function restoreWorkspace(rootDir: string, single: string | null) {
       // An image opens as a viewer tab: no buffer, so nothing can write it back.
       const buffers: Record<string, FileBuffer> = isImagePath(single)
         ? {}
-        : { [single]: { content: readFile(single), dirty: false, mtime: mtimeOf(single) } }
+        : { [single]: loadBuffer(single) }
       return {
         buffers,
         tabs: [single],
@@ -73,7 +86,7 @@ export function restoreWorkspace(rootDir: string, single: string | null) {
   for (const path of saved.tabs) {
     if (isImagePath(path)) continue // a viewer tab has no buffer to restore
     try {
-      buffers[path] = { content: readFile(path), dirty: false, mtime: mtimeOf(path) }
+      buffers[path] = loadBuffer(path)
     } catch {
       // unreadable since last time — the tab is dropped below
     }
@@ -173,7 +186,7 @@ export function createWorkspace(deps: {
     // structural. The tab itself flows through the same preview/pin/session logic.
     if (!buffers[path] && !isImagePath(path)) {
       try {
-        setBuffers(path, { content: readFile(path), dirty: false, mtime: mtimeOf(path) })
+        setBuffers(path, loadBuffer(path))
       } catch (e) {
         // Nothing druk can show, so no tab and no buffer — which is what keeps a file
         // like this from ever being written back. The refusal goes over the editor
@@ -349,23 +362,26 @@ export function createWorkspace(deps: {
     void runFormatter(command, path, rootDir).then(error => {
       if (error) return say(`Format failed: ${error}`, 'error')
       if (!buffers[path]) return // closed while the formatter ran
-      let disk: string
+      let written: FileBuffer
       try {
-        disk = readFile(path)
+        // The formatter's own spelling wins: prettier writes LF by default, and a
+        // buffer still claiming CRLF would convert its work back on the next save.
+        written = loadBuffer(path)
       } catch {
         return // unreadable now — the watcher's sync will report it
       }
+      const disk = written.content
       const buffer = buffers[path]!
       // A keystroke while the tool ran wins; the next save reformats anyway.
       if (buffer.dirty) return setBuffers(path, 'mtime', mtimeOf(path))
       if (disk === buffer.content) {
         // Nothing to pull in: the formatter changed nothing, or the watcher's
         // sync raced this callback and already applied its write.
-        setBuffers(path, 'mtime', mtimeOf(path))
+        setBuffers(path, { mtime: written.mtime, encoding: written.encoding })
         if (disk !== saved) say(`Formatted ${basename(path)}`)
         return
       }
-      setBuffers(path, { content: disk, dirty: false, mtime: mtimeOf(path) })
+      setBuffers(path, written)
       if (path === activePath()) editor.pushEdit(disk)
       git.bump()
       say(`Formatted ${basename(path)}`)
@@ -375,7 +391,10 @@ export function createWorkspace(deps: {
   /** Write the buffer to disk unconditionally and re-sync its mtime. */
   const writeBuffer = (path: string, content: string): boolean => {
     const final = config.trimOnSave ? trimTrailing(content) : content
-    const err = writeFile(path, final)
+    // The file goes back spelled the way it was read: a CRLF working tree or a
+    // BOM the user never touched must not turn into a whole-file diff.
+    const encoding = buffers[path]?.encoding ?? DEFAULT_ENCODING
+    const err = writeFile(path, final, encoding)
     if (err) {
       say(`Save failed: ${err}`, 'error')
       return false
@@ -404,17 +423,18 @@ export function createWorkspace(deps: {
     // Someone else touched the file since we loaded it — ask before clobbering.
     if (mtimeOf(path) !== buffer.mtime) {
       if (!exists(path)) {
-        setConflict({ path, disk: '', deleted: true })
+        setConflict({ path, disk: '', encoding: buffer.encoding, deleted: true })
         return
       }
       let disk = ''
+      let encoding = buffer.encoding
       try {
-        disk = readFile(path)
+        ;({ text: disk, encoding } = readTextFile(path))
       } catch {
         // unreadable (binary now) — treat as empty
       }
       if (disk !== buffer.content) {
-        setConflict({ path, disk, deleted: false })
+        setConflict({ path, disk, encoding, deleted: false })
         return
       }
     }
@@ -456,7 +476,12 @@ export function createWorkspace(deps: {
     if (choice === 'overwrite' && buffers[c.path]) {
       writeBuffer(c.path, buffers[c.path]!.content)
     } else if (choice === 'reload') {
-      setBuffers(c.path, { content: c.disk, dirty: false, mtime: mtimeOf(c.path) })
+      setBuffers(c.path, {
+        content: c.disk,
+        dirty: false,
+        mtime: mtimeOf(c.path),
+        encoding: c.encoding,
+      })
       editor.bumpReload()
       say(`Reloaded ${basename(c.path)} from disk`)
     }
@@ -483,16 +508,26 @@ export function createWorkspace(deps: {
         else vanished.push(path)
         continue
       }
-      let disk: string
+      let fresh: FileBuffer
       try {
-        disk = readFile(path)
+        fresh = loadBuffer(path)
       } catch {
         continue // unreadable, or binary now — the tree refresh below reflects it
       }
-      if (disk === buffer.content) continue
+      if (fresh.content === buffer.content) {
+        // Same text, spelled differently: something outside converted the endings
+        // or dropped the BOM. Nothing to repaint, but the next save has to follow
+        // suit rather than convert the file back.
+        if (
+          fresh.encoding.eol !== buffer.encoding.eol ||
+          fresh.encoding.bom !== buffer.encoding.bom
+        )
+          setBuffers(path, 'encoding', fresh.encoding)
+        continue
+      }
       // Unsaved edits stay untouched; the user is warned and asked on save.
       if (buffer.dirty) changed.push(basename(path))
-      else updates.push([path, { content: disk, dirty: false, mtime: mtimeOf(path) }])
+      else updates.push([path, fresh])
     }
     // Viewer tabs have no buffer, so the walk above never sees them; a deleted
     // image has nothing to show and its tab goes the way of a clean buffer's.

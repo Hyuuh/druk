@@ -201,14 +201,54 @@ export class BinaryFileError extends Error {
 }
 
 /**
- * Read a text file, refusing binary content — a NUL byte in the first 8 KB, the
- * same heuristic git uses.
+ * How a file's text was spelled on disk, so a save can put it back that way.
+ *
+ * druk holds text as LF without a BOM, because that is the only shape that
+ * survives the edit buffer: OpenTUI's Zig core drops the `\r` of a CRLF break
+ * and rejoins lines with `\n`, and `TextDecoder` eats a leading BOM. Keeping the
+ * raw text in the buffer instead would mean every CRLF or BOM file came back
+ * from the engine different from what was read, which reads as an edit — a file
+ * dirty the moment it opened, and a save that rewrote every line of it.
+ */
+export interface TextEncoding {
+  eol: '\n' | '\r\n'
+  bom: boolean
+}
+
+export const DEFAULT_ENCODING: TextEncoding = { eol: '\n', bom: false }
+
+const countOf = (haystack: string, needle: string) => haystack.split(needle).length - 1
+
+/** Strip the BOM and the CRs, reporting what was taken off so a write can restore it. */
+export function decodeText(raw: string): { text: string; encoding: TextEncoding } {
+  const bom = raw.startsWith('\uFEFF')
+  const body = bom ? raw.slice(1) : raw
+  // Majority rather than first-break-wins: one stray CRLF in an LF file must not
+  // convert the whole file on the next save, and the same the other way round.
+  const crlf = countOf(body, '\r\n')
+  const eol = crlf > 0 && crlf * 2 >= countOf(body, '\n') ? '\r\n' : '\n'
+  return { text: eol === '\r\n' ? body.replaceAll('\r\n', '\n') : body, encoding: { eol, bom } }
+}
+
+/** Put back what `decodeText` took off. */
+export function encodeText(text: string, encoding: TextEncoding): string {
+  // Normalized first, not converted straight to `eol`: a paste can carry CRLF into
+  // an LF buffer, and `\n` → `\r\n` over that text would double every CR.
+  const lf = text.includes('\r\n') ? text.replaceAll('\r\n', '\n') : text
+  const body = encoding.eol === '\r\n' ? lf.replaceAll('\n', '\r\n') : lf
+  return encoding.bom ? `\uFEFF${body}` : body
+}
+
+/**
+ * Read a text file with the BOM and the CRs taken off, reporting both so a save
+ * can put them back, and refusing binary content — a NUL byte in the first 8 KB,
+ * the same heuristic git uses.
  *
  * The sniff is a positional read rather than a slice of the whole file: the tree
  * happily offers a 2 GB video, and reading it before rejecting it would allocate
  * all of it and throw ERR_FS_FILE_TOO_LARGE instead of BinaryFileError.
  */
-export function readFile(path: string): string {
+export function readTextFile(path: string): { text: string; encoding: TextEncoding } {
   const fd = fs.openSync(path, 'r')
   try {
     const head = Buffer.alloc(8192)
@@ -217,7 +257,12 @@ export function readFile(path: string): string {
   } finally {
     fs.closeSync(fd)
   }
-  return fs.readFileSync(path, 'utf8')
+  return decodeText(fs.readFileSync(path, 'utf8'))
+}
+
+/** As `readTextFile`, for the readers with nothing to write back. */
+export function readFile(path: string): string {
+  return readTextFile(path).text
 }
 
 /** Last-modified time in ms, or 0 when the file is missing/unreadable. */
@@ -256,10 +301,14 @@ const attempt = (run: () => void): FsResult => {
 const taken = (path: string): FsResult =>
   fs.existsSync(path) ? `already exists: ${basename(path)}` : null
 
-export const writeFile = (path: string, content: string): FsResult =>
+export const writeFile = (
+  path: string,
+  content: string,
+  encoding: TextEncoding = DEFAULT_ENCODING,
+): FsResult =>
   attempt(() => {
     fs.mkdirSync(dirname(path), { recursive: true })
-    fs.writeFileSync(path, content, 'utf8')
+    fs.writeFileSync(path, encodeText(content, encoding), 'utf8')
   })
 
 export const createFile = (path: string): FsResult =>
