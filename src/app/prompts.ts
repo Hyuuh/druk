@@ -11,6 +11,7 @@ import type { EditorBridge } from './editor'
 import type { FileOps } from './fileOps'
 import type { GitOp } from './git'
 import type { Lsp } from './lsp'
+import type { Market } from './market'
 import type { Panes } from './panes'
 import type { Status } from './status'
 import type { Tree } from './tree'
@@ -57,9 +58,10 @@ export function createPromptHandlers(deps: {
   gitOp: GitOp
   branches: Branches
   lsp: Lsp
+  market: Market
 }) {
   const { rootDir, renderer, state, status, tree, panes, editor, workspace } = deps
-  const { fileOps, gitOp, branches, lsp } = deps
+  const { fileOps, gitOp, branches, lsp, market } = deps
   const { prompt, setPrompt } = state
   const { say } = status
 
@@ -143,6 +145,8 @@ export function createPromptHandlers(deps: {
         })
       case 'installServer':
         return void lsp.install(p.id, p.name, p.packages)
+      case 'installPlugin':
+        return market.accept(p.id)
     }
   }
 
@@ -158,6 +162,9 @@ export function createPromptHandlers(deps: {
       say(`LSP: ${p.name} not installed — ${installHint({ kind: 'npm', packages: p.packages })}`)
     }
     if (p?.kind === 'pullPush') say(PUSH_REJECTED, 'error')
+    // Nothing to say — the offer was druk's idea — but the fetched manifest has
+    // to be dropped, and the decline remembered for the session.
+    if (p?.kind === 'installPlugin') market.decline(p.id)
   }
 
   const promptTitle = () => {
@@ -248,6 +255,22 @@ export function createPromptHandlers(deps: {
           // Where it lands is the part worth showing: nothing global is touched,
           // and deleting that one directory undoes the whole thing.
           message: `${p.name} is not installed. Fetch it with npm into ${SERVER_ROOT}?`,
+        }
+      case 'installPlugin':
+        return {
+          title: p.current ? 'Plugin update' : 'Plugin available',
+          verb: p.current ? 'update it' : 'install it',
+          danger: false,
+          // The commands are the part worth reading before agreeing: a manifest
+          // is data and installing it runs nothing, but a language server is a
+          // program druk will spawn the next time a matching file opens.
+          message: [
+            p.why,
+            `${p.name} adds ${p.summary}${p.current ? ` (${p.current} installed)` : ''}.`,
+            p.runs.length > 0 ? `It runs: ${p.runs.join(', ')}` : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
         }
       default:
         return null

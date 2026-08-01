@@ -1,0 +1,15 @@
+{
+  "id": "elixir",
+  "name": "Elixir",
+  "version": "1.0.0",
+  "description": "Elixir highlighting.",
+  "languages": [
+    {
+      "id": "elixir",
+      "lineComment": "#",
+      "grammar": {
+        "vendored": "elixir"
+      }
+    }
+  ]
+}

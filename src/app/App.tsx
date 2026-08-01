@@ -39,6 +39,7 @@ import { createFileOps } from './fileOps'
 import { createGit, createGitOp, wireGitEffects } from './git'
 import { installKeyboard } from './keyboard'
 import { createLsp, wireLspEffects } from './lsp'
+import { createMarket } from './market'
 import { createNavigation } from './navigation'
 import { createOverlays, OverlayStack } from './Overlays'
 import { createPanes } from './panes'
@@ -75,8 +76,9 @@ export function App(props: {
    */
   initialProject?: Partial<Config>
   /**
-   * The startup update check is unconditional for users — this switch exists so
-   * the test harness can keep hundreds of launches off the npm registry.
+   * The startup checks — druk's own version, and the plugin market — are
+   * unconditional for users. This switch exists so the test harness can keep
+   * hundreds of launches off the npm registry and off the market.
    */
   checkUpdates?: boolean
 }) {
@@ -109,6 +111,9 @@ export function App(props: {
   const comparison = createComparison({ rootDir, git, status })
   const promptState = createPromptState()
   const lsp = createLsp({ rootDir, settings, status, prompts: promptState })
+  const market = createMarket({ rootDir, settings, status, prompts: promptState })
+  // A file whose language no installed plugin serves is the market's cue.
+  lsp.onMissingServer(market.suggestForFiletype)
   // Also on the quit path: the renderer tears the root down before exiting, and
   // a leaked server would outlive the editor (tests leak them per launch).
   onCleanup(lsp.dispose)
@@ -141,6 +146,7 @@ export function App(props: {
     gitOp,
     branches,
     lsp,
+    market,
   })
   const overlays = createOverlays({
     renderer,
@@ -163,6 +169,7 @@ export function App(props: {
     git,
     gitOp,
     lsp,
+    market,
     branches,
     comparison,
     workspace,
@@ -319,6 +326,9 @@ export function App(props: {
         overlays.setUpdate(info)
       }
     })()
+    // Deliberately not awaited with the version check: the market says its piece
+    // in the status bar, and one slow request must not delay the other's banner.
+    void market.check()
   })
 
   // Focus reporting (DECSET 1004): the terminal sends CSI I / CSI O as the window

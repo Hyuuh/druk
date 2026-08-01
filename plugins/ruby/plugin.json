@@ -1,0 +1,26 @@
+{
+  "id": "ruby",
+  "name": "Ruby",
+  "version": "1.0.0",
+  "description": "Ruby highlighting and solargraph.",
+  "languages": [
+    {
+      "id": "ruby",
+      "lineComment": "#",
+      "grammar": {
+        "vendored": "ruby"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "ruby",
+      "command": ["solargraph", "stdio"],
+      "filetypes": ["ruby"],
+      "install": {
+        "kind": "manual",
+        "command": "gem install solargraph"
+      }
+    }
+  ]
+}

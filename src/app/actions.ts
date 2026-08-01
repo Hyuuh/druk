@@ -367,16 +367,19 @@ export function createCommands(ctx: AppContext) {
     gitDeleteBranch: () => ctx.branches.open('delete'),
     gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
     listPlugins: () => {
-      const found = plugins()
-      if (found.length === 0) return say(`No plugins — manifests go in ${PLUGINS_DIR}`)
-      say(
-        found
-          .map(
-            plugin =>
-              `${plugin.name} ${plugin.version} (${contributionSummary(plugin)})${plugin.disabled ? ' — off' : ''}`,
-          )
-          .join(' · '),
+      // The ones druk ships are a count, not a list: they outnumber everything
+      // else and naming them would push what the user actually installed off the
+      // end of a status line. The settings page is where all of them are shown.
+      const shipped = plugins().filter(plugin => plugin.builtin).length
+      const installed = plugins().filter(plugin => !plugin.builtin)
+      const named = installed.map(
+        plugin =>
+          `${plugin.name} ${plugin.version} (${contributionSummary(plugin)})${plugin.disabled ? ' — off' : ''}`,
       )
+      if (named.length === 0) {
+        return say(`${shipped} built in, none installed — manifests go in ${PLUGINS_DIR}`)
+      }
+      say([`${shipped} built in`, ...named].join(' · '))
     },
     reloadPlugins: () => {
       const load = settings.reloadPlugins()
@@ -390,12 +393,26 @@ export function createCommands(ctx: AppContext) {
           : `${load.plugins.length} plugin${load.plugins.length === 1 ? '' : 's'} reloaded`,
       )
     },
+    installPlugin: (id: string) => ctx.market.install(id),
+    uninstallPlugin: (id: string) => ctx.market.remove(id),
+    updatePlugins: () => void ctx.market.updateAll(),
+    checkPluginUpdates: () => void ctx.market.checkNow(),
     showHelp: () => ctx.overlays.setHelp(true),
     quit: ctx.prompts.quit,
   }
 
+  // `market.catalog()` and `plugins()` are signals, so the market rows repaint
+  // after a fetch or an install without the palette knowing either happened.
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, { activeTheme: config.theme }),
+    buildCommands(actions, {
+      activeTheme: config.theme,
+      market: ctx.market.catalog(),
+      installed: plugins().map(plugin => ({
+        id: plugin.id,
+        version: plugin.version,
+        builtin: plugin.builtin,
+      })),
+    }),
   )
 
   return { commands, actions }

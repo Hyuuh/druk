@@ -1,0 +1,14 @@
+{
+  "id": "vue",
+  "name": "Vue",
+  "version": "1.0.0",
+  "description": "Vue single-file component highlighting.",
+  "languages": [
+    {
+      "id": "vue",
+      "grammar": {
+        "vendored": "vue"
+      }
+    }
+  ]
+}

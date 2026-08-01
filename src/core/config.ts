@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path'
 import { isIconThemeName, NO_ICONS } from '../icons'
 import { isThemeName } from '../themes'
 import type { ThemeName } from '../themes'
+import { MARKET_URL } from './market'
 
 export const CONFIG_FILE = join(
   process.env.XDG_CONFIG_HOME ?? join(os.homedir(), '.config'),
@@ -86,9 +87,9 @@ export interface Config {
   transparent: boolean
   /**
    * Which glyphs the file tree draws in place of the expansion arrow —
-   * `'none'`, one druk ships (`unicode`, `nerd`), or one a plugin contributes.
-   * `'none'` is the default because nothing can ask the terminal whether its
-   * font has the glyphs a set needs.
+   * `'none'`, the shipped `unicode`, or one a plugin contributes (`nerd-icons`
+   * is the market's). `'none'` is the default because nothing can ask the
+   * terminal whether its font has the glyphs a set needs.
    */
   iconTheme: string
   /** Modal editing (normal / insert / visual). */
@@ -154,8 +155,9 @@ export interface Config {
    */
   typescriptTsdk: string
   /**
-   * Per-server command override, keyed by server id — see src/lsp/servers.ts
-   * for the ids and defaults. An empty array disables that server.
+   * Per-server command override, keyed by server id — the ids are the ones the
+   * installed plugins declare, since druk ships no servers of its own. An empty
+   * array disables that server.
    */
   lspServers: Record<string, string[]>
   /**
@@ -172,6 +174,19 @@ export interface Config {
    * theme id can be validated, and this is the one setting that decides which.
    */
   disabledPlugins: string[]
+  /**
+   * Read the plugin market at startup: notice a newer version of an installed
+   * plugin, and offer the plugin for a language or a theme that is missing. Off
+   * means druk never asks the registry anything.
+   */
+  pluginUpdates: boolean
+  /**
+   * Where the market is served from — an https *directory* URL, under which each
+   * plugin is `<id>/plugin.json` and the catalog is `index.json`. A fork's raw
+   * URL belongs here; a plugin being written is tested by dropping it straight
+   * into the plugins folder instead, which needs no registry at all.
+   */
+  pluginRegistry: string
 }
 
 export const DEFAULTS: Config = {
@@ -203,6 +218,8 @@ export const DEFAULTS: Config = {
   lspServers: {},
   keybindings: {},
   disabledPlugins: [],
+  pluginUpdates: true,
+  pluginRegistry: MARKET_URL,
 }
 
 /** Reads one setting out of parsed JSON; `undefined` for absent or invalid. */
@@ -280,6 +297,10 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   lspServers: commands,
   keybindings: strings,
   disabledPlugins: ids,
+  pluginUpdates: bool,
+  // https only. The registry is the one place druk reads a file someone else
+  // wrote, and a plaintext one could be rewritten between here and the machine.
+  pluginRegistry: raw => (typeof raw === 'string' && raw.startsWith('https://') ? raw : undefined),
 }
 
 const isConfigKey = (key: string): key is keyof Config => key in VALIDATORS
@@ -347,6 +368,35 @@ export function readDisabledPlugins(rootDir: string): string[] {
     }
   }
   return layer(projectConfigFile(rootDir)) ?? layer(CONFIG_FILE) ?? []
+}
+
+/**
+ * Theme and icon-theme ids the config asks for that nothing has registered.
+ *
+ * Read from the raw files for the same reason `readDisabledPlugins` is: by the
+ * time anything holds a `Config`, `VALIDATORS` has replaced an unknown id with
+ * the default, and what the user actually wrote is gone. That id is exactly what
+ * the market needs to offer the plugin back — a config naming `dracula` after
+ * the palettes moved out of druk is a plugin recommendation, not a broken value.
+ */
+export function unregisteredNames(rootDir: string): { themes: string[]; icons: string[] } {
+  const themes = new Set<string>()
+  const icons = new Set<string>()
+  for (const file of [CONFIG_FILE, projectConfigFile(rootDir)]) {
+    let raw: Record<string, unknown>
+    try {
+      raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>
+    } catch {
+      continue
+    }
+    for (const key of ['theme', 'themeLight', 'themeDark'] as const) {
+      const value = raw[key]
+      if (typeof value === 'string' && value && !isThemeName(value)) themes.add(value)
+    }
+    const icon = raw.iconTheme
+    if (typeof icon === 'string' && icon && !isIconThemeName(icon)) icons.add(icon)
+  }
+  return { themes: [...themes], icons: [...icons] }
 }
 
 export function saveUserConfig(config: Config): void {

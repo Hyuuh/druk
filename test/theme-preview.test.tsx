@@ -50,19 +50,18 @@ const hexToRgb = (hex: string) => {
   return `${Number.parseInt(h.slice(0, 2), 16)},${Number.parseInt(h.slice(2, 4), 16)},${Number.parseInt(h.slice(4, 6), 16)}`
 }
 
-const LATTE_BG = hexToRgb(THEMES['catppuccin-latte'].ui.bg)
 const DARK_BG = hexToRgb(THEMES.dark.ui.bg)
 const LIGHT_BG = hexToRgb(THEMES.light.ui.bg)
 const DARK_KEYWORD = hexToRgb((THEMES.dark.syntax.keyword as { fg: string }).fg)
-const LATTE_KEYWORD = hexToRgb((THEMES['catppuccin-latte'].syntax.keyword as { fg: string }).fg)
+const LIGHT_KEYWORD = hexToRgb((THEMES.light.syntax.keyword as { fg: string }).fg)
 
 test('palette filters from root and previews a theme before confirming', async () => {
   const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }))
   await openPalette(t)
 
   // Filtering from the root searches flattened leaves; stopping on a theme paints it.
-  await press(t, i => void i.typeText('latte'))
-  expect(bgColors(t)).toContain(LATTE_BG)
+  await press(t, i => void i.typeText('light'))
+  expect(bgColors(t)).toContain(LIGHT_BG)
 
   // Esc cancels the preview and returns to the current theme.
   await pressEscape(t)
@@ -70,9 +69,9 @@ test('palette filters from root and previews a theme before confirming', async (
 
   // Re-open, filter, and confirm.
   await openPalette(t)
-  await press(t, i => void i.typeText('latte'))
+  await press(t, i => void i.typeText('light'))
   await press(t, i => i.pressEnter())
-  expect(bgColors(t)).toContain(LATTE_BG)
+  expect(bgColors(t)).toContain(LIGHT_BG)
   expect(bgColors(t)).not.toContain(DARK_BG)
 })
 
@@ -80,27 +79,27 @@ test('palette cancels a previewed theme when filtering away from it', async () =
   const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }))
   await openPalette(t)
 
-  await press(t, i => void i.typeText('latte'))
-  expect(bgColors(t)).toContain(LATTE_BG)
+  await press(t, i => void i.typeText('light'))
+  expect(bgColors(t)).toContain(LIGHT_BG)
 
   // Filtering until there are no matching commands leaves the preview row.
   await press(t, i => void i.typeText('x'))
   expect(t.captureCharFrame()).toContain('No matching commands')
   expect(bgColors(t)).toContain(DARK_BG)
-  expect(bgColors(t)).not.toContain(LATTE_BG)
+  expect(bgColors(t)).not.toContain(LIGHT_BG)
 
   // Closing the palette after the preview has already been cancelled.
   await pressEscape(t)
   expect(bgColors(t)).toContain(DARK_BG)
-  expect(bgColors(t)).not.toContain(LATTE_BG)
+  expect(bgColors(t)).not.toContain(LIGHT_BG)
 })
 
 test('palette cancels a previewed theme before running a non-preview command', async () => {
   const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }))
   await openPalette(t)
 
-  await press(t, i => void i.typeText('latte'))
-  expect(bgColors(t)).toContain(LATTE_BG)
+  await press(t, i => void i.typeText('light'))
+  expect(bgColors(t)).toContain(LIGHT_BG)
 
   // Backspace the filter and select a non-preview command.
   await pressTimes(t, 5, i => i.pressBackspace())
@@ -109,7 +108,7 @@ test('palette cancels a previewed theme before running a non-preview command', a
 
   await press(t, i => i.pressEnter())
   expect(bgColors(t)).toContain(DARK_BG)
-  expect(bgColors(t)).not.toContain(LATTE_BG)
+  expect(bgColors(t)).not.toContain(LIGHT_BG)
 })
 
 test('backing out of the themes submenu puts the theme back', async () => {
@@ -146,16 +145,16 @@ test('cancelling a palette preview restores the editor, not only the sidebar', a
   await until(t, () => colors(t).has(DARK_KEYWORD))
 
   await openPalette(t)
-  await press(t, i => void i.typeText('latte'))
-  await until(t, () => bgColors(t).has(LATTE_BG))
+  await press(t, i => void i.typeText('light'))
+  await until(t, () => bgColors(t).has(LIGHT_BG))
 
   // Esc closes the palette and must undo the preview everywhere — including the
   // open editor's syntax table, which used to stay on the previewed theme until
   // the next keystroke dirtied the buffer.
   await pressEscape(t)
-  await until(t, () => colors(t).has(DARK_KEYWORD) && !colors(t).has(LATTE_KEYWORD))
+  await until(t, () => colors(t).has(DARK_KEYWORD) && !colors(t).has(LIGHT_KEYWORD))
   expect(bgColors(t)).toContain(DARK_BG)
-  expect(bgColors(t)).not.toContain(LATTE_BG)
+  expect(bgColors(t)).not.toContain(LIGHT_BG)
 })
 
 test('settings theme picker previews on filter and cancels on escape', async () => {
@@ -163,12 +162,12 @@ test('settings theme picker previews on filter and cancels on escape', async () 
   await runCommand(t, 'Settings')
   await press(t, i => i.pressEnter())
 
-  await press(t, i => void i.typeText('latte'))
-  expect(bgColors(t)).toContain(LATTE_BG)
+  await press(t, i => void i.typeText('light'))
+  expect(bgColors(t)).toContain(LIGHT_BG)
 
   await pressEscape(t)
   expect(bgColors(t)).toContain(DARK_BG)
-  expect(bgColors(t)).not.toContain(LATTE_BG)
+  expect(bgColors(t)).not.toContain(LIGHT_BG)
 })
 
 test('settings theme picker cancel restores the editor syntax too', async () => {
@@ -179,13 +178,13 @@ test('settings theme picker cancel restores the editor syntax too', async () => 
 
   await runCommand(t, 'Settings')
   await press(t, i => i.pressEnter())
-  await press(t, i => void i.typeText('latte'))
-  await until(t, () => bgColors(t).has(LATTE_BG))
+  await press(t, i => void i.typeText('light'))
+  await until(t, () => bgColors(t).has(LIGHT_BG))
 
   await pressEscape(t)
   // Back on the settings page — leave it so the editor is visible again.
   await pressEscape(t)
-  await until(t, () => colors(t).has(DARK_KEYWORD) && !colors(t).has(LATTE_KEYWORD))
+  await until(t, () => colors(t).has(DARK_KEYWORD) && !colors(t).has(LIGHT_KEYWORD))
 })
 
 // The light and dark rows paint nothing themselves — they take effect when the OS
@@ -196,10 +195,12 @@ test('picking a light theme leaves the theme in force on screen', async () => {
   await runCommand(t, 'Settings')
   await pressTimes(t, 2, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
-  await press(t, i => void i.typeText('latte'))
+  // The dark theme, deliberately: picking the light one for the light row is
+  // what it already holds, so nothing would have to have been put back.
+  await press(t, i => void i.typeText('dark'))
   await press(t, i => i.pressEnter())
 
-  expect(t.captureCharFrame()).toContain('Latte')
+  expect(t.captureCharFrame()).toContain('Light theme: GitHub Dark')
   expect(bgColors(t)).toContain(DARK_BG)
-  expect(bgColors(t)).not.toContain(LATTE_BG)
+  expect(bgColors(t)).not.toContain(LIGHT_BG)
 })

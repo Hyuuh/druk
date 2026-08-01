@@ -1,0 +1,26 @@
+{
+  "id": "go",
+  "name": "Go",
+  "version": "1.0.0",
+  "description": "Go highlighting and gopls.",
+  "languages": [
+    {
+      "id": "go",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "go"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "go",
+      "command": ["gopls"],
+      "filetypes": ["go"],
+      "install": {
+        "kind": "manual",
+        "command": "go install golang.org/x/tools/gopls@latest"
+      }
+    }
+  ]
+}

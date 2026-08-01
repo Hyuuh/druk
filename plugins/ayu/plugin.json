@@ -1,0 +1,347 @@
+{
+  "id": "ayu",
+  "name": "Ayu",
+  "version": "1.0.0",
+  "description": "Ayu Dark, Mirage and Light. Palette from https://github.com/dempfi/ayu (the sublime-color-scheme files).",
+  "themes": [
+    {
+      "id": "ayu-dark",
+      "name": "Ayu Dark",
+      "ui": {
+        "bg": "#10141c",
+        "panelBg": "#0d1017",
+        "barBg": "#0d1017",
+        "statusBg": "#e6b450",
+        "statusFg": "#10141c",
+        "text": "#bfbdb6",
+        "dim": "#5a6378",
+        "faint": "#5a6673",
+        "accent": "#e6b450",
+        "activeTabFg": "#bfbdb6",
+        "inactiveTabFg": "#5a6378",
+        "treeSelectedBg": "#1e2330",
+        "treeFocusBg": "#161a24",
+        "dirty": "#e6b450",
+        "error": "#d95757",
+        "folder": "#bfbdb6",
+        "cursor": "#e6b450",
+        "scrollbar": "#5a6378",
+        "gutter": "#5a6378",
+        "currentLine": "#161a24",
+        "indentGuide": "#1c222c",
+        "gitAdded": "#7fd962",
+        "gitModified": "#73b8ff",
+        "gitDeleted": "#f26d78"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#5a6673",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#ff8f40"
+        },
+        "string": {
+          "fg": "#aad94c"
+        },
+        "number": {
+          "fg": "#d2a6ff"
+        },
+        "boolean": {
+          "fg": "#d2a6ff"
+        },
+        "constant": {
+          "fg": "#d2a6ff"
+        },
+        "function": {
+          "fg": "#ffb454"
+        },
+        "type": {
+          "fg": "#59c2ff"
+        },
+        "variable": {
+          "fg": "#bfbdb6"
+        },
+        "property": {
+          "fg": "#f07178"
+        },
+        "tag": {
+          "fg": "#39bae6"
+        },
+        "operator": {
+          "fg": "#f29668"
+        },
+        "punctuation": {
+          "fg": "#bfbdb6"
+        },
+        "label": {
+          "fg": "#e6b673"
+        },
+        "escape": {
+          "fg": "#95e6cb"
+        },
+        "embedded": {
+          "fg": "#bfbdb6"
+        },
+        "error": {
+          "fg": "#d95757"
+        },
+        "markup.heading": {
+          "fg": "#aad94c",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#f07178",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#f07178",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#f29668"
+        },
+        "markup.link": {
+          "fg": "#59c2ff"
+        },
+        "markup.link.url": {
+          "fg": "#59c2ff",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#ffb454"
+        },
+        "markup.quote": {
+          "fg": "#95e6cb",
+          "italic": true
+        }
+      }
+    },
+    {
+      "id": "ayu-mirage",
+      "name": "Ayu Mirage",
+      "ui": {
+        "bg": "#242936",
+        "panelBg": "#1f2430",
+        "barBg": "#1f2430",
+        "statusBg": "#ffcc66",
+        "statusFg": "#242936",
+        "text": "#cccac2",
+        "dim": "#707a8c",
+        "faint": "#6e7c8f",
+        "accent": "#ffcc66",
+        "activeTabFg": "#cccac2",
+        "inactiveTabFg": "#707a8c",
+        "treeSelectedBg": "#2d3444",
+        "treeFocusBg": "#1a1f29",
+        "dirty": "#ffcc66",
+        "error": "#ff6666",
+        "folder": "#cccac2",
+        "cursor": "#ffcc66",
+        "scrollbar": "#707a8c",
+        "gutter": "#707a8c",
+        "currentLine": "#1a1f29",
+        "indentGuide": "#303848",
+        "gitAdded": "#87d96c",
+        "gitModified": "#80bfff",
+        "gitDeleted": "#f27983"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#6e7c8f",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#ffa659"
+        },
+        "string": {
+          "fg": "#d5ff80"
+        },
+        "number": {
+          "fg": "#dfbfff"
+        },
+        "boolean": {
+          "fg": "#dfbfff"
+        },
+        "constant": {
+          "fg": "#dfbfff"
+        },
+        "function": {
+          "fg": "#ffd173"
+        },
+        "type": {
+          "fg": "#73d0ff"
+        },
+        "variable": {
+          "fg": "#cccac2"
+        },
+        "property": {
+          "fg": "#f28779"
+        },
+        "tag": {
+          "fg": "#5ccfe6"
+        },
+        "operator": {
+          "fg": "#f29e74"
+        },
+        "punctuation": {
+          "fg": "#cccac2"
+        },
+        "label": {
+          "fg": "#ffdfb3"
+        },
+        "escape": {
+          "fg": "#95e6cb"
+        },
+        "embedded": {
+          "fg": "#cccac2"
+        },
+        "error": {
+          "fg": "#ff6666"
+        },
+        "markup.heading": {
+          "fg": "#d5ff80",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#f28779",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#f28779",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#f29e74"
+        },
+        "markup.link": {
+          "fg": "#73d0ff"
+        },
+        "markup.link.url": {
+          "fg": "#73d0ff",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#ffd173"
+        },
+        "markup.quote": {
+          "fg": "#95e6cb",
+          "italic": true
+        }
+      }
+    },
+    {
+      "id": "ayu-light",
+      "name": "Ayu Light",
+      "ui": {
+        "bg": "#fcfcfc",
+        "panelBg": "#f8f9fa",
+        "barBg": "#f0f1f2",
+        "statusBg": "#ffaa33",
+        "statusFg": "#fcfcfc",
+        "text": "#5c6166",
+        "dim": "#828e9f",
+        "faint": "#adaeb1",
+        "accent": "#ffaa33",
+        "activeTabFg": "#5c6166",
+        "inactiveTabFg": "#828e9f",
+        "treeSelectedBg": "#e8ecf0",
+        "treeFocusBg": "#f0f1f2",
+        "dirty": "#ffaa33",
+        "error": "#e65050",
+        "folder": "#5c6166",
+        "cursor": "#ffaa33",
+        "scrollbar": "#828e9f",
+        "gutter": "#828e9f",
+        "currentLine": "#f0f1f2",
+        "indentGuide": "#e8eaec",
+        "gitAdded": "#6cbf43",
+        "gitModified": "#478acc",
+        "gitDeleted": "#ff7383"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#adaeb1",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#fa8d3e"
+        },
+        "string": {
+          "fg": "#86b300"
+        },
+        "number": {
+          "fg": "#a37acc"
+        },
+        "boolean": {
+          "fg": "#a37acc"
+        },
+        "constant": {
+          "fg": "#a37acc"
+        },
+        "function": {
+          "fg": "#f2ae49"
+        },
+        "type": {
+          "fg": "#22a4e6"
+        },
+        "variable": {
+          "fg": "#5c6166"
+        },
+        "property": {
+          "fg": "#f07171"
+        },
+        "tag": {
+          "fg": "#55b4d4"
+        },
+        "operator": {
+          "fg": "#ed9366"
+        },
+        "punctuation": {
+          "fg": "#5c6166"
+        },
+        "label": {
+          "fg": "#e6b673"
+        },
+        "escape": {
+          "fg": "#4cbf99"
+        },
+        "embedded": {
+          "fg": "#5c6166"
+        },
+        "error": {
+          "fg": "#e65050"
+        },
+        "markup.heading": {
+          "fg": "#86b300",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#f07171",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#f07171",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#ed9366"
+        },
+        "markup.link": {
+          "fg": "#22a4e6"
+        },
+        "markup.link.url": {
+          "fg": "#22a4e6",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#f2ae49"
+        },
+        "markup.quote": {
+          "fg": "#4cbf99",
+          "italic": true
+        }
+      }
+    }
+  ]
+}

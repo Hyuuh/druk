@@ -40,6 +40,7 @@
     "build": "bun build.ts",
     "release": "bun scripts/release.ts",
     "formula": "bun scripts/formula.ts",
+    "plugins": "bun scripts/plugins.ts",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

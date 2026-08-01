@@ -1,0 +1,200 @@
+/**
+ * The market from the editor's side: the offer a file raises, the update notice
+ * on startup, and what accepting one actually writes.
+ *
+ * `fetch` is replaced for the whole file. Nothing here may reach the network —
+ * and the global is the seam because that is exactly what production uses:
+ * `core/market.ts` reads it at call time, so a stub is the registry.
+ */
+import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { loadPlugins, PLUGINS_DIR } from '../src/plugins'
+import {
+  fixture,
+  launch,
+  openFile,
+  pressEscape,
+  runCommand,
+  settle,
+  until,
+  untilFrame,
+} from './helpers'
+
+const GO_PLUGIN = {
+  id: 'go',
+  name: 'Go',
+  version: '1.1.0',
+  description: 'gopls, the Go language server',
+  languageServers: [{ id: 'go', command: ['gopls'], filetypes: ['go'] }],
+}
+
+/** A language druk knows nothing about: no grammar, no extension, no server. */
+const NIM_PLUGIN = {
+  id: 'nim',
+  name: 'Nim',
+  version: '1.0.0',
+  description: 'Nim highlighting',
+  languages: [
+    {
+      id: 'nim',
+      lineComment: '#',
+      extensions: ['.nim'],
+      patterns: [{ group: 'keyword', re: '\\b(?:proc|let|var)\\b', flags: 'g' }],
+    },
+  ],
+}
+
+const INDEX = {
+  plugins: [
+    {
+      id: 'go',
+      name: 'Go',
+      version: '1.1.0',
+      description: 'gopls, the Go language server',
+      provides: { themes: [], icons: [], filetypes: ['go'] },
+    },
+    {
+      id: 'nim',
+      name: 'Nim',
+      version: '1.0.0',
+      description: 'Nim highlighting',
+      provides: { themes: [], icons: [], filetypes: ['nim'] },
+    },
+  ],
+}
+
+const realFetch = globalThis.fetch
+/** Every url the editor asked for, so a test can assert it asked for nothing. */
+let requested: string[] = []
+
+beforeEach(() => {
+  requested = []
+  globalThis.fetch = ((url: string) => {
+    requested.push(String(url))
+    const body = String(url).endsWith('index.json')
+      ? INDEX
+      : String(url).endsWith('go/plugin.json')
+        ? GO_PLUGIN
+        : String(url).endsWith('nim/plugin.json')
+          ? NIM_PLUGIN
+          : null
+    return Promise.resolve(
+      body ? new Response(JSON.stringify(body)) : new Response('no', { status: 404 }),
+    )
+  }) as typeof fetch
+})
+
+afterEach(() => {
+  globalThis.fetch = realFetch
+  rmSync(PLUGINS_DIR, { recursive: true, force: true })
+  rmSync(join(process.env.XDG_CACHE_HOME!, 'druk', 'market.json'), { force: true })
+  // The registries are module state: a plugin left registered would follow this
+  // file's tests into every one after them.
+  loadPlugins(process.env.XDG_CONFIG_HOME!)
+})
+
+/** An installed plugin, at whatever version. */
+function install(manifest: unknown, id = 'go') {
+  mkdirSync(join(PLUGINS_DIR, id), { recursive: true })
+  writeFileSync(join(PLUGINS_DIR, id, 'plugin.json'), JSON.stringify(manifest))
+}
+
+test('a file whose language has no server offers the plugin, and installs it', async () => {
+  const dir = fixture({ 'main.go': 'package main\n' })
+  const t = await launch(dir, { lsp: true, pluginUpdates: true })
+  await openFile(t, 'main.go')
+
+  await untilFrame(t, 'No language server')
+  const frame = t.captureCharFrame()
+  // The command is on the modal because it is the part that is not inert: a
+  // manifest runs nothing, but this is what druk will spawn once it is there.
+  expect(frame).toContain('gopls')
+  expect(frame).toContain('Plugin available')
+
+  await settle(t)
+  t.mockInput.pressEnter()
+  await until(t, () => existsSyncSafe(join(PLUGINS_DIR, 'go', 'plugin.json')))
+  expect(JSON.parse(readFileSync(join(PLUGINS_DIR, 'go', 'plugin.json'), 'utf8'))).toEqual(
+    GO_PLUGIN,
+  )
+  await untilFrame(t, 'Installed Go 1.1.0')
+})
+
+test('declining is remembered, and asks again for no other file of that language', async () => {
+  const dir = fixture({ 'main.go': 'package main\n', 'other.go': 'package other\n' })
+  const t = await launch(dir, { lsp: true, pluginUpdates: true })
+  await openFile(t, 'main.go')
+  await untilFrame(t, 'No language server')
+
+  await pressEscape(t)
+  expect(t.captureCharFrame()).not.toContain('No language server')
+
+  await openFile(t, 'other.go')
+  await settle(t, 200)
+  expect(t.captureCharFrame()).not.toContain('No language server')
+})
+
+test('an installed plugin with a newer version in the market is reported at startup', async () => {
+  install({ ...GO_PLUGIN, version: '1.0.0' })
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  loadPlugins(dir)
+  const t = await launch(dir, { pluginUpdates: true }, {}, { checkUpdates: true })
+
+  await untilFrame(t, 'Go 1.1.0 is out')
+})
+
+test('the market is not touched when the setting is off', async () => {
+  const dir = fixture({ 'main.go': 'package main\n' })
+  const t = await launch(dir, { lsp: true, pluginUpdates: false }, {}, { checkUpdates: true })
+  await openFile(t, 'main.go')
+  await settle(t, 200)
+
+  expect(requested.filter(url => url.includes('plugins'))).toEqual([])
+})
+
+test('the palette lists the market and installs from it', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const t = await launch(dir, { pluginUpdates: true })
+
+  await runCommand(t, 'Check for plugin updates')
+  await untilFrame(t, 'Plugin market: 2 plugins')
+
+  await runCommand(t, 'Go 1.1.0')
+  await untilFrame(t, 'Plugin available')
+  await settle(t)
+  t.mockInput.pressEnter()
+  await untilFrame(t, 'Installed Go 1.1.0')
+})
+
+test('installing a language plugin teaches druk the language, extension and all', async () => {
+  const dir = fixture({ 'a.nim': 'proc main = discard\n' })
+  const t = await launch(dir, { pluginUpdates: true })
+
+  // Before: nothing claims .nim, so the status bar has no language to name.
+  await openFile(t, 'a.nim')
+  expect(t.captureCharFrame()).not.toContain(' nim ')
+
+  await runCommand(t, 'Check for plugin updates')
+  await untilFrame(t, 'Plugin market')
+  await runCommand(t, 'Nim 1.0.0')
+  await untilFrame(t, 'Plugin available')
+  await settle(t)
+  t.mockInput.pressEnter()
+  await untilFrame(t, 'Installed Nim 1.0.0')
+
+  // The extension is the whole point: OpenTUI resolves nothing for .nim, so the
+  // status bar naming the language means the plugin's own claim is what routed it.
+  await openFile(t, 'a.nim')
+  await untilFrame(t, ' nim ')
+})
+
+function existsSyncSafe(path: string): boolean {
+  try {
+    readFileSync(path)
+    return true
+  } catch {
+    return false
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "zig",
+  "name": "Zig",
+  "version": "1.0.0",
+  "description": "Zig highlighting on OpenTUI's grammar, and zls.",
+  "languages": [
+    {
+      "id": "zig",
+      "lineComment": "//",
+      "grammar": {
+        "bundled": true
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "zig",
+      "command": ["zls"],
+      "filetypes": ["zig"]
+    }
+  ]
+}

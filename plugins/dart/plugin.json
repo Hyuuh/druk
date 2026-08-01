@@ -1,0 +1,15 @@
+{
+  "id": "dart",
+  "name": "Dart",
+  "version": "1.0.0",
+  "description": "Dart highlighting.",
+  "languages": [
+    {
+      "id": "dart",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "dart"
+      }
+    }
+  ]
+}

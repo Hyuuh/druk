@@ -1,0 +1,26 @@
+{
+  "id": "python",
+  "name": "Python",
+  "version": "1.0.0",
+  "description": "Python highlighting and pyright.",
+  "languages": [
+    {
+      "id": "python",
+      "lineComment": "#",
+      "grammar": {
+        "vendored": "python"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "python",
+      "command": ["pyright-langserver", "--stdio"],
+      "filetypes": ["python"],
+      "install": {
+        "kind": "npm",
+        "packages": ["pyright"]
+      }
+    }
+  ]
+}

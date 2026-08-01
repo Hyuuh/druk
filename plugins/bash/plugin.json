@@ -1,0 +1,26 @@
+{
+  "id": "bash",
+  "name": "Bash",
+  "version": "1.0.0",
+  "description": "Shell highlighting and bash-language-server.",
+  "languages": [
+    {
+      "id": "bash",
+      "lineComment": "#",
+      "grammar": {
+        "vendored": "bash"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "bash",
+      "command": ["bash-language-server", "start"],
+      "filetypes": ["bash"],
+      "install": {
+        "kind": "npm",
+        "packages": ["bash-language-server"]
+      }
+    }
+  ]
+}

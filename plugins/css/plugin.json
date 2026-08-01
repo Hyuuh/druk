@@ -1,0 +1,46 @@
+{
+  "id": "css",
+  "name": "CSS",
+  "version": "1.0.0",
+  "description": "CSS, SCSS, Sass and Less, with the VS Code CSS server.",
+  "languages": [
+    {
+      "id": "css",
+      "grammar": {
+        "vendored": "css"
+      }
+    },
+    {
+      "id": "scss",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "css"
+      }
+    },
+    {
+      "id": "sass",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "css"
+      }
+    },
+    {
+      "id": "less",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "css"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "css",
+      "command": ["vscode-css-language-server", "--stdio"],
+      "filetypes": ["css"],
+      "install": {
+        "kind": "npm",
+        "packages": ["vscode-langservers-extracted"]
+      }
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { MARKET_DIR } from '../scripts/plugins'
 import { problemFrom } from '../src/app/lsp'
 import type { Problem } from '../src/app/lsp'
 import { styleIdForGroup } from '../src/languages/highlight'
@@ -13,6 +14,7 @@ import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
 import { isUnnecessary, severityOf } from '../src/lsp/protocol'
 import { installHint, resolveServer } from '../src/lsp/servers'
 import { createDecoder, encodeMessage } from '../src/lsp/transport'
+import { loadPlugins } from '../src/plugins'
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
 
@@ -100,6 +102,10 @@ describe('protocol mapping', () => {
     expect(isUnnecessary({ ...at(0, 0), tags: [1] })).toBe(true)
     expect(isUnnecessary({ ...at(0, 0), tags: [2, 1] })).toBe(true)
   })
+
+  // The market plugins are what carry the server specs now — the typescript one
+  // is this repository's own `plugins/typescript/plugin.json`.
+  loadPlugins(process.env.XDG_CONFIG_HOME!, [], MARKET_DIR)
 
   test('overrides replace a server command, and an empty one disables it', () => {
     expect(resolveServer('typescript', {})?.command[0]).toBe('typescript-language-server')

@@ -84,6 +84,16 @@ export function createLsp(deps: {
   /** Server ids already offered this session, so a decline is not re-asked. */
   const offered = new Set<string>()
 
+  /**
+   * Set by App: no installed plugin serves this filetype, so the market may have
+   * one. A setter rather than a dependency because the market controller is
+   * built after this one — it reads the settings this one already holds.
+   */
+  let onNoServer: ((filetype: string) => void) | null = null
+  const onMissingServer = (handle: (filetype: string) => void) => {
+    onNoServer = handle
+  }
+
   /** What the status page shows: state, command, log and open documents per server. */
   const [servers, setServers] = createStore<Record<string, ServerView>>({})
 
@@ -170,8 +180,15 @@ export function createLsp(deps: {
   /** The running client for `path`'s language — spawned on first use. */
   const clientFor = (path: string): LspClient | null => {
     if (!settings.config.lsp) return null
-    const resolved = resolveServer(filetypeForPath(path), settings.config.lspServers)
-    if (!resolved) return null
+    const filetype = filetypeForPath(path)
+    const resolved = resolveServer(filetype, settings.config.lspServers)
+    if (!resolved) {
+      // No plugin names a server for this language. druk ships none itself, so
+      // this is the normal state for a language whose plugin is not installed —
+      // the market decides whether that is worth an offer.
+      if (filetype) onNoServer?.(filetype)
+      return null
+    }
     const known = clients.get(resolved.id)
     if (known !== undefined) return known
     // The project's own server first — for TypeScript it is the only one that
@@ -355,6 +372,7 @@ export function createLsp(deps: {
     definition,
     resolveCompletion,
     onFlushNeeded,
+    onMissingServer,
     install,
     generation,
     restart,

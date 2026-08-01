@@ -1,0 +1,268 @@
+{
+  "id": "nerd-icons",
+  "name": "Nerd Font icons",
+  "version": "1.0.0",
+  "description": "File and folder glyphs from the Devicons and Font Awesome ranges. Needs a patched Nerd Font.",
+  "icons": [
+    {
+      "id": "nerd",
+      "name": "Nerd Font",
+      "file": {
+        "glyph": "\uF15B"
+      },
+      "folder": {
+        "glyph": "\uF07B",
+        "color": "#7aa2f7"
+      },
+      "folderOpen": {
+        "glyph": "\uF07C",
+        "color": "#7aa2f7"
+      },
+      "names": {
+        "package.json": {
+          "glyph": "\uE71E",
+          "color": "#cb3837"
+        },
+        "package-lock.json": {
+          "glyph": "\uE71E",
+          "color": "#cb3837"
+        },
+        "bun.lock": {
+          "glyph": "\uF023",
+          "color": "#f7e4c4"
+        },
+        "bun.lockb": {
+          "glyph": "\uF023",
+          "color": "#f7e4c4"
+        },
+        "dockerfile": {
+          "glyph": "\uF308",
+          "color": "#2496ed"
+        },
+        "makefile": {
+          "glyph": "\uF013",
+          "color": "#6d8086"
+        },
+        "license": {
+          "glyph": "\uF15C",
+          "color": "#d0bf41"
+        },
+        ".gitignore": {
+          "glyph": "\uF1D3",
+          "color": "#f14c28"
+        },
+        ".gitattributes": {
+          "glyph": "\uF1D3",
+          "color": "#f14c28"
+        },
+        ".env": {
+          "glyph": "\uF013",
+          "color": "#faf743"
+        }
+      },
+      "extensions": {
+        "ts": {
+          "glyph": "\uE628",
+          "color": "#3178c6"
+        },
+        "d.ts": {
+          "glyph": "\uE628",
+          "color": "#4b6e8f"
+        },
+        "tsx": {
+          "glyph": "\uE7BA",
+          "color": "#3178c6"
+        },
+        "js": {
+          "glyph": "\uE781",
+          "color": "#f1e05a"
+        },
+        "mjs": {
+          "glyph": "\uE781",
+          "color": "#f1e05a"
+        },
+        "cjs": {
+          "glyph": "\uE781",
+          "color": "#f1e05a"
+        },
+        "jsx": {
+          "glyph": "\uE7BA",
+          "color": "#f1e05a"
+        },
+        "py": {
+          "glyph": "\uE73C",
+          "color": "#3572a5"
+        },
+        "rs": {
+          "glyph": "\uE7A8",
+          "color": "#dea584"
+        },
+        "go": {
+          "glyph": "\uE627",
+          "color": "#00add8"
+        },
+        "rb": {
+          "glyph": "\uE739",
+          "color": "#cc342d"
+        },
+        "php": {
+          "glyph": "\uE73D",
+          "color": "#777bb4"
+        },
+        "java": {
+          "glyph": "\uE738",
+          "color": "#b07219"
+        },
+        "c": {
+          "glyph": "\uE61E",
+          "color": "#599eff"
+        },
+        "h": {
+          "glyph": "\uE61E",
+          "color": "#a074c4"
+        },
+        "cpp": {
+          "glyph": "\uE61D",
+          "color": "#519aba"
+        },
+        "zig": {
+          "glyph": "\uF15B",
+          "color": "#f7a41d"
+        },
+        "lua": {
+          "glyph": "\uE620",
+          "color": "#51a0cf"
+        },
+        "swift": {
+          "glyph": "\uE755",
+          "color": "#e37933"
+        },
+        "sh": {
+          "glyph": "\uF489",
+          "color": "#89e051"
+        },
+        "bash": {
+          "glyph": "\uF489",
+          "color": "#89e051"
+        },
+        "zsh": {
+          "glyph": "\uF489",
+          "color": "#89e051"
+        },
+        "md": {
+          "glyph": "\uF48A",
+          "color": "#519aba"
+        },
+        "txt": {
+          "glyph": "\uF15C"
+        },
+        "json": {
+          "glyph": "\uE60B",
+          "color": "#cbcb41"
+        },
+        "jsonc": {
+          "glyph": "\uE60B",
+          "color": "#cbcb41"
+        },
+        "yaml": {
+          "glyph": "\uF481",
+          "color": "#cb171e"
+        },
+        "yml": {
+          "glyph": "\uF481",
+          "color": "#cb171e"
+        },
+        "toml": {
+          "glyph": "\uF013",
+          "color": "#9c4221"
+        },
+        "html": {
+          "glyph": "\uE736",
+          "color": "#e34c26"
+        },
+        "css": {
+          "glyph": "\uE749",
+          "color": "#563d7c"
+        },
+        "scss": {
+          "glyph": "\uE749",
+          "color": "#c6538c"
+        },
+        "vue": {
+          "glyph": "\uE7BA",
+          "color": "#41b883"
+        },
+        "png": {
+          "glyph": "\uF1C5",
+          "color": "#a074c4"
+        },
+        "jpg": {
+          "glyph": "\uF1C5",
+          "color": "#a074c4"
+        },
+        "jpeg": {
+          "glyph": "\uF1C5",
+          "color": "#a074c4"
+        },
+        "gif": {
+          "glyph": "\uF1C5",
+          "color": "#a074c4"
+        },
+        "svg": {
+          "glyph": "\uF1C5",
+          "color": "#ffb13b"
+        },
+        "pdf": {
+          "glyph": "\uF1C1",
+          "color": "#b30b00"
+        },
+        "zip": {
+          "glyph": "\uF1C6",
+          "color": "#afb42b"
+        },
+        "tar": {
+          "glyph": "\uF1C6",
+          "color": "#afb42b"
+        },
+        "gz": {
+          "glyph": "\uF1C6",
+          "color": "#afb42b"
+        },
+        "lock": {
+          "glyph": "\uF023",
+          "color": "#bbbbbb"
+        }
+      },
+      "folders": {
+        "node_modules": {
+          "glyph": "\uF07B",
+          "color": "#cb3837"
+        },
+        ".git": {
+          "glyph": "\uF1D3",
+          "color": "#f14c28"
+        },
+        "src": {
+          "glyph": "\uF07B",
+          "color": "#7aa2f7"
+        },
+        "test": {
+          "glyph": "\uF07B",
+          "color": "#a6e22e"
+        },
+        "tests": {
+          "glyph": "\uF07B",
+          "color": "#a6e22e"
+        },
+        "dist": {
+          "glyph": "\uF07B",
+          "color": "#6d8086"
+        },
+        "build": {
+          "glyph": "\uF07B",
+          "color": "#6d8086"
+        }
+      }
+    }
+  ]
+}

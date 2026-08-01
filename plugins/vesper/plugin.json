@@ -1,0 +1,121 @@
+{
+  "id": "vesper",
+  "name": "Vesper",
+  "version": "1.0.0",
+  "description": "Vesper. Palette from https://github.com/raunofreiberg/vesper",
+  "themes": [
+    {
+      "id": "vesper",
+      "name": "Vesper",
+      "ui": {
+        "bg": "#101010",
+        "panelBg": "#161616",
+        "barBg": "#101010",
+        "statusBg": "#ffc799",
+        "statusFg": "#000000",
+        "text": "#ffffff",
+        "dim": "#a0a0a0",
+        "faint": "#505050",
+        "accent": "#ffc799",
+        "activeTabFg": "#ffffff",
+        "inactiveTabFg": "#7e7e7e",
+        "treeSelectedBg": "#232323",
+        "treeFocusBg": "#1c1c1c",
+        "dirty": "#ffc799",
+        "error": "#ff8080",
+        "folder": "#ffffff",
+        "cursor": "#ffffff",
+        "scrollbar": "#343434",
+        "gutter": "#505050",
+        "currentLine": "#161616",
+        "indentGuide": "#1c1c1c",
+        "gitAdded": "#99ffe4",
+        "gitModified": "#ffc799",
+        "gitDeleted": "#ff8080"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#8b8b8b",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#a0a0a0"
+        },
+        "string": {
+          "fg": "#99ffe4"
+        },
+        "number": {
+          "fg": "#ffc799"
+        },
+        "boolean": {
+          "fg": "#ffc799"
+        },
+        "constant": {
+          "fg": "#ffc799"
+        },
+        "function": {
+          "fg": "#ffc799"
+        },
+        "type": {
+          "fg": "#ffc799"
+        },
+        "variable": {
+          "fg": "#ffffff"
+        },
+        "property": {
+          "fg": "#ffffff"
+        },
+        "tag": {
+          "fg": "#ffc799"
+        },
+        "operator": {
+          "fg": "#a0a0a0"
+        },
+        "punctuation": {
+          "fg": "#a0a0a0"
+        },
+        "label": {
+          "fg": "#ffc799"
+        },
+        "escape": {
+          "fg": "#a0a0a0"
+        },
+        "embedded": {
+          "fg": "#ffffff"
+        },
+        "error": {
+          "fg": "#ff8080"
+        },
+        "markup.heading": {
+          "fg": "#ffc799",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#ffffff",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#ffffff",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#a0a0a0"
+        },
+        "markup.link": {
+          "fg": "#ffc799"
+        },
+        "markup.link.url": {
+          "fg": "#ffc799",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#ffc799"
+        },
+        "markup.quote": {
+          "fg": "#8b8b8b",
+          "italic": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "c",
+  "name": "C",
+  "version": "1.0.0",
+  "description": "C highlighting and clangd.",
+  "languages": [
+    {
+      "id": "c",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "c"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "c",
+      "command": ["clangd"],
+      "filetypes": ["c"]
+    }
+  ]
+}

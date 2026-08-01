@@ -1,17 +1,17 @@
 /**
- * Language registry — the single place to teach druk a new language.
+ * Language registry — what druk knows how to highlight, and how to name it.
  *
- * To add one:
- *   1. Make sure a tree-sitter wasm exists (most live in `tree-sitter-wasms`).
- *   2. Drop a highlight query in `./queries/<id>.scm` (skip if OpenTUI bundles
- *      the grammar already — see `bundled: true` below).
- *   3. Register both in `./grammars.ts`.
- *   4. Add an entry here. Nothing else in the codebase needs to change.
+ * Nothing is listed here any more: a language is a plugin contribution, the way
+ * a theme or a language server is. The grammars themselves still ship inside the
+ * binary (`./grammars.ts`, imported statically because that is the only form
+ * `bun build --compile` can embed) — what a plugin decides is whether a language
+ * is *registered*, and with which query, patterns, label and comment prefix.
  *
- * `id` must match OpenTUI's filetype name (`pathToFiletype`), which is what
- * maps a file extension to a language.
+ * So the table below starts empty and `loadPlugins` fills it. Every reader has
+ * to go through a function for that reason: the modules that show languages are
+ * evaluated before any plugin has been read.
  */
-import { GRAMMARS } from './grammars'
+import { createSignal } from 'solid-js'
 
 export interface Language {
   /** Filetype id, e.g. "typescript". Must match OpenTUI's `pathToFiletype`. */
@@ -27,9 +27,9 @@ export interface Language {
    * Bundled today: javascript, typescript, markdown, zig.
    */
   bundled?: boolean
-  /** Path to the grammar wasm, when we vendor it ourselves — see ./grammars.ts. */
+  /** Path to the grammar wasm, when the grammar is vendored or a plugin's own. */
   wasm?: string
-  /** Path to the highlight query, when we vendor the grammar ourselves. */
+  /** Path to the highlight query, beside the wasm. */
   query?: string
   /**
    * Regex highlighting. Alone, it is the whole answer for a format with no usable
@@ -38,271 +38,55 @@ export interface Language {
    * Patterns paint in order, so later entries win the characters they overlap.
    */
   patterns?: { group: string; re: RegExp }[]
+  /**
+   * Extensions OpenTUI does not resolve itself (`.tf`, `.tsrx`), with the dot.
+   * Without one of these the patterns never run and the file renders plain.
+   */
+  extensions?: string[]
+  /** Whole file names — `bun.lock` is JSON however its extension reads. */
+  filenames?: string[]
+  /** Name pattern for the files an extension cannot describe (`.env.local`). */
+  filenamePattern?: RegExp
+  /** Line-comment prefix, for the Ctrl+/ toggle. Absent: the toggle does nothing. */
+  lineComment?: string
 }
+
+/** Registered by plugins, in load order. A later entry replaces an earlier id. */
+const registry = new Map<string, Language>()
 
 /**
- * HCL, which Terraform and `.hcl` files share — no grammar for it ships in
- * `tree-sitter-wasms`, so this is patterns like yaml and sql.
+ * Bumped on every change — and a signal, not a counter, because every lookup
+ * below reads it.
  *
- * Order is the whole design here, since later entries win the characters they
- * overlap:
- *
- * - `string` comes before `variable`, so a reference inside an interpolation
- *   (`"${var.name}"`) still paints as one instead of disappearing into the string.
- *   The prefixes are anchored with a `(?<![\w/.])` guard for the same reason in
- *   reverse: without it `"https://x.dev/path.html"` paints `path.html` as a variable.
- * - `comment` is last, so a commented-out attribute is grey all the way across
- *   rather than keeping the colours of the code inside it. The cost is a `#` that
- *   follows a space *inside* a string — `"a # b"` — being read as a comment; the
- *   leading `[ \t]` guard is what keeps `"#ffffff"` and `.../#anchor` out of it,
- *   which are the two that actually turn up. yaml and ini make the same trade.
- *
- * Attribute keys are line-anchored, as ini's are. `terraform fmt` puts one
- * attribute per line, so the case that would need more is the formatted-by-hand one.
+ * That is what makes installing a language plugin show up without a restart: the
+ * status bar's filetype and the editor's highlight window are computed in
+ * reactive scopes, and a plain Map would leave both showing what they resolved
+ * to before the plugin existed. `highlight.ts` reads it untracked, to know when
+ * the tree-sitter worker needs telling about a new grammar.
  */
-const HCL_PATTERNS: NonNullable<Language['patterns']> = [
-  { group: 'punctuation.bracket', re: /[{}[\]()]/g },
-  { group: 'punctuation', re: /[,.:]/g },
-  { group: 'operator', re: /=>|[=!<>]=|&&|\|\||[=<>+\-*/%!?:]/g },
-  { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
-  { group: 'boolean', re: /\b(?:true|false|null)\b/g },
-  { group: 'type', re: /\b(?:string|number|bool|any|list|map|set|object|tuple)\b/g },
-  {
-    group: 'keyword',
-    re: /\b(?:resource|variable|output|module|provider|data|locals|terraform|backend|provisioner|connection|lifecycle|dynamic|moved|import|check|removed|depends_on|for|in|if|else)\b/g,
-  },
-  { group: 'property', re: /^[ \t]*[\w-]+(?=[ \t]*=(?!=))/gm },
-  { group: 'function', re: /\b[a-z_]\w*(?=\()/g },
-  { group: 'string', re: /"(?:[^"\\\n]|\\.)*"/g },
-  // Heredocs, whose terminator is whatever the `<<` named — hence the backreference.
-  { group: 'string', re: /<<[-~]?(\w+)[\s\S]*?^[ \t]*\1\b/gm },
-  {
-    group: 'variable',
-    re: /(?<![\w/.])(?:var|local|data|module|each|count|path|self|terraform)(?:\.\w+)+/g,
-  },
-  // Only the openers: the closing brace is a brace, and painting every `}` as an
-  // interpolation would take every block's closing line with it.
-  { group: 'punctuation.special', re: /\$\{|%\{/g },
-  { group: 'comment', re: /(?:^|[ \t])(?:#|\/\/).*|\/\*[\s\S]*?\*\//gm },
-]
+const [generation, bump] = createSignal(0)
 
-export const LANGUAGES: Language[] = [
-  { id: 'javascript', label: 'js', bundled: true },
-  { id: 'typescript', label: 'ts', bundled: true },
-  { id: 'markdown', label: 'md', bundled: true },
-  { id: 'zig', bundled: true },
-  { id: 'json', ...GRAMMARS.json },
-  { id: 'html', ...GRAMMARS.html },
-  { id: 'typescriptreact', label: 'tsx', ...GRAMMARS.tsx },
-  { id: 'javascriptreact', label: 'jsx', ...GRAMMARS.tsx },
-  {
-    id: 'tsrx',
-    ...GRAMMARS.tsx,
-    // The `@` heads and `key` are the only tsrx tokens the tsx grammar cannot
-    // parse; everything inside `@{ … }` is ordinary tsx and highlights normally.
-    // `key` needs the lookahead: the clause is always `key <expr>)` closing a
-    // `@for` header, while `; key` alone also matches ordinary statements —
-    // `run(); key.press()` would paint a plain identifier.
-    patterns: [
-      {
-        group: 'keyword.directive',
-        re: /@(?:if|else|for|empty|switch|case|default|try|pending|catch)\b|@(?=\{)|(?<=;[ \t]*)key\b(?=[ \t]+[\w$.[\]]+[ \t]*\))/g,
-      },
-    ],
-  },
-  { id: 'vue', ...GRAMMARS.vue },
-  { id: 'css', ...GRAMMARS.css },
-  { id: 'scss', ...GRAMMARS.css },
-  { id: 'sass', ...GRAMMARS.css },
-  { id: 'less', ...GRAMMARS.css },
-  { id: 'python', ...GRAMMARS.python },
-  { id: 'rust', ...GRAMMARS.rust },
-  { id: 'go', ...GRAMMARS.go },
-  { id: 'java', ...GRAMMARS.java },
-  { id: 'kotlin', ...GRAMMARS.kotlin },
-  { id: 'scala', ...GRAMMARS.scala },
-  { id: 'c', ...GRAMMARS.c },
-  { id: 'cpp', ...GRAMMARS.cpp },
-  { id: 'csharp', ...GRAMMARS.csharp },
-  { id: 'php', ...GRAMMARS.php },
-  { id: 'ruby', ...GRAMMARS.ruby },
-  { id: 'elixir', ...GRAMMARS.elixir },
-  { id: 'swift', ...GRAMMARS.swift },
-  { id: 'dart', ...GRAMMARS.dart },
-  { id: 'lua', ...GRAMMARS.lua },
-  { id: 'bash', ...GRAMMARS.bash },
-  { id: 'toml', ...GRAMMARS.toml },
-  // No usable grammar: tree-sitter-yaml hangs the query engine, and svelte/sql/ini
-  // ship no wasm at all. Patterns are plenty for these shapes.
-  {
-    id: 'yaml',
-    patterns: [
-      { group: 'punctuation', re: /^\s*-\s|[:[\]{},]/gm },
-      { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
-      { group: 'boolean', re: /\b(?:true|false|yes|no|on|off|null)\b/gi },
-      { group: 'string', re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g },
-      { group: 'label', re: /[&*][\w-]+/g },
-      { group: 'property', re: /^[ \t]*-?[ \t]*['"]?[\w.$/@-]+['"]?(?=[ \t]*:)/gm },
-      { group: 'punctuation.special', re: /^---$|^\.\.\.$/gm },
-      { group: 'comment', re: /(?:^|[ \t])#.*/gm },
-    ],
-  },
-  {
-    id: 'dotenv',
-    label: 'env',
-    patterns: [
-      { group: 'punctuation', re: /=/g },
-      { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
-      { group: 'boolean', re: /\b(?:true|false|null)\b/gi },
-      { group: 'string', re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g },
-      // Interpolation, which is the one place a value refers to another key.
-      { group: 'variable', re: /\$\{[\w.]+\}|\$[A-Za-z_]\w*/g },
-      { group: 'property', re: /^[ \t]*(?:export[ \t]+)?[\w.]+(?=[ \t]*=)/gm },
-      // After the key rule, which spans `export NAME` and would otherwise win it.
-      { group: 'keyword', re: /^[ \t]*export\b/gm },
-      // Last, so a `#` inside a value does not turn the rest of the line grey —
-      // and a commented-out KEY=value keeps the comment colour.
-      { group: 'comment', re: /^[ \t]*#.*/gm },
-    ],
-  },
-  {
-    id: 'svelte',
-    patterns: [
-      { group: 'punctuation.bracket', re: /<\/?|\/?>|[{}]/g },
-      { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
-      { group: 'string', re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g },
-      { group: 'attribute', re: /\b(?:bind|on|use|class|transition|in|out|animate):[\w|]+/g },
-      { group: 'tag', re: /<\/?([A-Za-z][\w.-]*)/g },
-      {
-        group: 'keyword',
-        re: /\{[#:/@]\s*\w+|\b(?:let|const|function|export|import|from|await|return|if|else)\b/g,
-      },
-      { group: 'comment', re: /<!--[\s\S]*?-->|\/\/.*$/gm },
-    ],
-  },
-  {
-    id: 'sql',
-    patterns: [
-      { group: 'punctuation', re: /[(),;.*]/g },
-      { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
-      { group: 'string', re: /'(?:[^']|'')*'/g },
-      {
-        group: 'keyword',
-        re: /\b(?:select|from|where|insert|into|values|update|set|delete|create|table|drop|alter|add|primary|key|foreign|references|join|left|right|inner|outer|on|group|order|by|having|limit|offset|as|and|or|not|null|distinct|union|index|view|with|returning|default|constraint|unique|check|cascade)\b/gi,
-      },
-      {
-        group: 'type',
-        re: /\b(?:int|integer|bigint|smallint|serial|text|varchar|char|boolean|bool|date|timestamp|timestamptz|numeric|decimal|real|json|jsonb|uuid)\b/gi,
-      },
-      { group: 'comment', re: /--.*$|\/\*[\s\S]*?\*\//gm },
-    ],
-  },
-  // Two ids over one set of patterns, as css/scss/sass are over one grammar: the
-  // syntax is HCL either way, and the status bar saying "terraform" over a `.tf`
-  // and "hcl" over a Packer or Nomad file is the only difference between them.
-  { id: 'terraform', label: 'tf', patterns: HCL_PATTERNS },
-  { id: 'hcl', patterns: HCL_PATTERNS },
-  {
-    id: 'ini',
-    patterns: [
-      { group: 'string', re: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g },
-      { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
-      { group: 'boolean', re: /\b(?:true|false|yes|no|on|off)\b/gi },
-      { group: 'property', re: /^[ \t]*[\w.$-]+(?=[ \t]*=)/gm },
-      { group: 'type', re: /^\s*\[[^\]]+\]/gm },
-      { group: 'comment', re: /^[ \t]*[#;].*/gm },
-    ],
-  },
-  {
-    id: 'liquid',
-    patterns: [
-      { group: 'attribute', re: /(?<=[\s<])[a-zA-Z_:][-\w:.]*(?=[ \t]*=[ \t]*["'])/g },
-      { group: 'tag', re: /<\/?([A-Za-z][\w.-]*)/g },
-      { group: 'operator', re: /=/g },
-      { group: 'number', re: /\b\d+(?:\.\d+)?\b/g },
-      { group: 'boolean', re: /\b(?:true|false|nil|blank|empty)\b/g },
-      {
-        group: 'keyword',
-        re: /(?<=\{%-?\s*)\b(?:assign|capture|endcapture|case|when|endcase|cycle|decrement|echo|for|endfor|break|continue|if|elsif|else|endif|include|increment|layout|liquid|raw|endraw|render|section|sections|style|endstyle|tablerow|endtablerow|unless|endunless|paginate|endpaginate|form|endform|javascript|endjavascript|schema|endschema|stylesheet|endstylesheet|comment|endcomment)\b/g,
-      },
-      // Either `{% assign x %}` or a bare `assign x` line inside `{% liquid %}`.
-      // Anchoring to one of those two is what keeps an English "capture it later"
-      // in the surrounding HTML prose from painting the next word as a variable.
-      { group: 'variable', re: /(?<=(?:\{%-?|^)[ \t]*(?:assign|capture)[ \t]+)[a-zA-Z_]\w*/gm },
-      // `(?<!\|)`/`(?!\|)`: a filter pipe is one bar. Without it the `b` of a
-      // JavaScript `a || b` in an embedded <script> paints as a filter.
-      { group: 'operator', re: /(?<!\|)\|(?!\|)(?=[ \t]*[a-zA-Z_])/g },
-      { group: 'function', re: /(?<=(?<!\|)\|[ \t]*)[a-zA-Z_]\w*/g },
-      // Last of the one-dot groups so a value's digits and words stay string
-      // coloured — `data-count="3"`, `class="empty"`. Single quotes need the
-      // preceding-letter guard and neither quote may cross a line: a theme file
-      // is mostly English, and "the customer's cart. Don't" otherwise pairs two
-      // apostrophes into a string that runs on until the next one.
-      {
-        group: 'string',
-        re: /"(?:[^"\\\n]|\\.)*"|(?<![A-Za-z0-9])'(?:[^'\\\n]|\\.)*'/g,
-      },
-      { group: 'punctuation.bracket', re: /<\/?|\/?>/g },
-      { group: 'punctuation.special', re: /\{\{-?|-?\}\}|\{%-?|-?%\}/g },
-      { group: 'keyword.operator', re: /==|!=|<=|>=/g },
-      // Two dots, and after the delimiter patterns, so a comment keeps its own
-      // `<!--`/`{%` rather than losing them to bracket and Liquid punctuation.
-      {
-        group: 'comment.block',
-        re: /<!--[\s\S]*?-->|\{%-?\s*comment\s*-?%\}[\s\S]*?\{%-?\s*endcomment\s*-?%\}|\{%-?\s*doc\s*-?%\}[\s\S]*?\{%-?\s*enddoc\s*-?%\}|\{%-?\s*#.*?-?%\}/g,
-      },
-      { group: 'keyword.tag', re: /(?<=^[ \t]*)@\w+/gm },
-      { group: 'type.builtin', re: /(?<=@param[ \t]*)\{[^{}]*\}/g },
-      { group: 'variable.parameter', re: /(?<=@param[ \t]*\{[^{}]*\}[ \t]*)\[?[a-zA-Z_]\w*\]?/g },
-    ],
-  },
-]
-
-/**
- * Line-comment prefix per filetype, for the Ctrl+/ toggle. Absent means the
- * language has no line comments (json, html, css…) and the toggle does nothing.
- */
-const LINE_COMMENTS: Record<string, string> = {
-  javascript: '//',
-  typescript: '//',
-  javascriptreact: '//',
-  typescriptreact: '//',
-  tsrx: '//',
-  zig: '//',
-  scss: '//',
-  less: '//',
-  rust: '//',
-  go: '//',
-  java: '//',
-  kotlin: '//',
-  scala: '//',
-  c: '//',
-  cpp: '//',
-  csharp: '//',
-  php: '//',
-  swift: '//',
-  dart: '//',
-  sass: '//',
-  python: '#',
-  ruby: '#',
-  elixir: '#',
-  bash: '#',
-  toml: '#',
-  yaml: '#',
-  dotenv: '#',
-  ini: '#',
-  lua: '--',
-  sql: '--',
+export function registerLanguage(language: Language): void {
+  registry.set(language.id, language)
+  bump(generation() + 1)
 }
 
-export function commentPrefix(filetype: string | undefined): string | undefined {
-  return filetype ? LINE_COMMENTS[filetype] : undefined
+export function clearPluginLanguages(): void {
+  registry.clear()
+  bump(generation() + 1)
 }
 
-const BY_ID = new Map(LANGUAGES.map(lang => [lang.id, lang]))
+/** How many times the registry has changed — `highlight.ts` re-registers on it. */
+export const languageGeneration = (): number => generation()
+
+export const languages = (): Language[] => {
+  generation()
+  return [...registry.values()]
+}
 
 export function languageFor(filetype: string | undefined): Language | undefined {
-  return filetype ? BY_ID.get(filetype) : undefined
+  generation()
+  return filetype ? registry.get(filetype) : undefined
 }
 
 /** What to call `filetype` on screen. */
@@ -310,5 +94,30 @@ export function languageLabel(filetype: string): string {
   return languageFor(filetype)?.label ?? filetype
 }
 
-/** Languages we ship a grammar for and must register with tree-sitter at runtime. */
-export const VENDORED_LANGUAGES = LANGUAGES.filter(lang => lang.wasm && lang.query)
+export function commentPrefix(filetype: string | undefined): string | undefined {
+  return languageFor(filetype)?.lineComment
+}
+
+/** Languages with a grammar of their own, which tree-sitter has to be told about. */
+export const vendoredLanguages = (): Language[] =>
+  languages().filter(language => language.wasm && language.query)
+
+/**
+ * The filetype a file *name* declares, for the names and extensions OpenTUI
+ * resolves none of. Ordered: a whole name beats a pattern beats an extension,
+ * since `bun.lock` and `.env.local` are both "extensions" that mean nothing.
+ */
+export function filetypeForName(name: string): string | undefined {
+  generation()
+  const lower = name.toLowerCase()
+  for (const language of registry.values()) {
+    if (language.filenames?.some(entry => entry.toLowerCase() === lower)) return language.id
+  }
+  for (const language of registry.values()) {
+    if (language.filenamePattern?.test(name)) return language.id
+  }
+  for (const language of registry.values()) {
+    if (language.extensions?.some(ext => lower.endsWith(ext.toLowerCase()))) return language.id
+  }
+  return undefined
+}

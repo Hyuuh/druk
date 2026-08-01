@@ -1,0 +1,22 @@
+{
+  "id": "swift",
+  "name": "Swift",
+  "version": "1.0.0",
+  "description": "Swift highlighting and sourcekit-lsp.",
+  "languages": [
+    {
+      "id": "swift",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "swift"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "swift",
+      "command": ["sourcekit-lsp"],
+      "filetypes": ["swift"]
+    }
+  ]
+}

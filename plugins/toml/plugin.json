@@ -1,0 +1,15 @@
+{
+  "id": "toml",
+  "name": "TOML",
+  "version": "1.0.0",
+  "description": "TOML highlighting.",
+  "languages": [
+    {
+      "id": "toml",
+      "lineComment": "#",
+      "grammar": {
+        "vendored": "toml"
+      }
+    }
+  ]
+}

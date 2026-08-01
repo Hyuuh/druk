@@ -23,7 +23,7 @@ themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, whi
 overrides while it is on, since there the shape is what tells normal from insert),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
-→ / ←) and palette commands for commit/undo/stash/push/fetch/pull — a push origin
+→ / ←, or all of them from the header's `▴`) and palette commands for commit/undo/stash/push/fetch/pull — a push origin
 rejects offers to merge origin in and push again, VS Code's prompt, rather than
 naming the two commands and stopping — and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
@@ -104,8 +104,8 @@ command id to one chord, replacing whatever it had — the settings page's Short
 row lists every bindable command with the key it answers to, refuses a chord another
 custom binding holds and names whatever default a rebind takes the key from, while a
 clash or a value that is not a chord is reported on startup),
-file icons in the tree (`iconTheme` — `unicode` shapes any font has, `nerd` for a
-patched one, or a theme a plugin contributes; the glyph takes the expansion
+file icons in the tree (`iconTheme` — `unicode` shapes any font has, or a theme a
+plugin contributes, `nerd-icons` in the market for a patched font; the glyph takes the expansion
 arrow's column, since a folder icon has an open and a closed form, and the
 default is `none` because nothing can ask a terminal what its font holds),
 a plugin system (JSON manifests in `$XDG_CONFIG_HOME/druk/plugins/<id>/plugin.json`
@@ -116,8 +116,37 @@ binary needs no loader; `disabledPlugins` shelves one without deleting it, the
 settings page's Plugins section toggles them, palette → Plugins lists and reloads
 them, and a malformed manifest costs its plugin that one contribution and is
 reported on startup),
+a plugin market — `plugins/` **in this repository**, one folder per plugin, served
+raw from `main`, so a merged pull request is installable without a druk release;
+palette → Plugins → Plugin market installs one after a confirm that names the
+commands it would have druk spawn, an installed plugin with a newer version in the
+catalog is reported in the status bar at startup, a file whose language no
+installed plugin serves offers the plugin that does, and a config naming a theme
+nothing registers is offered its plugin back (`pluginUpdates` turns the whole of
+that off, `pluginRegistry` points it at a fork),
 file watching with conflict prompts,
 per-project session restore, and a startup update check.
+
+**Everything extensible is a plugin now, and most of them live in `plugins/`.**
+A plugin is one of two kinds and never both: a *language* plugin (the grammar,
+highlight query, patterns, line comment and label for one language, plus the
+server that serves it) or an *appearance* plugin (themes and icon themes).
+
+What is compiled in: two themes (`dark` / `light`, the GitHub pair the defaults
+name), the `unicode` icon theme, every tree-sitter grammar wasm — and a
+*preinstalled* set of plugin manifests, listed in `src/plugins/builtin.ts`:
+typescript (ts/tsx/js/jsx), json, markdown, html, css, yaml and toml. Those are
+the languages a first run has to highlight with no network.
+
+Everything else — Go, Rust, Python, the other twenty-odd languages with their
+servers, every palette beyond the GitHub pair, the Nerd Font icons — is a market
+plugin, and installing one fetches a single small JSON. The *grammar bytes* are
+embedded either way, so a market language plugin says
+`"grammar": { "vendored": "go" }` and needs no download; a language druk vendors
+no grammar for ships its own `.wasm` as an asset in the plugin folder.
+
+Adding a language, a server or a theme is therefore a JSON file and a
+`bun run plugins`, not a source change.
 
 ## Runtime and tooling
 
@@ -148,6 +177,7 @@ bun run build            # compile a binary for this machine into dist/<target>/
 bun run build linux-x64  # …or for a named target, if its native package is installed
 bun run release          # package dist/ for npm + release archives (--publish to ship)
 bun run formula          # Homebrew formula for those archives, into dist/release/druk.rb
+bun run plugins          # regenerate plugins/index.json — the market's catalog
 bun run test             # unit + UI, one file per process, sequential (~4 min)
 bun test test/foo.tsx    # a single file, where the flag buys nothing
 bun run check            # check-types + lint + format + test — the one to run
@@ -325,10 +355,18 @@ expect(t.captureCharFrame()).toContain('const a = 1')
 
 `test/helpers.tsx` has `fixture()` (temp project), `launch()` (renders `<App/>`, and takes
 a config and a terminal size), `press()`, `pressTimes()`, `openFile()`, `settle()`,
-`until()`/`untilFrame()`/`untilGone()`, `pressEscape()` and `runCommand()`.
+`until()`/`untilFrame()`/`untilGone()`, `pressEscape()`, `runCommand()` and
+`loadMarketPlugins()`.
 Highlight helpers live in `test/syntax.ts` instead — `parseHighlights()` and
-`allSegments()` — so a unit test can use them without pulling in `<App/>`. Four rules the
+`allSegments()` — so a unit test can use them without pulling in `<App/>`. Five rules the
 harness exists to encode:
+
+- **A test process starts with the preinstalled plugins and nothing else.**
+  `test/setup.ts` registers them, so typescript, json, markdown, html, css, yaml and
+  toml highlight as they do on a real first run. Anything else — Go, Python, tsrx,
+  dotenv, a market theme — needs `loadMarketPlugins()` at the top of the file, which
+  reads this repository’s `plugins/` folder as a plugins folder. A test that asserts
+  on a *missing* plugin (the market’s install offer) must not call it.
 
 - **Yield before capturing.** The reconciler flushes on a macrotask; a frame captured
   straight after a key still shows the previous state. `press()`/`settle()` handle it.

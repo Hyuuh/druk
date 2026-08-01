@@ -1,0 +1,15 @@
+{
+  "id": "java",
+  "name": "Java",
+  "version": "1.0.0",
+  "description": "Java highlighting.",
+  "languages": [
+    {
+      "id": "java",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "java"
+      }
+    }
+  ]
+}

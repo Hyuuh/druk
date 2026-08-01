@@ -17,6 +17,7 @@ import {
 import type { Config, ConfigScope } from '../core/config'
 import { FILE_TOKEN } from '../core/format'
 import { bindingProblem, formatChord, parseChord } from '../core/keybindings'
+import { MARKET_URL } from '../core/market'
 import { iconThemeLabel, iconThemeNames, NO_ICONS } from '../icons'
 import { invalidateSyntaxStyle } from '../languages/highlight'
 import { servers } from '../lsp/servers'
@@ -227,6 +228,24 @@ export function createSettings(deps: {
     })
     reloadPlugins()
     status.say(`Plugin "${id}" ${off ? 'enabled' : 'disabled'}`)
+  }
+
+  const toggleMarket = () => {
+    patchConfig({ pluginUpdates: !view().pluginUpdates })
+    status.say(`Plugin market ${onOff(config.pluginUpdates)}`)
+  }
+
+  /**
+   * An empty value means druk's own market, not "no market": the setting is a
+   * URL the fetch is built from, and there is no useful editor without one.
+   */
+  const applyRegistry = (url: string) => {
+    const trimmed = url.trim() || MARKET_URL
+    if (!trimmed.startsWith('https://')) {
+      return status.say('A registry must be an https URL', 'error')
+    }
+    patchConfig({ pluginRegistry: trimmed })
+    status.say(`Plugin registry: ${config.pluginRegistry}`)
   }
 
   /** One plugin as the page's list shows it: state, name, what it contributes. */
@@ -861,6 +880,28 @@ export function createSettings(deps: {
         pick: at => togglePlugin(plugins()[at]!.id),
       },
     },
+    {
+      section: 'Plugins',
+      key: 'pluginUpdates',
+      label: 'Market',
+      value: onOff(view().pluginUpdates),
+      cycle: toggleMarket,
+    },
+    {
+      // Free text: a registry is a URL nobody would pick from a list, and the
+      // only two answers that matter are druk's own and a fork's.
+      section: 'Plugins',
+      key: 'pluginRegistry',
+      label: 'Registry',
+      value: view().pluginRegistry === MARKET_URL ? 'druk' : view().pluginRegistry,
+      cycle: () => status.say('Enter sets the market URL'),
+      edit: {
+        title: 'Plugin registry',
+        fields: [{ initial: view().pluginRegistry, placeholder: MARKET_URL }],
+        hint: ['An https folder holding index.json and <id>/plugin.json', 'Empty: druk’s own'],
+        apply: values => applyRegistry(values[0] ?? ''),
+      },
+    },
   ]
 
   /**
@@ -910,6 +951,8 @@ export function createSettings(deps: {
     applyIconTheme,
     reloadPlugins,
     togglePlugin,
+    toggleMarket,
+    applyRegistry,
     setFormatter,
     setServerCommand,
     applySidebarWidth,

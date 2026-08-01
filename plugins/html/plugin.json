@@ -1,0 +1,25 @@
+{
+  "id": "html",
+  "name": "HTML",
+  "version": "1.0.0",
+  "description": "HTML highlighting and the VS Code HTML server.",
+  "languages": [
+    {
+      "id": "html",
+      "grammar": {
+        "vendored": "html"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "html",
+      "command": ["vscode-html-language-server", "--stdio"],
+      "filetypes": ["html"],
+      "install": {
+        "kind": "npm",
+        "packages": ["vscode-langservers-extracted"]
+      }
+    }
+  ]
+}

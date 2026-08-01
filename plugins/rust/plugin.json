@@ -1,0 +1,26 @@
+{
+  "id": "rust",
+  "name": "Rust",
+  "version": "1.0.0",
+  "description": "Rust highlighting and rust-analyzer.",
+  "languages": [
+    {
+      "id": "rust",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "rust"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "rust",
+      "command": ["rust-analyzer"],
+      "filetypes": ["rust"],
+      "install": {
+        "kind": "manual",
+        "command": "rustup component add rust-analyzer"
+      }
+    }
+  ]
+}
