@@ -175,7 +175,8 @@ the suite writes to your real `~/.config/druk`.
   to `druk` itself. One package is what makes the release run unattended.
 
 The repo's own `package.json` is `private`: what npm publishes is staged into
-`dist/npm/druk` by `scripts/release.ts` — the shim, the postinstall and nothing else.
+`dist/npm/druk` by `scripts/release.ts` — the shim, the postinstall, the README and the
+LICENSE, and nothing else.
 Versions come from `package.json` — bump it and `.github/workflows/release.yml` builds
 every platform, uploads the archives to the release and publishes to npm, with no manual
 step. Two ways to start it: push a tag `v<version>`, or run the workflow from the Actions
