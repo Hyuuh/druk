@@ -394,6 +394,12 @@ harness exists to encode:
 - **Poll for what you are waiting for.** `until()` renders until a condition holds, so a
   watcher event or an async highlight costs what it actually takes. A fixed
   `settle(t, 400)` is right only when the assertion is that *nothing* happened.
+- **A fixture lives as long as its file.** `test/setup.ts` deletes every `fixture()`
+  directory in a global `afterAll`, so nothing may expect one to outlive the file that
+  made it. The sweep is not tidiness: a full run creates some three thousand temp
+  projects, and when they accumulated across runs the temp folder reached ~100k
+  entries, every `mkdtemp` in it slowed down, and whole files began timing out and
+  being killed — which reads as flaky tests and is not.
 
 `captureCharFrame()` returns text only — selection and focus are background colors, so
 assert on something textual (a prompt appearing, the status bar, file contents on disk).

@@ -1,5 +1,5 @@
-import { afterEach } from 'bun:test'
-import { mkdtempSync } from 'node:fs'
+import { afterAll, afterEach } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -68,4 +68,19 @@ afterEach(async () => {
   const { liveHarnesses } = await import('./helpers')
   for (const t of liveHarnesses) t.renderer.destroy()
   liveHarnesses.clear()
+})
+
+/**
+ * Delete the fixtures this file made.
+ *
+ * A full run creates some three thousand temp projects, and nothing used to
+ * remove them: after a few dozen runs the temp folder held ~100k directories,
+ * every `mkdtemp` in it slowed down, and whole test files began timing out and
+ * being killed — failures that look like flaky tests and are not. `afterAll`
+ * rather than `afterEach`, since a file may hand one fixture to several tests.
+ */
+afterAll(async () => {
+  const { fixtures } = await import('./helpers')
+  for (const dir of fixtures) rmSync(dir, { recursive: true, force: true })
+  fixtures.clear()
 })

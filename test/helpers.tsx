@@ -39,9 +39,21 @@ export function loadMarketPlugins(): void {
  */
 export const liveHarnesses = new Set<Harness>()
 
+/**
+ * Every fixture this process made, deleted when it exits.
+ *
+ * A run of the suite creates some three thousand of these, and nothing used to
+ * remove them: after a few dozen runs the temp folder held ~100k directories and
+ * every `mkdtemp` in it slowed down, until whole test files started timing out
+ * and being killed. `test/setup.ts` empties this in a global `afterAll` — once
+ * per file rather than per test, since a file may hand one fixture to several.
+ */
+export const fixtures = new Set<string>()
+
 /** Temp project used by a test. `files` maps relative paths to contents. */
 export function fixture(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'druk-'))
+  fixtures.add(dir)
   for (const [name, content] of Object.entries(files)) {
     const path = join(dir, name)
     mkdirSync(join(path, '..'), { recursive: true })
