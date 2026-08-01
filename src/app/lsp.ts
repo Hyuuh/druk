@@ -10,11 +10,18 @@ import { normalizeCompletion } from '../lsp/completion'
 import type { CompletionReply } from '../lsp/completion'
 import { normalizeDefinition } from '../lsp/definition'
 import type { Target } from '../lsp/definition'
-import { hasNodeRuntime, installServer, installedCommand, SERVER_ROOT } from '../lsp/install'
+import {
+  downloadServer,
+  hasNodeRuntime,
+  installServer,
+  installedCommand,
+  SERVER_ROOT,
+} from '../lsp/install'
 import { projectCommand } from '../lsp/project'
 import { isUnnecessary, severityOf } from '../lsp/protocol'
 import type { CompletionItem, Diagnostic, ProblemSeverity } from '../lsp/protocol'
 import { installHint, resolveServer } from '../lsp/servers'
+import type { FetchableInstall } from '../lsp/servers'
 import type { ServerLogLine, ServerView } from '../lsp/status'
 import type { PromptState } from './prompts'
 import type { Settings } from './settings'
@@ -145,20 +152,19 @@ export function createLsp(deps: {
     const name = resolved.command[0]!
     const spec = resolved.install
     if (!spec) return status.say(`LSP: ${name} is not installed, or not on PATH`, 'warn')
+    // npm installs need node to run the scripts; a downloaded binary needs none.
     if (
-      spec.kind === 'npm' &&
+      (spec.kind === 'npm' || spec.kind === 'download') &&
       settings.config.lspAutoInstall &&
       !offered.has(resolved.id) &&
-      // The servers druk installs are node scripts; without node they would
-      // download fine and then fail to spawn.
-      hasNodeRuntime()
+      (spec.kind !== 'npm' || hasNodeRuntime())
     ) {
       offered.add(resolved.id)
       return prompts.setPrompt({
         kind: 'installServer',
         id: resolved.id,
         name,
-        packages: spec.packages,
+        install: spec,
       })
     }
     status.say(`LSP: ${name} not installed — ${installHint(spec)}`, 'warn')
@@ -257,9 +263,12 @@ export function createLsp(deps: {
    * mark goes, and the generation bump re-opens the documents that were skipped
    * while it was missing.
    */
-  const install = async (id: string, name: string, packages: string[]) => {
+  const install = async (id: string, name: string, spec: FetchableInstall) => {
     status.say(`Installing ${name}…`)
-    const error = await installServer(packages)
+    const error =
+      spec.kind === 'download'
+        ? await downloadServer(spec.url, name)
+        : await installServer(spec.packages)
     if (error) return status.say(`Could not install ${name}: ${error}`, 'error')
     // npm can exit 0 having produced no binary — a package whose bin moved, or
     // one installed for another platform. Saying "installed" then would send

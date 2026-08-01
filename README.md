@@ -1,7 +1,7 @@
 # Druk
 
-A code editor for the terminal. File tree, tabs, search, git marks and syntax highlighting
-for 30+ languages — keyboard and mouse.
+A code editor for the terminal. File tree, tabs, search, PDF viewing, git marks and syntax
+highlighting for 30+ languages — keyboard and mouse.
 
 ![druk editing a TypeScript file](./screenshot.png)
 
@@ -136,6 +136,14 @@ the buffer, so unsaved edits show up without saving first. `Tab` or `Esc` goes b
 source; `↑` `↓`, `PgUp` / `PgDn` and `Ctrl+U` / `Ctrl+D` scroll it. Each file remembers
 which of the two it was left in.
 
+## PDF
+
+Open a `.pdf` like any other file. Druk renders the current page directly in the
+terminal: `PageUp` / `k` and `PageDown` / `j` move between pages, `+` / `-` zoom,
+the arrows pan a zoomed page, and `0` fits it to the editor again. PDF tabs are
+read-only; corrupt, encrypted, or unsupported documents stay closable and show the
+reason they could not be rendered.
+
 ## Search
 
 `Ctrl+F` searches the open file, `Ctrl+R` the project (`Ctrl+Opt+F` too — that is the one
@@ -222,8 +230,9 @@ that serves it) or an **appearance** (themes and icon themes).
 
 Out of the box druk highlights TypeScript, JavaScript and their React dialects,
 JSON, Markdown, HTML, CSS and its preprocessors, YAML and TOML — those plugins ship
-inside the binary. Go, Rust, Python, C, C++, Java, Ruby, PHP, Swift, Lua, Bash and
-about fifteen more are one install away, each bringing its language server with it.
+inside the binary. Go, Rust, Python, C, C++, Java, Ruby, Elixir, PHP, Swift, Lua,
+Bash and about fifteen more are one install away, each bringing its language server
+with it.
 Themes beyond the GitHub pair and the Nerd Font icons are there too.
 
 `F1` → `Plugins` → `Plugin market` lists what is on offer; `Enter` installs one after

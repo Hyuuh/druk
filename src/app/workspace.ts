@@ -15,6 +15,7 @@ import {
 import type { TreeNode } from '../core/fs'
 import { isImagePath } from '../core/image'
 import { isMarkdownPath } from '../core/markdown'
+import { isPdfPath } from '../core/pdf'
 import { loadSession, saveSession } from '../core/session'
 import { trimTrailing } from '../editor/lines'
 import type { DiffFile } from '../ui/DiffView'
@@ -33,6 +34,8 @@ import type { Conflict, DiskSync, FileBuffer, Prompt } from './types'
  */
 export const CLASH_CHANGED = 'Changed on disk with unsaved edits: '
 export const CLASH_DELETED = 'Deleted on disk with unsaved edits: '
+
+const isViewerPath = (path: string) => isImagePath(path) || isPdfPath(path)
 
 const unreadableReason = (e: unknown) =>
   e instanceof BinaryFileError
@@ -56,8 +59,8 @@ export function restoreWorkspace(rootDir: string, single: string | null) {
   // folder's own layout is not this invocation's to inherit or to overwrite.
   if (single) {
     try {
-      // An image opens as a viewer tab: no buffer, so nothing can write it back.
-      const buffers: Record<string, FileBuffer> = isImagePath(single)
+      // A viewer opens with no buffer, so nothing can write it back.
+      const buffers: Record<string, FileBuffer> = isViewerPath(single)
         ? {}
         : { [single]: loadBuffer(single) }
       return {
@@ -84,14 +87,14 @@ export function restoreWorkspace(rootDir: string, single: string | null) {
   const saved = loadSession(rootDir)
   const buffers: Record<string, FileBuffer> = {}
   for (const path of saved.tabs) {
-    if (isImagePath(path)) continue // a viewer tab has no buffer to restore
+    if (isViewerPath(path)) continue // a viewer tab has no buffer to restore
     try {
       buffers[path] = loadBuffer(path)
     } catch {
       // unreadable since last time — the tab is dropped below
     }
   }
-  const tabs = saved.tabs.filter(path => buffers[path] || (isImagePath(path) && exists(path)))
+  const tabs = saved.tabs.filter(path => buffers[path] || (isViewerPath(path) && exists(path)))
   const activePath =
     saved.activePath && tabs.includes(saved.activePath) ? saved.activePath : (tabs[0] ?? null)
   return {
@@ -181,10 +184,10 @@ export function createWorkspace(deps: {
     // as a file tab would — it is switched away from, not closed.
     setDiffShown(false)
     setPage(null)
-    // Images get a viewer tab and no buffer — the door stays shut to a FileBuffer
-    // for anything that is not text, which is what keeps "never written back"
-    // structural. The tab itself flows through the same preview/pin/session logic.
-    if (!buffers[path] && !isImagePath(path)) {
+    // Images and PDFs get a viewer tab and no buffer — the door stays shut to a
+    // FileBuffer for anything that is not text, which is what keeps "never written
+    // back" structural. The tab itself uses the same preview/pin/session logic.
+    if (!buffers[path] && !isViewerPath(path)) {
       try {
         setBuffers(path, loadBuffer(path))
       } catch (e) {
@@ -335,7 +338,7 @@ export function createWorkspace(deps: {
 
   const onEditorChange = (text: string) => {
     const path = activePath()
-    // No buffer means a viewer tab — creating one here would hand an image to the
+    // No buffer means a viewer tab — creating one here would hand its bytes to the
     // save path. The editor is blocked while a viewer is up, but this is the guard
     // that makes the invariant hold rather than depend on that.
     if (!path || !buffers[path] || buffers[path].content === text) return
@@ -530,7 +533,7 @@ export function createWorkspace(deps: {
       else updates.push([path, fresh])
     }
     // Viewer tabs have no buffer, so the walk above never sees them; a deleted
-    // image has nothing to show and its tab goes the way of a clean buffer's.
+    // image or PDF has nothing to show and its tab goes the way of a clean buffer's.
     for (const path of tabs()) {
       if (!buffers[path] && !exists(path)) vanished.push(path)
     }

@@ -192,6 +192,30 @@ function positionOf(content: string, offset: number): Position {
 }
 
 /**
+ * Prepends `indent` to every line after the first. Servers author multi-line
+ * snippets at column 0 — expert's do/end block is `do\n  $0\nend` — so
+ * accepted under an indented `def` the body and `end` would land at their
+ * absolute columns without this. The first line is left alone: the range
+ * starts after the indent that is already on the line, so its own leading
+ * whitespace is relative to that point. Empty lines stay empty — trailing
+ * whitespace is never wanted.
+ */
+function reindentContinuationLines(text: string, indent: string): string {
+  const lines = text.split('\n')
+  for (let at = 1; at < lines.length; at++) {
+    if (lines[at]!.length > 0) lines[at] = indent + lines[at]
+  }
+  return lines.join('\n')
+}
+
+/** The leading whitespace of `line`, which `^\s*` always matches. */
+function indentOf(content: string, line: number): string {
+  const start = offsetOf(content, { line, character: 0 })
+  const end = content.indexOf('\n', start)
+  return /^\s*/.exec(content.slice(start, end < 0 ? undefined : end))![0]
+}
+
+/**
  * Apply `item` to the document: the primary edit replaces the server's range —
  * or, without one, the word from `anchorCol` to the cursor — and every
  * `additionalTextEdit` (auto-imports) lands too. All ranges address the
@@ -205,10 +229,6 @@ export function applyCompletion(
   item: CompletionItem,
 ): { content: string; cursor: Position } {
   const raw = item.textEdit?.newText ?? item.insertText ?? item.label
-  const { text: inserted, caret } =
-    item.insertTextFormat === 2 || raw.includes('$')
-      ? stripSnippet(raw)
-      : { text: raw, caret: null }
 
   let primaryRange =
     item.textEdit && 'range' in item.textEdit
@@ -230,6 +250,19 @@ export function applyCompletion(
   ) {
     primaryRange = { start: primaryRange.start, end: cursor }
   }
+
+  const isSnippet = item.insertTextFormat === 2 || raw.includes('$')
+  // Multi-line snippets are re-indented to the line they land on before the
+  // stops are stripped, so the caret offset stays correct. Plain text is
+  // inserted verbatim — newlines a server sends outside a snippet are the text
+  // it means, and VS Code adjusts whitespace only for snippet insertion.
+  const adjusted =
+    isSnippet && raw.includes('\n')
+      ? reindentContinuationLines(raw, indentOf(content, primaryRange.start.line))
+      : raw
+  const { text: inserted, caret } = isSnippet
+    ? stripSnippet(adjusted)
+    : { text: adjusted, caret: null }
 
   const edits: { start: number; end: number; text: string; primary: boolean }[] = [
     {

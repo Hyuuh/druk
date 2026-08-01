@@ -141,8 +141,8 @@
     {
       "id": "elixir",
       "name": "Elixir",
-      "version": "1.0.0",
-      "description": "Elixir highlighting.",
+      "version": "1.1.0",
+      "description": "Elixir highlighting and expert, the Elixir language server.",
       "provides": {
         "themes": [],
         "icons": [],

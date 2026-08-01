@@ -9,6 +9,7 @@ import { loadProjectConfig, resolveConfig } from '../core/config'
 import type { Config } from '../core/config'
 import { watchTree } from '../core/fs'
 import { isImagePath } from '../core/image'
+import { isPdfPath } from '../core/pdf'
 import { checkForUpdate, currentVersion } from '../core/update'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
@@ -26,6 +27,7 @@ import { GitPanel } from '../ui/GitPanel'
 import { ImageView } from '../ui/ImageView'
 import { LspStatusView } from '../ui/LspStatusView'
 import { MarkdownView } from '../ui/MarkdownView'
+import { PdfView } from '../ui/PdfView'
 import { SettingsView } from '../ui/SettingsView'
 import { SidebarTabs } from '../ui/SidebarTabs'
 import { StatusBar } from '../ui/StatusBar'
@@ -261,6 +263,11 @@ export function App(props: {
   const activeImage = () => {
     const path = workspace.activePath()
     return path && isImagePath(path) ? path : null
+  }
+
+  const activePdf = () => {
+    const path = workspace.activePath()
+    return path && isPdfPath(path) ? path : null
   }
 
   const closeComparisonDetail = () => {
@@ -539,8 +546,8 @@ export function App(props: {
             branch={git.branch()}
             version={currentVersion()}
             filetype={workspace.activePath() ? filetypeForPath(workspace.activePath()!) : undefined}
-            // Also unfocused while the diff or an image viewer covers the pane:
-            // the terminal's own cursor tracks the focused textarea and is drawn
+            // Also unfocused while the diff or a viewer covers the pane: the
+            // terminal's own cursor tracks the focused textarea and is drawn
             // over everything, so a focused editor bleeds a phantom block into
             // whatever page sits on top.
             focused={
@@ -549,6 +556,7 @@ export function App(props: {
               !workspace.page() &&
               !comparison.detailOpen() &&
               !activeImage() &&
+              !activePdf() &&
               !workspace.renderedPath()
             }
             reloadKey={editor.reloadKey()}
@@ -590,6 +598,7 @@ export function App(props: {
               workspace.page() !== null ||
               comparison.detailOpen() ||
               activeImage() !== null ||
+              activePdf() !== null ||
               workspace.renderedPath() !== null
             }
             onChange={workspace.onEditorChange}
@@ -610,6 +619,21 @@ export function App(props: {
               </box>
             )}
           </Show>
+          {/* Keep one owner for the App lifetime: a remount can queue its open
+              before the previous instance's late document close. */}
+          <PdfView
+            path={activePdf()}
+            width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+            height={dimensions().height - 2}
+            focused={panes.focus() === 'editor'}
+            blocked={
+              overlays.overlay() ||
+              workspace.diff() !== null ||
+              workspace.page() !== null ||
+              comparison.detailOpen()
+            }
+            onFocus={() => panes.setFocus('editor')}
+          />
           <Show when={workspace.renderedPath()}>
             {(path: () => string) => (
               <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={40}>
@@ -703,18 +727,20 @@ export function App(props: {
         filetype={
           activeImage()
             ? 'image'
-            : workspace.activePath()
-              ? languageLabel(filetypeForPath(workspace.activePath()!) ?? 'plain')
-              : undefined
+            : activePdf()
+              ? 'pdf'
+              : workspace.activePath()
+                ? languageLabel(filetypeForPath(workspace.activePath()!) ?? 'plain')
+                : undefined
         }
         // A viewer tab has no caret: the numbers would be wherever the editor last was.
         cursor={
-          workspace.activePath() && !activeImage() && !workspace.renderedPath()
+          workspace.activePath() && !activeImage() && !activePdf() && !workspace.renderedPath()
             ? editor.cursor()
             : undefined
         }
         dirty={workspace.activeBuffer()?.dirty ?? false}
-        vimMode={workspace.activePath() && !activeImage() ? editor.vimMode() : null}
+        vimMode={workspace.activePath() && !activeImage() && !activePdf() ? editor.vimMode() : null}
         branch={git.branch()}
         ahead={git.upstream()?.ahead ?? 0}
         behind={git.upstream()?.behind ?? 0}

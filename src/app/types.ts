@@ -1,4 +1,5 @@
 import type { TextEncoding } from '../core/fs'
+import type { FetchableInstall } from '../lsp/servers'
 
 /** Which pane owns the keyboard when no overlay is open. */
 export type Focus = 'tree' | 'editor'
@@ -47,7 +48,7 @@ export type Prompt =
   /** A push origin refused; `hasUpstream` is what the retry after the pull needs. */
   | { kind: 'pullPush'; branch: string; hasUpstream: boolean }
   /** A language server is missing and druk can fetch it; `id` is the server id. */
-  | { kind: 'installServer'; id: string; name: string; packages: string[] }
+  | { kind: 'installServer'; id: string; name: string; install: FetchableInstall }
   /**
    * A market plugin is worth installing. `why` is what raised it (a file whose
    * language has no server, a config naming a theme nothing registers, or an

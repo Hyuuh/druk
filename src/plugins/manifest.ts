@@ -153,11 +153,32 @@ function parseIconTheme(raw: unknown, fail: (reason: string) => void): IconTheme
   }
 }
 
+/**
+ * How a server is obtained, as a manifest spells it.
+ *
+ * `download` takes either one `url` or a `urls` map keyed by
+ * `<platform>-<arch>` — a release that ships a binary per machine, which is
+ * common and which static data has to describe somehow. The current machine is
+ * resolved here rather than at install time, so a plugin that has no build for
+ * it falls back to the `command` it also carries and the user is told what to
+ * fetch by hand instead of being offered a URL that 404s.
+ */
 function parseInstall(raw: unknown): ServerInstall | undefined {
   if (!isRecord(raw)) return undefined
-  const packages = stringList(raw.packages)
-  if (raw.kind === 'npm' && packages) return { kind: 'npm', packages }
   const command = text(raw.command)
+  if (raw.kind === 'npm') {
+    const packages = stringList(raw.packages)
+    return packages ? { kind: 'npm', packages } : undefined
+  }
+  if (raw.kind === 'download') {
+    const url = text(raw.url)
+    if (url) return { kind: 'download', url }
+    const forMachine = isRecord(raw.urls)
+      ? text(raw.urls[`${process.platform}-${process.arch}`])
+      : null
+    if (forMachine) return { kind: 'download', url: forMachine }
+    return command ? { kind: 'manual', command } : undefined
+  }
   if (raw.kind === 'manual' && command) return { kind: 'manual', command }
   return undefined
 }
