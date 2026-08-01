@@ -134,7 +134,16 @@ export function createGitOp(deps: {
   return (
     verb: string,
     run: () => Promise<GitResult>,
-    options: { touchesTree?: boolean; done?: (result: GitResult) => string } = {},
+    options: {
+      touchesTree?: boolean
+      done?: (result: GitResult) => string
+      /**
+       * Offer a way out of a failure instead of reporting it. Returning true
+       * means this call has taken the failure over — whatever it put on the
+       * status bar stays there, in place of the error line.
+       */
+      handleFailure?: (result: GitResult) => boolean
+    } = {},
   ) => {
     if (!inRepository(rootDir)) return status.say('Not a git repository', 'warn')
     if (git.gitBusy()) return status.say('A git command is already running — let it finish', 'warn')
@@ -143,7 +152,10 @@ export function createGitOp(deps: {
     void run().then(result => {
       git.setGitBusy(false)
       git.bump()
-      if (!result.ok) return status.say(result.detail || `${verb} failed`, 'error')
+      if (!result.ok) {
+        if (options.handleFailure?.(result)) return
+        return status.say(result.detail || `${verb} failed`, 'error')
+      }
       if (options.touchesTree) {
         const warning = workspace.clashWarning(workspace.syncFromDisk())
         if (warning) return status.say(warning, 'warn')

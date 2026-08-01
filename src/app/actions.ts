@@ -10,6 +10,7 @@ import {
   lastCommitSubject,
   pull,
   push,
+  PUSH_REJECTED,
   refText,
   stagedPaths,
   stashPop,
@@ -345,6 +346,13 @@ export function createCommands(ctx: AppContext) {
       gitOp('Pushing', () => push(rootDir, name, hasUpstream), {
         done: () =>
           hasUpstream ? `Pushed ${name}` : `Pushed ${name} — upstream set to origin/${name}`,
+        // Rejected because origin moved on: the fix is the same two commands
+        // every time, so offer to run them rather than name them and stop.
+        handleFailure: result => {
+          if (result.detail !== PUSH_REJECTED) return false
+          ctx.prompts.setPrompt({ kind: 'pullPush', branch: name, hasUpstream })
+          return true
+        },
       })
     },
     gitFetch: () => gitOp('Fetching', () => fetchRemote(rootDir), { done: () => 'Fetched' }),

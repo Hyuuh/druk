@@ -3,7 +3,7 @@ import { basename, dirname, join } from 'node:path'
 import { createMemo, createSignal } from 'solid-js'
 
 import { createDir, createFile, isDirectory } from '../core/fs'
-import { commitPaths, undoLastCommit } from '../core/git'
+import { commitPaths, pullAndPush, PUSH_REJECTED, undoLastCommit } from '../core/git'
 import { SERVER_ROOT } from '../lsp/install'
 import { installHint } from '../lsp/servers'
 import type { Branches } from './branches'
@@ -135,6 +135,12 @@ export function createPromptHandlers(deps: {
         return branches.remove(p.name, p.force)
       case 'mergeBranch':
         return branches.merge(p.name)
+      case 'pullPush':
+        // touchesTree: the pull half rewrites files under open buffers.
+        return gitOp('Pulling and pushing', () => pullAndPush(rootDir, p.branch, p.hasUpstream), {
+          touchesTree: true,
+          done: () => `Pulled and pushed ${p.branch}`,
+        })
       case 'installServer':
         return void lsp.install(p.id, p.name, p.packages)
     }
@@ -142,8 +148,8 @@ export function createPromptHandlers(deps: {
 
   /**
    * Closing a confirm without going through with it. Most kinds simply vanish —
-   * the install offer is the one that has something left to say, since saying no
-   * is not the same as not wanting the server.
+   * the two offers below are what have something left to say, since declining an
+   * offer to fix something is not the same as the thing not being broken.
    */
   const cancelPrompt = () => {
     const p = prompt()
@@ -151,6 +157,7 @@ export function createPromptHandlers(deps: {
     if (p?.kind === 'installServer') {
       say(`LSP: ${p.name} not installed — ${installHint({ kind: 'npm', packages: p.packages })}`)
     }
+    if (p?.kind === 'pullPush') say(PUSH_REJECTED, 'error')
   }
 
   const promptTitle = () => {
@@ -225,6 +232,13 @@ export function createPromptHandlers(deps: {
           verb: 'merge it',
           danger: false,
           message: `Merge "${p.name}" into the current branch? Conflicts are left in the working tree.`,
+        }
+      case 'pullPush':
+        return {
+          title: 'Push rejected',
+          verb: 'pull and push',
+          danger: false,
+          message: `origin/${p.branch} has commits you don't. Merge them in and push again?`,
         }
       case 'installServer':
         return {

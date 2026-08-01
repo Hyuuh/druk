@@ -897,6 +897,12 @@ export function failureLine(text: string): string {
 }
 
 /**
+ * The one failure druk offers to fix rather than report: `gitPush` recognises it
+ * by this exact string, so the row in KNOWN below has to keep using the constant.
+ */
+export const PUSH_REJECTED = "origin has commits you don't — pull first, then push"
+
+/**
  * Failures worth naming, in the terms of what to do next. Git's own wording
  * assumes a shell where the fix is one command away, and druk runs a fixed set
  * of commands with no shell to offer — so each of these says what happened and
@@ -913,10 +919,7 @@ export const KNOWN: ReadonlyArray<readonly [RegExp, string]> = [
     /Not possible to fast-forward|Need to specify how to reconcile/i,
     'Branch and origin have both moved on — merge or rebase in a terminal',
   ],
-  [
-    /\[rejected\].*(?:non-fast-forward|fetch first)/i,
-    "origin has commits you don't — pull first, then push",
-  ],
+  [/\[rejected\].*(?:non-fast-forward|fetch first)/i, PUSH_REJECTED],
   [
     /local changes to the following files would be overwritten/i,
     'Commit or stash your changes first — this would overwrite them',
@@ -1048,6 +1051,25 @@ export function stashPop(cwd: string): Promise<GitResult> {
 
 export function push(cwd: string, branch: string, hasUpstream: boolean): Promise<GitResult> {
   return mutate(cwd, hasUpstream ? ['push'] : ['push', '--set-upstream', 'origin', branch])
+}
+
+/**
+ * The fix for a rejected push, as one operation.
+ *
+ * Deliberately not `pull()`: a push is rejected precisely when the two sides
+ * have diverged, which is the one case `--ff-only` refuses, so the merge is the
+ * whole point of this. `--no-edit` keeps git from opening an editor druk cannot
+ * host, and a conflicted merge stops here with git's own reason — the working
+ * tree is left mid-merge, as it is after "Merge branch", and the push never runs.
+ */
+export async function pullAndPush(
+  cwd: string,
+  branch: string,
+  hasUpstream: boolean,
+): Promise<GitResult> {
+  const pulled = await mutate(cwd, ['pull', '--no-rebase', '--no-edit'])
+  if (!pulled.ok) return pulled
+  return push(cwd, branch, hasUpstream)
 }
 
 export function fetchRemote(cwd: string): Promise<GitResult> {
