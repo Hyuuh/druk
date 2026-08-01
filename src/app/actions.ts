@@ -1,4 +1,4 @@
-import { dirname, relative } from 'node:path'
+import { basename, dirname, relative } from 'node:path'
 
 import { createMemo } from 'solid-js'
 
@@ -18,6 +18,7 @@ import {
 } from '../core/git'
 import type { FileStatus } from '../core/git'
 import { pathTokenAt, resolveImportPath } from '../core/imports'
+import { contributionSummary, plugins, PLUGINS_DIR } from '../plugins'
 import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
@@ -357,6 +358,30 @@ export function createCommands(ctx: AppContext) {
     gitRenameBranch: () => ctx.branches.open('rename'),
     gitDeleteBranch: () => ctx.branches.open('delete'),
     gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
+    listPlugins: () => {
+      const found = plugins()
+      if (found.length === 0) return say(`No plugins — manifests go in ${PLUGINS_DIR}`)
+      say(
+        found
+          .map(
+            plugin =>
+              `${plugin.name} ${plugin.version} (${contributionSummary(plugin)})${plugin.disabled ? ' — off' : ''}`,
+          )
+          .join(' · '),
+      )
+    },
+    reloadPlugins: () => {
+      const load = settings.reloadPlugins()
+      const problem = load.problems[0]
+      if (problem) {
+        return say(`${basename(dirname(problem.source))}: ${problem.reason}`, 'warn')
+      }
+      say(
+        load.plugins.length === 0
+          ? `No plugins — manifests go in ${PLUGINS_DIR}`
+          : `${load.plugins.length} plugin${load.plugins.length === 1 ? '' : 's'} reloaded`,
+      )
+    },
     showHelp: () => ctx.overlays.setHelp(true),
     quit: ctx.prompts.quit,
   }

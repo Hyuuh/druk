@@ -217,8 +217,11 @@ export async function openComparison(t: Harness) {
 /** Open the settings page, step the `label` row's value once, close the page. */
 export async function toggleSetting(t: Harness, label: string) {
   await runCommand(t, 'Settings')
-  // Walk the selection down until the marker sits on the wanted row.
-  for (let i = 0; i < 16; i++) {
+  // Walk the selection down until the marker sits on the wanted row. The bound is
+  // "more rows than the page has", not a row index — every setting added pushes
+  // the ones below it further down, and a bound that only just reached the last
+  // section fails the day one is inserted above it.
+  for (let i = 0; i < 60; i++) {
     const row = t
       .captureCharFrame()
       .split('\n')

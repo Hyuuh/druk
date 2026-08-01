@@ -17,9 +17,12 @@ import {
 import type { Config, ConfigScope } from '../core/config'
 import { FILE_TOKEN } from '../core/format'
 import { bindingProblem, formatChord, parseChord } from '../core/keybindings'
+import { iconThemeLabel, iconThemeNames, NO_ICONS } from '../icons'
 import { invalidateSyntaxStyle } from '../languages/highlight'
-import { DEFAULT_SERVERS } from '../lsp/servers'
-import { paintedTheme, setTheme, setTransparency, themeLabels, THEMES } from '../themes'
+import { servers } from '../lsp/servers'
+import { contributionSummary, loadPlugins, plugins, PLUGINS_DIR } from '../plugins'
+import type { Plugin, PluginLoad } from '../plugins'
+import { paintedTheme, setTheme, setTransparency, themeLabel, themeNames } from '../themes'
 import type { ThemeName } from '../themes'
 import { ALT, setKeyOverrides } from '../ui/keys'
 import type { SettingEdit, SettingRow } from '../ui/SettingsView'
@@ -32,7 +35,11 @@ import type { Status } from './status'
 const EDITOR_MIN = 20
 
 const TAB_SIZES = [2, 4, 8]
-const THEME_NAMES = Object.keys(THEMES) as ThemeName[]
+
+// Functions, not constants: plugins register themes and icon themes at startup,
+// which happens after this module is evaluated.
+const themeList = (): ThemeName[] => themeNames()
+const iconList = (): string[] => iconThemeNames()
 
 /** The entry `dir` steps to, wrapping at both ends. */
 const step = <T>(list: readonly T[], current: T, dir: 1 | -1): T =>
@@ -142,13 +149,13 @@ export function createSettings(deps: {
     const wasSyncing = view().themeSync
     patchConfig({ theme: name, themeSync: false })
     if (config.theme !== name) {
-      status.say(`Theme: ${themeLabels[name]} — the project's settings still decide the theme`)
+      status.say(`Theme: ${themeLabel(name)} — the project's settings still decide the theme`)
       return
     }
     status.say(
       wasSyncing
-        ? `Theme: ${themeLabels[name]} — no longer following the OS appearance`
-        : `Theme: ${themeLabels[name]}`,
+        ? `Theme: ${themeLabel(name)} — no longer following the OS appearance`
+        : `Theme: ${themeLabel(name)}`,
     )
   }
 
@@ -164,7 +171,7 @@ export function createSettings(deps: {
 
   const applySideTheme = (side: 'themeLight' | 'themeDark', name: ThemeName) => {
     patchConfig(side === 'themeDark' ? { themeDark: name } : { themeLight: name })
-    status.say(`${side === 'themeDark' ? 'Dark' : 'Light'} theme: ${themeLabels[name]}`)
+    status.say(`${side === 'themeDark' ? 'Dark' : 'Light'} theme: ${themeLabel(name)}`)
     if (config.themeSync) applyAppearance(detectAppearance() ?? 'dark')
   }
 
@@ -187,6 +194,44 @@ export function createSettings(deps: {
     patchConfig({ transparent: !view().transparent })
     status.say(`Transparent background ${onOff(config.transparent)}`)
   }
+
+  const applyIconTheme = (id: string) => {
+    patchConfig({ iconTheme: id })
+    status.say(
+      config.iconTheme === NO_ICONS
+        ? 'File icons off'
+        : `File icons: ${iconThemeLabel(config.iconTheme)}${id === 'nerd' ? ' — needs a patched font' : ''}`,
+    )
+  }
+
+  /**
+   * Read every manifest again and re-register what they contribute.
+   *
+   * The theme is repainted unconditionally rather than through `paintTheme`,
+   * which returns early when the name has not changed: a reload can leave the
+   * same id pointing at different colors, or at none — `setTheme` falls back to
+   * the default for a theme whose plugin has just been disabled.
+   */
+  const reloadPlugins = (): PluginLoad => {
+    const load = loadPlugins(rootDir, config.disabledPlugins)
+    setTheme(config.theme)
+    invalidateSyntaxStyle()
+    return load
+  }
+
+  const togglePlugin = (id: string) => {
+    const disabled = view().disabledPlugins
+    const off = disabled.includes(id)
+    patchConfig({
+      disabledPlugins: off ? disabled.filter(entry => entry !== id) : [...disabled, id],
+    })
+    reloadPlugins()
+    status.say(`Plugin "${id}" ${off ? 'enabled' : 'disabled'}`)
+  }
+
+  /** One plugin as the page's list shows it: state, name, what it contributes. */
+  const pluginLabel = (plugin: Plugin) =>
+    `${plugin.disabled ? '✗' : '✓'} ${plugin.name} ${plugin.version} — ${contributionSummary(plugin)}`
 
   const applyTabSize = (size: number) => {
     patchConfig({ tabSize: size })
@@ -509,12 +554,12 @@ export function createSettings(deps: {
       section: 'Appearance',
       key: 'theme',
       label: 'Theme',
-      value: themeLabels[view().theme],
-      cycle: dir => applyTheme(step(THEME_NAMES, view().theme, dir)),
+      value: themeLabel(view().theme),
+      cycle: dir => applyTheme(step(themeList(), view().theme, dir)),
       select: {
-        options: THEME_NAMES.map(name => themeLabels[name]),
-        pick: at => applyTheme(THEME_NAMES[at]!),
-        preview: at => paintTheme(THEME_NAMES[at]!),
+        options: themeList().map(themeLabel),
+        pick: at => applyTheme(themeList()[at]!),
+        preview: at => paintTheme(themeList()[at]!),
         restore: restoreTheme,
       },
     },
@@ -529,12 +574,12 @@ export function createSettings(deps: {
       section: 'Appearance',
       key: 'themeLight',
       label: 'Light theme',
-      value: themeLabels[view().themeLight],
-      cycle: dir => applySideTheme('themeLight', step(THEME_NAMES, view().themeLight, dir)),
+      value: themeLabel(view().themeLight),
+      cycle: dir => applySideTheme('themeLight', step(themeList(), view().themeLight, dir)),
       select: {
-        options: THEME_NAMES.map(name => themeLabels[name]),
-        pick: at => applySideTheme('themeLight', THEME_NAMES[at]!),
-        preview: at => paintTheme(THEME_NAMES[at]!),
+        options: themeList().map(themeLabel),
+        pick: at => applySideTheme('themeLight', themeList()[at]!),
+        preview: at => paintTheme(themeList()[at]!),
         restore: restoreTheme,
       },
     },
@@ -542,12 +587,12 @@ export function createSettings(deps: {
       section: 'Appearance',
       key: 'themeDark',
       label: 'Dark theme',
-      value: themeLabels[view().themeDark],
-      cycle: dir => applySideTheme('themeDark', step(THEME_NAMES, view().themeDark, dir)),
+      value: themeLabel(view().themeDark),
+      cycle: dir => applySideTheme('themeDark', step(themeList(), view().themeDark, dir)),
       select: {
-        options: THEME_NAMES.map(name => themeLabels[name]),
-        pick: at => applySideTheme('themeDark', THEME_NAMES[at]!),
-        preview: at => paintTheme(THEME_NAMES[at]!),
+        options: themeList().map(themeLabel),
+        pick: at => applySideTheme('themeDark', themeList()[at]!),
+        preview: at => paintTheme(themeList()[at]!),
         restore: restoreTheme,
       },
     },
@@ -557,6 +602,17 @@ export function createSettings(deps: {
       label: 'Transparent background',
       value: onOff(view().transparent),
       cycle: toggleTransparent,
+    },
+    {
+      section: 'Appearance',
+      key: 'iconTheme',
+      label: 'File icons',
+      value: iconThemeLabel(view().iconTheme),
+      cycle: dir => applyIconTheme(step(iconList(), view().iconTheme, dir)),
+      select: {
+        options: iconList().map(iconThemeLabel),
+        pick: at => applyIconTheme(iconList()[at]!),
+      },
     },
     {
       section: 'Editor',
@@ -735,11 +791,11 @@ export function createSettings(deps: {
       section: 'Language servers',
       key: 'lspServers',
       label: 'Servers',
-      value: `${DEFAULT_SERVERS.filter(s => (view().lspServers[s.id]?.length ?? 1) > 0).length}/${DEFAULT_SERVERS.length} enabled`,
+      value: `${servers().filter(s => (view().lspServers[s.id]?.length ?? 1) > 0).length}/${servers().length} enabled`,
       cycle: () => status.say('Enter opens the server list'),
       select: {
-        options: DEFAULT_SERVERS.map(spec => serverLabel(spec.id, spec.command)),
-        pick: at => toggleServer(DEFAULT_SERVERS[at]!.id),
+        options: servers().map(spec => serverLabel(spec.id, spec.command)),
+        pick: at => toggleServer(servers()[at]!.id),
       },
     },
     {
@@ -749,9 +805,9 @@ export function createSettings(deps: {
       value: `${Object.values(view().lspServers).filter(cmd => cmd.length > 0).length} custom`,
       cycle: () => status.say('Enter opens the server list'),
       select: {
-        options: DEFAULT_SERVERS.map(spec => serverLabel(spec.id, spec.command)),
+        options: servers().map(spec => serverLabel(spec.id, spec.command)),
         pick: at => {
-          const spec = DEFAULT_SERVERS[at]!
+          const spec = servers()[at]!
           const override = view().lspServers[spec.id]
           return {
             title: `Command — ${spec.id}`,
@@ -781,6 +837,28 @@ export function createSettings(deps: {
       select: {
         options: BINDABLE.map(bindingLabel),
         pick: at => bindingEdit(BINDABLE[at]!),
+      },
+    },
+    {
+      // Enter lists what was found and picking one flips it on or off. Installing
+      // is dropping a manifest in the folder, so there is nothing here to add
+      // one with — the row names the folder when it is empty.
+      section: 'Plugins',
+      key: 'disabledPlugins',
+      label: 'Installed',
+      value:
+        plugins().length === 0
+          ? 'none'
+          : `${plugins().filter(plugin => !plugin.disabled).length}/${plugins().length} enabled`,
+      cycle: () =>
+        status.say(
+          plugins().length === 0
+            ? `No plugins — manifests go in ${PLUGINS_DIR}`
+            : 'Enter opens the plugin list',
+        ),
+      select: {
+        options: plugins().map(pluginLabel),
+        pick: at => togglePlugin(plugins()[at]!.id),
       },
     },
   ]
@@ -829,6 +907,9 @@ export function createSettings(deps: {
     toggleLspInline,
     toggleLspCompletion,
     toggleServer,
+    applyIconTheme,
+    reloadPlugins,
+    togglePlugin,
     setFormatter,
     setServerCommand,
     applySidebarWidth,

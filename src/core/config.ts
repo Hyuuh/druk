@@ -18,6 +18,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { dirname, join } from 'node:path'
 
+import { isIconThemeName, NO_ICONS } from '../icons'
 import { isThemeName } from '../themes'
 import type { ThemeName } from '../themes'
 
@@ -83,6 +84,13 @@ export interface Config {
    * would otherwise read straight through them.
    */
   transparent: boolean
+  /**
+   * Which glyphs the file tree draws in place of the expansion arrow —
+   * `'none'`, one druk ships (`unicode`, `nerd`), or one a plugin contributes.
+   * `'none'` is the default because nothing can ask the terminal whether its
+   * font has the glyphs a set needs.
+   */
+  iconTheme: string
   /** Modal editing (normal / insert / visual). */
   vim: boolean
   /**
@@ -157,6 +165,13 @@ export interface Config {
    * src/app/keymap.ts, and the settings page edits this without the ids.
    */
   keybindings: Record<string, string>
+  /**
+   * Plugin ids to read but not register — the settings page's off switch, so a
+   * plugin can be shelved without deleting it. Read by `readDisabledPlugins`
+   * before the rest of this file is parsed: plugins have to be loaded before a
+   * theme id can be validated, and this is the one setting that decides which.
+   */
+  disabledPlugins: string[]
 }
 
 export const DEFAULTS: Config = {
@@ -165,6 +180,7 @@ export const DEFAULTS: Config = {
   themeLight: 'light',
   themeDark: 'dark',
   transparent: false,
+  iconTheme: NO_ICONS,
   vim: false,
   // OpenTUI's own default, so an unset key keeps the caret druk has always drawn.
   cursorStyle: 'block',
@@ -186,6 +202,7 @@ export const DEFAULTS: Config = {
   typescriptTsdk: '',
   lspServers: {},
   keybindings: {},
+  disabledPlugins: [],
 }
 
 /** Reads one setting out of parsed JSON; `undefined` for absent or invalid. */
@@ -214,6 +231,10 @@ const commands = (raw: unknown): Record<string, string[]> | undefined => {
   return parsed
 }
 
+/** A list of ids (`disabledPlugins`). Anything that is not a string is dropped. */
+const ids = (raw: unknown): string[] | undefined =>
+  Array.isArray(raw) ? raw.filter(value => typeof value === 'string') : undefined
+
 /** A key → text map (`keybindings`). Malformed entries are dropped, not fatal. */
 const strings = (raw: unknown): Record<string, string> | undefined => {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined
@@ -230,6 +251,9 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   themeLight: theme,
   themeDark: theme,
   transparent: bool,
+  // A registry check, like the theme above it: an icon theme a plugin has since
+  // been uninstalled with falls back to the default rather than drawing nothing.
+  iconTheme: raw => (isIconThemeName(raw) ? raw : undefined),
   vim: bool,
   cursorStyle: among(...CURSOR_STYLES),
   tabSize: raw => (typeof raw === 'number' && raw >= 1 && raw <= 16 ? Math.floor(raw) : undefined),
@@ -255,6 +279,7 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   typescriptTsdk: text,
   lspServers: commands,
   keybindings: strings,
+  disabledPlugins: ids,
 }
 
 const isConfigKey = (key: string): key is keyof Config => key in VALIDATORS
@@ -303,6 +328,25 @@ export function loadProjectConfig(rootDir: string): Partial<Config> {
   } catch {
     return {}
   }
+}
+
+/**
+ * The one setting that has to be read before the others: plugins register the
+ * themes and icon themes `parsePartial` then validates against, so which
+ * plugins to skip cannot itself wait for a parsed config. Both layers, project
+ * over user, as `resolveConfig` would have merged them.
+ */
+export function readDisabledPlugins(rootDir: string): string[] {
+  const layer = (file: string): string[] | undefined => {
+    try {
+      return ids(
+        (JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>).disabledPlugins,
+      )
+    } catch {
+      return undefined
+    }
+  }
+  return layer(projectConfigFile(rootDir)) ?? layer(CONFIG_FILE) ?? []
 }
 
 export function saveUserConfig(config: Config): void {

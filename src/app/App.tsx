@@ -1,4 +1,4 @@
-import { basename } from 'node:path'
+import { basename, dirname } from 'node:path'
 
 import type { BorderSides, MouseEvent } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
@@ -14,6 +14,7 @@ import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
 import { SEVERITY_RANK } from '../lsp/protocol'
 import type { ProblemSeverity } from '../lsp/protocol'
+import { pluginProblems } from '../plugins'
 import { ui } from '../themes'
 import { ComparePanel } from '../ui/ComparePanel'
 import { ComparisonView } from '../ui/ComparisonView'
@@ -270,12 +271,17 @@ export function App(props: {
     const { invalid, conflicts } = settings.keymap()
     const bad = invalid[0]
     const clash = conflicts.find(entry => entry.rejected)
+    // Same reason as the two above: a plugin that contributes nothing because
+    // its manifest is wrong looks exactly like one that is not installed.
+    const badPlugin = pluginProblems()[0]
     if (bad) say(`Shortcut "${bad.value}" for ${bad.label}: ${bad.reason}`, 'warn')
     else if (clash) {
       say(
         `${clash.key} is bound twice — ${clash.winner} keeps it, ${clash.loser} has no key`,
         'warn',
       )
+    } else if (badPlugin) {
+      say(`Plugin ${basename(dirname(badPlugin.source))}: ${badPlugin.reason}`, 'warn')
     }
     // Same refusal `druk file.ts` deserves as opening one from the tree, and for the
     // same reason: an empty editor with a status line under it looks like a bug.
@@ -425,6 +431,7 @@ export function App(props: {
                   gitIgnored={git.gitIgnored()}
                   cutPaths={fileOps.cut()}
                   markedPaths={tree.marked()}
+                  iconTheme={config.iconTheme}
                   onActivate={node => {
                     // Landing in a file is how a page closes — the tree stays
                     // interactive while one is up, like any other editor page.
