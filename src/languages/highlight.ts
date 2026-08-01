@@ -1,6 +1,6 @@
 import '../core/assets'
 import { getTreeSitterClient, pathToFiletype, SyntaxStyle } from '@opentui/core'
-import type { TreeSitterClient } from '@opentui/core'
+import type { StyleDefinitionInput, TreeSitterClient } from '@opentui/core'
 
 import { paintedTheme, syntaxTheme, ui } from '../themes'
 import type { ThemeName } from '../themes'
@@ -33,6 +33,9 @@ function registerVendoredParsers(client: TreeSitterClient): void {
 /** Cleared with the style table: the ids are only valid for the theme they came from. */
 const styleIdByGroup = new Map<string, number | null>()
 
+/** Built lazily from `syntaxTheme`, and dropped with the style table it indexes. */
+let styleById: Map<number, StyleDefinitionInput> | null = null
+
 /** `#rrggbb` blend, `t` of the way from `base` toward `tint`. */
 export function mixColors(base: string, tint: string, t: number): string {
   const channel = (at: number) => {
@@ -54,6 +57,7 @@ export function getSyntaxStyle(): SyntaxStyle {
   if (!syntaxStyle || styleFor !== theme) {
     styleFor = theme
     styleIdByGroup.clear()
+    styleById = null
     syntaxStyle = SyntaxStyle.fromStyles({
       ...syntaxTheme,
       [INDENT_GUIDE]: { bg: ui.indentGuide },
@@ -79,6 +83,24 @@ export function invalidateSyntaxStyle(): void {
   syntaxStyle = null
   styleFor = null
   styleIdByGroup.clear()
+  styleById = null
+}
+
+/**
+ * The style behind a `Segment`'s id, for the callers that paint spans of text
+ * themselves instead of handing a buffer to OpenTUI — the search preview. Ids
+ * belong to the SyntaxStyle instance, so this is rebuilt whenever it is.
+ */
+export function styleForId(id: number): StyleDefinitionInput | undefined {
+  const ss = getSyntaxStyle() // rebuilds — and so clears this table — on a theme switch
+  if (!styleById) {
+    styleById = new Map()
+    for (const [group, style] of Object.entries(syntaxTheme)) {
+      const at = ss.getStyleId(group)
+      if (at != null) styleById.set(at, style)
+    }
+  }
+  return styleById.get(id)
 }
 
 /**
