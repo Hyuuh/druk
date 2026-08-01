@@ -1,76 +1,29 @@
 /**
- * Theme registry — the single place to add a color scheme.
+ * Theme registry — the two themes druk ships, and the table plugins add to.
  *
- * To add one: copy `github-dark.ts`, adjust the colors, then register it in
- * `THEMES` below. It shows up in the command palette automatically.
+ * Only the defaults are built in: `theme`, `themeLight` and `themeDark` all
+ * name one of these, so they have to exist before any plugin is read. Every
+ * other palette druk once carried is a plugin in the market (`plugins/` in this
+ * repository), installed through the palette's Plugins menu — which is what
+ * lets a new theme reach users without a druk release.
  *
- * A plugin adds one at runtime through `registerTheme`, so every lookup goes
- * through `registry` rather than through `THEMES` itself — `THEMES` is the
+ * A plugin registers one at runtime through `registerTheme`, so every lookup
+ * goes through `registry` rather than through `THEMES` itself — `THEMES` is the
  * built-in table, `registry` is what is actually on offer.
  */
 import type { StyleDefinitionInput } from '@opentui/core'
 import { createSignal } from 'solid-js'
 import { createStore } from 'solid-js/store'
 
-import { ayuDark } from './ayu-dark'
-import { ayuLight } from './ayu-light'
-import { ayuMirage } from './ayu-mirage'
-import { catppuccinFrappe } from './catppuccin-frappe'
-import { catppuccinLatte } from './catppuccin-latte'
-import { catppuccinMacchiato } from './catppuccin-macchiato'
-import { catppuccinMocha } from './catppuccin-mocha'
-import { dracula } from './dracula'
-import { everforestDark } from './everforest-dark'
-import { everforestLight } from './everforest-light'
 import { githubDark } from './github-dark'
 import { githubLight } from './github-light'
-import { gruvboxDark } from './gruvbox-dark'
-import { gruvboxLight } from './gruvbox-light'
-import { kanagawaDragon } from './kanagawa-dragon'
-import { kanagawaLotus } from './kanagawa-lotus'
-import { kanagawaWave } from './kanagawa-wave'
-import { nord } from './nord'
-import { oneDark } from './one-dark'
-import { rosePine } from './rose-pine'
-import { rosePineDawn } from './rose-pine-dawn'
-import { rosePineMoon } from './rose-pine-moon'
-import { solarizedDark } from './solarized-dark'
-import { solarizedLight } from './solarized-light'
-import { tokyoNight } from './tokyo-night'
 import type { Theme, ThemeUi, UiColors } from './types'
-import { vesper } from './vesper'
 
 export type { Theme, ThemeUi, UiColors }
 
-// Mocha before Macchiato: the palette matches a query in order, so the flavor
-// whose name is a prefix of the other's search hits must come first.
 export const THEMES = {
-  'dark': githubDark,
-  'light': githubLight,
-  'ayu-dark': ayuDark,
-  'ayu-mirage': ayuMirage,
-  'ayu-light': ayuLight,
-  'catppuccin-mocha': catppuccinMocha,
-  'catppuccin-macchiato': catppuccinMacchiato,
-  'catppuccin-frappe': catppuccinFrappe,
-  'catppuccin-latte': catppuccinLatte,
-  dracula,
-  'everforest-dark': everforestDark,
-  'everforest-light': everforestLight,
-  'gruvbox': gruvboxDark,
-  'gruvbox-light': gruvboxLight,
-  'kanagawa-wave': kanagawaWave,
-  'kanagawa-dragon': kanagawaDragon,
-  'kanagawa-lotus': kanagawaLotus,
-  nord,
-  'one-dark': oneDark,
-  'rose-pine': rosePine,
-  'rose-pine-moon': rosePineMoon,
-  'rose-pine-dawn': rosePineDawn,
-  'solarized-dark': solarizedDark,
-  'solarized-light': solarizedLight,
-  'tokyo-night': tokyoNight,
-  vesper,
+  dark: githubDark,
+  light: githubLight,
 }
 
 /**

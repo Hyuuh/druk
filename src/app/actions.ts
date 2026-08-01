@@ -2,6 +2,7 @@ import { basename, dirname, relative } from 'node:path'
 
 import { createMemo } from 'solid-js'
 
+import { ancestorDirs } from '../core/changeTree'
 import { readFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import {
@@ -105,6 +106,22 @@ export function createCommands(ctx: AppContext) {
     if (!target) return
     panes.setGitCursor(at)
     if (target.kind === 'file') showDiff(target.change.path)
+  }
+
+  /**
+   * Fold every folder in the source-control panel. The cursor is moved rather
+   * than clamped: its row is usually one of the ones just hidden, and the folder
+   * that swallowed it is where it was. Deliberately not `gitMoveTo`, which would
+   * throw a diff over whatever page is up for a mere fold.
+   */
+  const gitCollapseAll = () => {
+    const row = git.rows()[panes.gitCursor()]
+    const rel = row ? (row.kind === 'dir' ? row.rel : row.change.rel) : null
+    git.collapseAll()
+    const rows = git.rows()
+    const top = rel ? (ancestorDirs(rel)[0] ?? rel) : null
+    const at = rows.findIndex(r => (r.kind === 'dir' ? r.rel : r.change.rel) === top)
+    panes.setGitCursor(at >= 0 ? at : Math.min(panes.gitCursor(), Math.max(0, rows.length - 1)))
   }
 
   /** Enter, or a click: a file diffs, a folder folds. */
@@ -219,6 +236,10 @@ export function createCommands(ctx: AppContext) {
     navForward: ctx.navigation.forward,
     toggleFocus: () => (panes.focus() === 'tree' ? panes.setFocus('editor') : panes.focusTree()),
     toggleSidebar: panes.toggleSidebar,
+    // One command for the button both sidebar views carry: which of them is up
+    // is what "collapse everything" means.
+    collapseSidebar: () => (panes.view() === 'git' ? gitCollapseAll() : tree.collapseAll()),
+    gitCollapseAll,
     toggleGitView: panes.toggleGitView,
     toggleMarkdown: workspace.toggleRendered,
     setTheme: settings.applyTheme,
@@ -367,16 +388,19 @@ export function createCommands(ctx: AppContext) {
     gitDeleteBranch: () => ctx.branches.open('delete'),
     gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
     listPlugins: () => {
-      const found = plugins()
-      if (found.length === 0) return say(`No plugins — manifests go in ${PLUGINS_DIR}`)
-      say(
-        found
-          .map(
-            plugin =>
-              `${plugin.name} ${plugin.version} (${contributionSummary(plugin)})${plugin.disabled ? ' — off' : ''}`,
-          )
-          .join(' · '),
+      // The ones druk ships are a count, not a list: they outnumber everything
+      // else and naming them would push what the user actually installed off the
+      // end of a status line. The settings page is where all of them are shown.
+      const shipped = plugins().filter(plugin => plugin.builtin).length
+      const installed = plugins().filter(plugin => !plugin.builtin)
+      const named = installed.map(
+        plugin =>
+          `${plugin.name} ${plugin.version} (${contributionSummary(plugin)})${plugin.disabled ? ' — off' : ''}`,
       )
+      if (named.length === 0) {
+        return say(`${shipped} built in, none installed — manifests go in ${PLUGINS_DIR}`)
+      }
+      say([`${shipped} built in`, ...named].join(' · '))
     },
     reloadPlugins: () => {
       const load = settings.reloadPlugins()
@@ -390,12 +414,26 @@ export function createCommands(ctx: AppContext) {
           : `${load.plugins.length} plugin${load.plugins.length === 1 ? '' : 's'} reloaded`,
       )
     },
+    installPlugin: (id: string) => ctx.market.install(id),
+    uninstallPlugin: (id: string) => ctx.market.remove(id),
+    updatePlugins: () => void ctx.market.updateAll(),
+    checkPluginUpdates: () => void ctx.market.checkNow(),
     showHelp: () => ctx.overlays.setHelp(true),
     quit: ctx.prompts.quit,
   }
 
+  // `market.catalog()` and `plugins()` are signals, so the market rows repaint
+  // after a fetch or an install without the palette knowing either happened.
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, { activeTheme: config.theme }),
+    buildCommands(actions, {
+      activeTheme: config.theme,
+      market: ctx.market.catalog(),
+      installed: plugins().map(plugin => ({
+        id: plugin.id,
+        version: plugin.version,
+        builtin: plugin.builtin,
+      })),
+    }),
   )
 
   return { commands, actions }

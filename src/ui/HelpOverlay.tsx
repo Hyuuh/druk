@@ -1,12 +1,13 @@
 import { TextAttributes } from '@opentui/core'
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createMemo, createSignal, For, Match, Switch } from 'solid-js'
 
 import { ui } from '../themes'
 import { helpSections } from './keys'
 import { modalWidth } from './modal'
 import { ModalPanel } from './Overlay'
+import { useKeys } from './useKeys'
 
 type Line =
   | { kind: 'header'; text: string }
@@ -29,7 +30,7 @@ export function HelpOverlay() {
   const [top, setTop] = createSignal(0)
   const overflowing = () => visible() < lines().length
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     const step = key.name === 'up' ? -1 : key.name === 'down' ? 1 : 0
     if (step === 0) return
     key.preventDefault()

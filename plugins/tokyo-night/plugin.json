@@ -1,0 +1,121 @@
+{
+  "id": "tokyo-night",
+  "name": "Tokyo Night",
+  "version": "1.0.0",
+  "description": "Tokyo Night. Palette from https://github.com/folke/tokyonight.nvim",
+  "themes": [
+    {
+      "id": "tokyo-night",
+      "name": "Tokyo Night",
+      "ui": {
+        "bg": "#24283b",
+        "panelBg": "#1f2335",
+        "barBg": "#16161e",
+        "statusBg": "#7aa2f7",
+        "statusFg": "#16161e",
+        "text": "#c0caf5",
+        "dim": "#a9b1d6",
+        "faint": "#565f89",
+        "accent": "#7aa2f7",
+        "activeTabFg": "#c0caf5",
+        "inactiveTabFg": "#565f89",
+        "treeSelectedBg": "#3b4261",
+        "treeFocusBg": "#292e42",
+        "dirty": "#e0af68",
+        "error": "#f7768e",
+        "folder": "#c0caf5",
+        "cursor": "#c0caf5",
+        "scrollbar": "#414868",
+        "gutter": "#3b4261",
+        "currentLine": "#292e42",
+        "indentGuide": "#2d3246",
+        "gitAdded": "#9ece6a",
+        "gitModified": "#e0af68",
+        "gitDeleted": "#f7768e"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#565f89",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#bb9af7"
+        },
+        "string": {
+          "fg": "#9ece6a"
+        },
+        "number": {
+          "fg": "#ff9e64"
+        },
+        "boolean": {
+          "fg": "#ff9e64"
+        },
+        "constant": {
+          "fg": "#ff9e64"
+        },
+        "function": {
+          "fg": "#7aa2f7"
+        },
+        "type": {
+          "fg": "#2ac3de"
+        },
+        "variable": {
+          "fg": "#c0caf5"
+        },
+        "property": {
+          "fg": "#7dcfff"
+        },
+        "tag": {
+          "fg": "#f7768e"
+        },
+        "operator": {
+          "fg": "#89ddff"
+        },
+        "punctuation": {
+          "fg": "#a9b1d6"
+        },
+        "label": {
+          "fg": "#e0af68"
+        },
+        "escape": {
+          "fg": "#e0af68"
+        },
+        "embedded": {
+          "fg": "#c0caf5"
+        },
+        "error": {
+          "fg": "#f7768e"
+        },
+        "markup.heading": {
+          "fg": "#7aa2f7",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#c0caf5",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#c0caf5",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#9ece6a"
+        },
+        "markup.link": {
+          "fg": "#9ece6a"
+        },
+        "markup.link.url": {
+          "fg": "#9ece6a",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#bb9af7"
+        },
+        "markup.quote": {
+          "fg": "#565f89",
+          "italic": true
+        }
+      }
+    }
+  ]
+}

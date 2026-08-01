@@ -1,0 +1,15 @@
+{
+  "id": "kotlin",
+  "name": "Kotlin",
+  "version": "1.0.0",
+  "description": "Kotlin highlighting.",
+  "languages": [
+    {
+      "id": "kotlin",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "kotlin"
+      }
+    }
+  ]
+}

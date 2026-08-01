@@ -1,0 +1,99 @@
+{
+  "id": "liquid",
+  "name": "Liquid",
+  "version": "1.0.0",
+  "description": "Shopify Liquid templates, by patterns.",
+  "languages": [
+    {
+      "id": "liquid",
+      "patterns": [
+        {
+          "group": "attribute",
+          "re": "(?<=[\\s<])[a-zA-Z_:][-\\w:.]*(?=[ \\t]*=[ \\t]*[\"'])",
+          "flags": "g"
+        },
+        {
+          "group": "tag",
+          "re": "<\\/?([A-Za-z][\\w.-]*)",
+          "flags": "g"
+        },
+        {
+          "group": "operator",
+          "re": "=",
+          "flags": "g"
+        },
+        {
+          "group": "number",
+          "re": "\\b\\d+(?:\\.\\d+)?\\b",
+          "flags": "g"
+        },
+        {
+          "group": "boolean",
+          "re": "\\b(?:true|false|nil|blank|empty)\\b",
+          "flags": "g"
+        },
+        {
+          "group": "keyword",
+          "re": "(?<=\\{%-?\\s*)\\b(?:assign|capture|endcapture|case|when|endcase|cycle|decrement|echo|for|endfor|break|continue|if|elsif|else|endif|include|increment|layout|liquid|raw|endraw|render|section|sections|style|endstyle|tablerow|endtablerow|unless|endunless|paginate|endpaginate|form|endform|javascript|endjavascript|schema|endschema|stylesheet|endstylesheet|comment|endcomment)\\b",
+          "flags": "g"
+        },
+        {
+          "group": "variable",
+          "re": "(?<=(?:\\{%-?|^)[ \\t]*(?:assign|capture)[ \\t]+)[a-zA-Z_]\\w*",
+          "flags": "gm"
+        },
+        {
+          "group": "operator",
+          "re": "(?<!\\|)\\|(?!\\|)(?=[ \\t]*[a-zA-Z_])",
+          "flags": "g"
+        },
+        {
+          "group": "function",
+          "re": "(?<=(?<!\\|)\\|[ \\t]*)[a-zA-Z_]\\w*",
+          "flags": "g"
+        },
+        {
+          "group": "string",
+          "re": "\"(?:[^\"\\\\\\n]|\\\\.)*\"|(?<![A-Za-z0-9])'(?:[^'\\\\\\n]|\\\\.)*'",
+          "flags": "g"
+        },
+        {
+          "group": "punctuation.bracket",
+          "re": "<\\/?|\\/?>",
+          "flags": "g"
+        },
+        {
+          "group": "punctuation.special",
+          "re": "\\{\\{-?|-?\\}\\}|\\{%-?|-?%\\}",
+          "flags": "g"
+        },
+        {
+          "group": "keyword.operator",
+          "re": "==|!=|<=|>=",
+          "flags": "g"
+        },
+        {
+          "group": "comment.block",
+          "re": "<!--[\\s\\S]*?-->|\\{%-?\\s*comment\\s*-?%\\}[\\s\\S]*?\\{%-?\\s*endcomment\\s*-?%\\}|\\{%-?\\s*doc\\s*-?%\\}[\\s\\S]*?\\{%-?\\s*enddoc\\s*-?%\\}|\\{%-?\\s*#.*?-?%\\}",
+          "flags": "g"
+        },
+        {
+          "group": "keyword.tag",
+          "re": "(?<=^[ \\t]*)@\\w+",
+          "flags": "gm"
+        },
+        {
+          "group": "type.builtin",
+          "re": "(?<=@param[ \\t]*)\\{[^{}]*\\}",
+          "flags": "g"
+        },
+        {
+          "group": "variable.parameter",
+          "re": "(?<=@param[ \\t]*\\{[^{}]*\\}[ \\t]*)\\[?[a-zA-Z_]\\w*\\]?",
+          "flags": "g"
+        }
+      ],
+      "extensions": [".liquid"]
+    }
+  ]
+}

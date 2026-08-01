@@ -1,0 +1,15 @@
+{
+  "id": "scala",
+  "name": "Scala",
+  "version": "1.0.0",
+  "description": "Scala highlighting.",
+  "languages": [
+    {
+      "id": "scala",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "scala"
+      }
+    }
+  ]
+}

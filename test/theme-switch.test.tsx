@@ -1,9 +1,8 @@
 import { afterAll, expect, test } from 'bun:test'
 
 import { getSyntaxStyle, invalidateSyntaxStyle } from '../src/languages/highlight'
-import { setTheme, syntaxTheme, themeFor, THEMES } from '../src/themes'
-import type { ThemeName } from '../src/themes'
-import { fixture, launch, openPalette, press } from './helpers'
+import { setTheme, syntaxTheme, themeFor, themeNames, THEMES } from '../src/themes'
+import { fixture, launch, loadMarketPlugins, openPalette, press } from './helpers'
 import type { Harness } from './helpers'
 import { allSegments } from './syntax'
 
@@ -32,6 +31,10 @@ function colors(t: Harness) {
 
 // These tests drive the module-global theme; leaving it changed would make every
 // later test file depend on the order bun happened to run them in.
+// Every palette druk offers is a market plugin now, and these tests are about
+// all of them, not the two that ship.
+loadMarketPlugins()
+
 afterAll(() => {
   setTheme('dark')
   invalidateSyntaxStyle()
@@ -57,17 +60,17 @@ test('switching theme repaints chrome and syntax', async () => {
 
   await switchTheme(t, 'latte')
   const latte = colors(t)
-  expect(latte).toContain(hexToRgb(THEMES['catppuccin-latte'].ui.bg))
+  expect(latte).toContain(hexToRgb(themeFor('catppuccin-latte').ui.bg))
   expect(latte).not.toContain(hexToRgb(THEMES.dark.ui.bg))
 
   await switchTheme(t, 'mocha')
-  expect(colors(t)).toContain(hexToRgb(THEMES['catppuccin-mocha'].ui.bg))
+  expect(colors(t)).toContain(hexToRgb(themeFor('catppuccin-mocha').ui.bg))
 })
 
 test("switching themes never leaves a previous theme's colors behind", async () => {
   // A merge instead of a replace used to keep groups the new theme omits, which
   // renders as invisible text whenever the switch flips light/dark.
-  for (const name of Object.keys(THEMES) as ThemeName[]) {
+  for (const name of themeNames()) {
     setTheme(name)
     invalidateSyntaxStyle()
     expect(Object.keys(syntaxTheme).toSorted()).toEqual(
@@ -84,7 +87,7 @@ test('plain identifiers stay readable against the background in every theme', as
     return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
   }
 
-  for (const name of Object.keys(THEMES) as ThemeName[]) {
+  for (const name of themeNames()) {
     setTheme(name)
     invalidateSyntaxStyle()
     const segments = await allSegments(source, 'typescript', 2)

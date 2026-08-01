@@ -71,6 +71,9 @@ status bar with the branch, unsaved state and cursor position.
 
 - `Tab` moves from the tree to the editor, `Esc` moves back.
 - In the tree: `↑` `↓` to move, `→` `←` to open and close folders, `Enter` to open a file.
+- The `▴` at the right of the sidebar header shuts every folder at once — in the file
+  tree and in the source-control panel alike. It is there only while something is open;
+  the palette has it as *View → Collapse folders in sidebar*.
 - Opening a file from the tree previews it: the tab is *italic* and the next file you
   open takes its place. Double-click it, or start editing, and the tab stays for good.
 - `Ctrl+S` saves. Closing a tab with unsaved edits asks first.
@@ -191,16 +194,16 @@ undo-commit and the branch commands live beside it.
 
 Open the settings page from the palette (`F1` → `Settings`): one row per option,
 `←→` steps the value and `Enter` opens a filterable list of every value — the way
-to reach one of 26 themes without pressing an arrow 26 times. Every change applies
+to reach a theme without pressing an arrow twenty times. Every change applies
 immediately and persists. Or edit
 `~/.config/druk/config.json` directly — a bad value falls back to the default
 instead of breaking startup.
 
 | Setting | Default | |
 | --- | --- | --- |
-| `theme` | `"dark"` | `dark`, `light`, `ayu-dark`, `ayu-mirage`, `ayu-light`, `catppuccin-mocha`, `catppuccin-macchiato`, `catppuccin-frappe`, `catppuccin-latte`, `dracula`, `everforest-dark`, `everforest-light`, `gruvbox`, `gruvbox-light`, `kanagawa-wave`, `kanagawa-dragon`, `kanagawa-lotus`, `nord`, `one-dark`, `rose-pine`, `rose-pine-moon`, `rose-pine-dawn`, `solarized-dark`, `solarized-light`, `tokyo-night`, `vesper` |
+| `theme` | `"dark"` | `dark` and `light` ship with druk; ayu, catppuccin, dracula, everforest, gruvbox, kanagawa, nord, one-dark, rosé pine, solarized, tokyo night and vesper are one install away in the [plugin market](#plugins) |
 | `transparent` | `false` | set `true` to leave the editor, tab strip and sidebar unpainted, so a translucent terminal shows through |
-| `iconTheme` | `"none"` | file icons in the tree: `unicode` (shapes any font has), `nerd` (needs a patched font), or one a plugin adds |
+| `iconTheme` | `"none"` | file icons in the tree: `unicode` (shapes any font has), or a set from the market — `nerd-icons` needs a patched font |
 | `tabSize` | `2` | 1–16 |
 | `cursorStyle` | `"block"` | `block`, `line` or `underline` — the caret's shape, which vim mode overrides while it is on, since there the shape is what tells normal from insert |
 | `vim` | `false` | normal / insert / visual modes, `hjkl w b 0 $ gg G`, counts, `i a o`, `x dd dw cw`, `v` + `d y c`, `yy p P`, `u` / `Ctrl+R` |
@@ -210,15 +213,46 @@ instead of breaking startup.
 | `showDotfiles` | `true` | set `false` to hide dotfiles in the file tree |
 | `respectGitignore` | `false` | set `true` to hide git-ignored files in the file tree |
 | `diffView` | `"inline"` | `inline` or `split` — how the diff view lays out changes |
+| `pluginUpdates` | `true` | check the plugin market at startup: update notices, and the offer of a plugin for a language or theme you are missing. `false` never contacts it |
+| `pluginRegistry` | druk's own | an https folder holding `index.json` and `<id>/plugin.json` — point it at a fork if you keep your own market |
 
 druk also remembers each project's open tabs, active file and expanded folders, and
 restores them the next time you open that directory.
 
 ## Plugins
 
-A plugin is a JSON file. Drop one in `~/.config/druk/plugins/` — either
-`<name>.json`, or `<name>/plugin.json` — and it can add themes, file-icon themes and
-language servers. A project can carry its own in `<project>/.druk/plugins/`.
+**Almost everything druk can do with a language or a colour is a plugin**, and the
+market is a folder in this repository that druk reads directly — so a new theme, or
+support for a new language, reaches you when its pull request merges, not when druk
+next releases.
+
+A plugin is one of two kinds: a **language** (highlighting, and the language server
+that serves it) or an **appearance** (themes and icon themes).
+
+Out of the box druk highlights TypeScript, JavaScript and their React dialects,
+JSON, Markdown, HTML, CSS and its preprocessors, YAML and TOML — those plugins ship
+inside the binary. Go, Rust, Python, C, C++, Java, Ruby, Elixir, PHP, Swift, Lua,
+Bash and about fifteen more are one install away, each bringing its language server
+with it.
+Themes beyond the GitHub pair and the Nerd Font icons are there too.
+
+`F1` → `Plugins` → `Plugin market` lists what is on offer; `Enter` installs one after
+showing what it adds and, for a language server, the command druk would run. druk
+also offers on its own: open a Go file with no Go plugin and it says so, and a config
+naming a theme you no longer have is offered the plugin that carries it. When an
+installed plugin has a newer version, the status bar says so at startup —
+`Plugins → Update plugins` takes it. Installing is usually one small JSON file: the
+grammars themselves are already in the binary.
+
+Contributing one is a JSON file and a pull request: see
+[`plugins/README.md`](https://github.com/letstri/druk/tree/main/plugins).
+
+A plugin is a JSON file, so you can also just write one. Drop it in
+`~/.config/druk/plugins/` — either `<name>.json`, or `<name>/plugin.json` — and run
+`Plugins` → `Reload plugins`. A project can carry its own in
+`<project>/.druk/plugins/`.
+
+An appearance plugin:
 
 ```json
 {
@@ -244,6 +278,24 @@ language servers. A project can carry its own in `<project>/.druk/plugins/`.
       "names": { "package.json": "▤" },
       "folders": { "src": "▸" }
     }
+  ]
+}
+```
+
+And a language plugin — the other kind, never mixed with the first:
+
+```json
+{
+  "id": "nim",
+  "name": "Nim",
+  "version": "1.0.0",
+  "languages": [
+    {
+      "id": "nim",
+      "lineComment": "#",
+      "extensions": [".nim"],
+      "grammar": { "wasm": "grammar.wasm", "query": "highlights.scm" }
+    }
   ],
   "languageServers": [
     {
@@ -256,16 +308,23 @@ language servers. A project can carry its own in `<project>/.druk/plugins/`.
 }
 ```
 
-Copy the colours of a shipped theme out of
-[`src/themes`](https://github.com/letstri/druk/tree/main/src/themes) to see every `ui`
+`grammar` can also be `{"vendored": "go"}` for one of the grammars already inside
+druk, or `{"bundled": true}` for one OpenTUI carries; with no grammar at all, a
+`patterns` list of regexes highlights the file instead — that is how YAML, SQL and
+Terraform are done. [`plugins/README.md`](https://github.com/letstri/druk/tree/main/plugins)
+has the full shape.
+
+Copy the colours of a market theme out of
+[`plugins/`](https://github.com/letstri/druk/tree/main/plugins) to see every `ui`
 key and the syntax groups worth styling. Each icon must be a single-cell character —
 an emoji is refused, because it would shift every name in the tree by a column. An
-`id` that matches something druk ships replaces it while the plugin is installed, so
-this is also how to repaint a built-in theme or swap a default language server for
-another.
+`id` that matches one already registered replaces it, so this is how to repaint
+`dark`, or how a project's own plugin folder overrides a market plugin for the
+languages that project uses.
 
-Manifests are data, never code: installing a plugin runs nothing. They are read at
-startup — `F1` → `Plugins` → `Reload plugins` picks up a change without restarting,
-and lists what is installed. The settings page's Plugins section turns one off
+Manifests are data, never code: installing a plugin runs nothing — though a language
+server it declares is a program druk starts when a matching file opens, which is why
+the install prompt names that command. They are read at startup — `F1` → `Plugins` →
+`Reload plugins` picks up a change without restarting, and lists what is installed. The settings page's Plugins section turns one off
 (`disabledPlugins` in the config), and a manifest with a mistake in it says so in the
 status bar rather than failing quietly.

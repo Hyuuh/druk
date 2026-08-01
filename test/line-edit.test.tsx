@@ -41,9 +41,11 @@ test('Ctrl+L comments too, for terminals that cannot send Ctrl+/', async () => {
 })
 
 test('Ctrl+/ uses the language’s own prefix', async () => {
-  const { t, saved } = await open('x = 1\n', 'a.py')
+  // yaml, not python: its `#` makes the same point, and it is one of the
+  // languages druk ships rather than one the market has to be asked for.
+  const { t, saved } = await open('x: 1\n', 'a.yaml')
   await press(t, i => void i.pressKeys([CTRL_SLASH]))
-  expect(await saved()).toBe('# x = 1\n')
+  expect(await saved()).toBe('# x: 1\n')
 })
 
 test('Ctrl+/ does nothing where the language has no line comment', async () => {

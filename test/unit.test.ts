@@ -85,13 +85,24 @@ describe('updates', () => {
   })
 })
 
+/** One market row, so the Plugins submenu has a leaf that installs something. */
+const MARKET = [
+  {
+    id: 'nim',
+    name: 'Nim',
+    version: '1.0.0',
+    description: 'nimlangserver',
+    provides: { themes: [], icons: [], filetypes: ['nim'] },
+  },
+]
+
 describe('registries', () => {
   test('every command leaf is runnable, unique, and reachable', () => {
     const ran: string[] = []
     const actions = new Proxy({} as CommandActions, {
       get: (_t, name: string) => () => ran.push(name),
     })
-    const tree = buildCommands(actions, { activeTheme: 'dark' })
+    const tree = buildCommands(actions, { activeTheme: 'dark', market: MARKET, installed: [] })
     const leaves = flattenCommands(tree)
 
     expect(leaves.length).toBeGreaterThan(10)
@@ -110,7 +121,11 @@ describe('registries', () => {
     const actions = new Proxy({} as CommandActions, {
       get: (_t, name: string) => (arg?: unknown) => ran.push(`${name}:${arg ?? ''}`),
     })
-    const themes = buildCommands(actions, { activeTheme: 'dark' }).find(c => c.id === 'themes')
+    const themes = buildCommands(actions, {
+      activeTheme: 'dark',
+      market: MARKET,
+      installed: [],
+    }).find(c => c.id === 'themes')
     const leaves = themes?.children ?? []
 
     expect(leaves.length).toBe(Object.keys(THEMES).length)
@@ -119,9 +134,9 @@ describe('registries', () => {
       expect(typeof leaf.restore).toBe('function')
     }
 
-    leaves.find(c => c.id === 'themes.nord')?.preview?.()
-    leaves.find(c => c.id === 'themes.nord')?.restore?.()
-    expect(ran).toEqual(['previewTheme:nord', 'restoreTheme:'])
+    leaves.find(c => c.id === 'themes.light')?.preview?.()
+    leaves.find(c => c.id === 'themes.light')?.restore?.()
+    expect(ran).toEqual(['previewTheme:light', 'restoreTheme:'])
   })
 
   // Missing/extra ui keys are a tsc error, so only the values are worth asserting.

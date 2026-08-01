@@ -93,8 +93,8 @@ test('the diff page stays painted — it is a layer over the editor', async () =
 test('a theme switch keeps transparency on', async () => {
   const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }), { transparent: true })
   await openFile(t, 'a.ts')
-  setTheme('catppuccin-latte')
+  setTheme('light')
   await settle(t)
   expect(bgAlpha(t, 'const')).toBe(0)
-  expect(THEMES['catppuccin-latte'].ui.bg).not.toBe('transparent')
+  expect(THEMES.light.ui.bg).not.toBe('transparent')
 })

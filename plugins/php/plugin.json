@@ -1,0 +1,26 @@
+{
+  "id": "php",
+  "name": "PHP",
+  "version": "1.0.0",
+  "description": "PHP highlighting and intelephense.",
+  "languages": [
+    {
+      "id": "php",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "php"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "php",
+      "command": ["intelephense", "--stdio"],
+      "filetypes": ["php"],
+      "install": {
+        "kind": "npm",
+        "packages": ["intelephense"]
+      }
+    }
+  ]
+}

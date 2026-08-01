@@ -1,0 +1,48 @@
+{
+  "id": "svelte",
+  "name": "Svelte",
+  "version": "1.0.0",
+  "description": "Svelte highlighting, by patterns — no wasm grammar ships for it.",
+  "languages": [
+    {
+      "id": "svelte",
+      "patterns": [
+        {
+          "group": "punctuation.bracket",
+          "re": "<\\/?|\\/?>|[{}]",
+          "flags": "g"
+        },
+        {
+          "group": "number",
+          "re": "\\b\\d+(?:\\.\\d+)?\\b",
+          "flags": "g"
+        },
+        {
+          "group": "string",
+          "re": "\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'",
+          "flags": "g"
+        },
+        {
+          "group": "attribute",
+          "re": "\\b(?:bind|on|use|class|transition|in|out|animate):[\\w|]+",
+          "flags": "g"
+        },
+        {
+          "group": "tag",
+          "re": "<\\/?([A-Za-z][\\w.-]*)",
+          "flags": "g"
+        },
+        {
+          "group": "keyword",
+          "re": "\\{[#:/@]\\s*\\w+|\\b(?:let|const|function|export|import|from|await|return|if|else)\\b",
+          "flags": "g"
+        },
+        {
+          "group": "comment",
+          "re": "<!--[\\s\\S]*?-->|\\/\\/.*$",
+          "flags": "gm"
+        }
+      ]
+    }
+  ]
+}

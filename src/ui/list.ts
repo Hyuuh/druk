@@ -3,11 +3,12 @@
  * way. Every one of these was copied between components before it lived here,
  * and the copies had already started to disagree.
  */
-import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
-import { createEffect, createSignal } from 'solid-js'
+import type { KeyEvent, MouseEvent, ScrollBoxRenderable } from '@opentui/core'
+import { useTerminalDimensions } from '@opentui/solid'
+import { createMemo, createSignal, onCleanup } from 'solid-js'
 
 import { ui } from '../themes'
+import { useKeys } from './useKeys'
 
 /**
  * The window of `items` around `selected`, and where it starts.
@@ -27,28 +28,120 @@ export function windowAround<T>(
 }
 
 /**
- * A window that moves only when the cursor leaves it, the way a scrollbox does.
- * Deriving the start from the cursor alone instead scrolls on every keypress,
- * pinning the selected row to the bottom of the panel.
+ * Shortest the scrollbar thumb may get, in rows.
  *
- * Returns the first row on screen. Reactive: it re-clamps as the cursor moves,
- * the list shrinks, or the terminal resizes.
+ * OpenTUI floors it at one *virtual* cell — half a row — so a list of a few
+ * hundred entries leaves a half-block that is neither visible at a glance nor
+ * worth aiming at. Both the size and the thumb's travel come from this one
+ * function, so raising the floor keeps dragging consistent with what is drawn.
  */
-export function createPanelWindow(cursor: () => number, total: () => number, rows: () => number) {
-  const [top, setTop] = createSignal(0)
-  createEffect(() => {
-    const size = rows()
-    const at = cursor()
-    const length = total()
-    setTop(previous => {
-      const start = Math.max(0, Math.min(previous, length - size))
-      if (at < start) return at
-      if (at >= start + size) return at - size + 1
-      return start
-    })
-  })
-  return top
+const MIN_THUMB_ROWS = 3
+
+/** Two virtual cells per row, which is the unit the slider works in. */
+function enlargeThumb(box: ScrollBoxRenderable) {
+  const slider = box.verticalScrollBar?.slider as unknown as
+    | { getVirtualThumbSize: () => number; height: number }
+    | undefined
+  if (!slider) return
+  const size = slider.getVirtualThumbSize.bind(slider)
+  slider.getVirtualThumbSize = () =>
+    Math.min(slider.height * 2, Math.max(size(), MIN_THUMB_ROWS * 2))
 }
+
+/**
+ * The scrollbox emits no scroll event, so the window is refreshed from the
+ * renderable's own mouse hook — the same override EditorPane uses. Every mouse
+ * type is checked, not just `scroll`: dragging its own scrollbar moves the view
+ * too, and a window left behind renders the wrong slice.
+ */
+function followScroll(el: ScrollBoxRenderable, moved: (top: number) => void) {
+  const host = el as unknown as { onMouseEvent: (event: MouseEvent) => void }
+  const handle = host.onMouseEvent.bind(host)
+  host.onMouseEvent = (event: MouseEvent) => {
+    handle(event)
+    moved(el.scrollTop)
+  }
+}
+
+/**
+ * Only a window of rows exists as renderables. `viewportCulling` skips *drawing*
+ * off-screen children but still builds them, and the Zig core stops handing out
+ * renderables a few thousand in — expanding a directory of 8000 files used to
+ * leave the tree blank.
+ *
+ * Sized from the terminal rather than fixed: the window has to cover the whole
+ * viewport, and no list can be taller than the screen. A constant 200 left the
+ * bottom of the tree empty on a terminal past ~160 rows.
+ */
+const OVERSCAN = 40
+
+/**
+ * A scrollbox-backed sidebar list: the wheel and the scrollbar move it, only a
+ * window of its rows is built, and `reveal` brings a row the keyboard moved to
+ * back into view.
+ *
+ * Give `ref` to the `<scrollbox>`, slice the items with `window()`, and pad both
+ * ends with `<box height={…}>` spacers so the scrollable extent stays honest
+ * while only a window exists.
+ */
+export function createScrollList(total: () => number) {
+  const [scrollTop, setScrollTop] = createSignal(0)
+  const dimensions = useTerminalDimensions()
+  let box: ScrollBoxRenderable | undefined
+
+  const page = () => dimensions().height + 2 * OVERSCAN
+  const window = createMemo(() => {
+    const start = Math.max(0, Math.min(scrollTop() - OVERSCAN, total() - page()))
+    return { start, end: Math.min(total(), start + page()) }
+  })
+
+  /**
+   * Bring `row` into view on the next macrotask rather than now.
+   *
+   * Revealing a row can grow the list in the same tick the cursor moves — a file
+   * reveal expands its parents, a commit rewrites the change list. The scrollbox
+   * clamps `scrollTop` against a content height that layout has not recomputed
+   * yet, so scrolling immediately is silently clamped to 0 and the row stays
+   * off-screen. One tick later the extent is real.
+   */
+  let pending: ReturnType<typeof setTimeout> | null = null
+  onCleanup(() => {
+    if (pending) clearTimeout(pending)
+  })
+
+  const reveal = (row: number) => {
+    if (pending) clearTimeout(pending)
+    pending = setTimeout(() => {
+      pending = null
+      if (!box) return
+      const height = box.viewport.height
+      if (row < box.scrollTop) box.scrollTop = row
+      else if (row >= box.scrollTop + height) box.scrollTop = row - height + 1
+      // Read it back: the scrollbox clamps to its own extent, and a window built
+      // from a position the box never reached renders the wrong slice.
+      setScrollTop(box.scrollTop)
+    }, 0)
+  }
+
+  const ref = (el: ScrollBoxRenderable) => {
+    box = el
+    followScroll(el, top => {
+      if (top !== scrollTop()) setScrollTop(top)
+    })
+    enlargeThumb(el)
+  }
+
+  return { ref, window, reveal }
+}
+
+/**
+ * Track colours every sidebar scrollbox shares. A function, not a constant: the
+ * palette is a store, and an object built once at import time keeps the colours
+ * the theme had at startup.
+ */
+export const scrollbarOptions = () => ({
+  trackOptions: { foregroundColor: ui.scrollbar, backgroundColor: ui.sidebarBg },
+})
 
 /**
  * The keyboard a filtered picker has: ↑/↓ wrapping around the list, Enter to
@@ -61,7 +154,7 @@ export function useListKeys(handlers: {
   pick: () => void
   close: () => void
 }) {
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     const count = Math.max(1, handlers.count())
     const step = (delta: number) => handlers.move(index => (index + delta + count) % count)
     if (key.name === 'up') {

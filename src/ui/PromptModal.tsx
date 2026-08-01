@@ -1,11 +1,12 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createSignal } from 'solid-js'
 
 import { ui } from '../themes'
 import { modalWidth } from './modal'
 import { ModalPanel } from './Overlay'
 import { TextInput } from './TextInput'
+import { useKeys } from './useKeys'
 
 export interface PromptModalProps {
   title: string
@@ -20,7 +21,7 @@ export function PromptModal(props: PromptModalProps) {
 
   const width = () => modalWidth(dimensions().width, 0.5, 60, 80)
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     // Solid applies focus synchronously; without this the submitting key also
     // reaches whatever the modal focuses next.
     if (key.name === 'return' || key.name === 'enter') {

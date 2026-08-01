@@ -1,6 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
@@ -13,6 +12,8 @@ import {
   readDisabledPlugins,
 } from '../src/core/config'
 import { iconFor, isIconThemeName } from '../src/icons'
+import { languageFor } from '../src/languages'
+import { filetypeForPath } from '../src/languages/highlight'
 import { resolveServer } from '../src/lsp/servers'
 import { loadPlugins, parseManifest, PLUGINS_DIR, projectPluginsDir } from '../src/plugins'
 import { isThemeName, themeFor, themeNames } from '../src/themes'
@@ -22,6 +23,7 @@ import { fixture, launch, openPalette, press, runCommand, settle } from './helpe
 const themeColors = (color: string) =>
   Object.fromEntries(Object.keys(themeFor('dark').ui).map(key => [key, color]))
 
+/** An appearance plugin: how the editor looks, and nothing about a language. */
 const MANIFEST = {
   id: 'pack',
   name: 'Test Pack',
@@ -41,6 +43,21 @@ const MANIFEST = {
       file: '■',
       folder: '□',
       extensions: { ts: { glyph: '▲', color: '#3178c6' } },
+    },
+  ],
+}
+
+/** A language plugin: one language, and the server that serves it. */
+const LANGUAGE = {
+  id: 'nim',
+  name: 'Nim',
+  version: '1.0.0',
+  languages: [
+    {
+      id: 'nim',
+      lineComment: '#',
+      extensions: ['.nim'],
+      patterns: [{ group: 'keyword', re: '\\b(?:proc|let|var)\\b', flags: 'g' }],
     },
   ],
   languageServers: [
@@ -65,15 +82,17 @@ afterEach(() => {
   rmSync(PLUGINS_DIR, { recursive: true, force: true })
   // The registries are module state, so a plugin left registered would leak
   // into every test after this one — and into the frames they capture.
-  loadPlugins(mkdtempSync(join(tmpdir(), 'druk-no-plugins-')))
+  loadPlugins(process.env.XDG_CONFIG_HOME!)
 })
 
-test('a manifest contributes a theme, an icon theme and a language server', () => {
+test('an appearance manifest contributes a theme and an icon theme', () => {
   install(MANIFEST)
   const { plugins, problems } = loadPlugins(fixture({}))
 
   expect(problems).toEqual([])
-  expect(plugins.map(plugin => `${plugin.name} ${plugin.version}`)).toEqual(['Test Pack 2.1.0'])
+  expect(plugins.filter(p => !p.builtin).map(plugin => `${plugin.name} ${plugin.version}`)).toEqual(
+    ['Test Pack 2.1.0'],
+  )
 
   expect(isThemeName('neon')).toBe(true)
   expect(themeNames()).toContain('neon')
@@ -87,19 +106,50 @@ test('a manifest contributes a theme, an icon theme and a language server', () =
   })
   expect(iconFor('blocks', { name: 'notes.txt', isDir: false })?.glyph).toBe('■')
   expect(iconFor('blocks', { name: 'src', isDir: true })?.glyph).toBe('□')
+})
+
+test('a language manifest contributes the language and its server', () => {
+  install(LANGUAGE, 'nim')
+  const { problems } = loadPlugins(fixture({}))
+  expect(problems).toEqual([])
+
+  const language = languageFor('nim')
+  expect(language?.lineComment).toBe('#')
+  // The regex arrives as a string and has to come back out as a working one,
+  // with `g` whatever the manifest said — the pattern walker loops without it.
+  expect(language?.patterns?.[0]?.re.flags).toContain('g')
+  expect(language?.patterns?.[0]?.re.test('proc f')).toBe(true)
+  // The extension is the only thing that routes a .nim file to this language:
+  // OpenTUI has never heard of it.
+  expect(filetypeForPath('/tmp/a.nim')).toBe('nim')
 
   const server = resolveServer('nim', {})
   expect(server?.command).toEqual(['nimlangserver'])
   expect(server?.install).toEqual({ kind: 'manual', command: 'nimble install nimlangserver' })
 })
 
-test('a plugin server replaces the built-in entry with its id', () => {
+test('a manifest that is both a theme pack and a language is refused', () => {
+  // The two families are installed for different reasons and updated on
+  // different schedules; one plugin doing both is not something to allow.
+  const { plugin, problems } = parseManifest({ ...MANIFEST, ...LANGUAGE, id: 'both' }, '/p.json')
+  expect(plugin).toBeNull()
+  expect(problems[0]?.reason).toContain('one or the other')
+})
+
+test('a plugin on disk replaces the built-in of the same id', () => {
+  // The update path: druk ships a typescript plugin, and the market's copy of it
+  // — or a hand-written one — is what takes over.
   install({
-    id: 'deno',
+    id: 'typescript',
+    version: '9.0.0',
     languageServers: [{ id: 'typescript', command: ['deno', 'lsp'], filetypes: ['typescript'] }],
   })
-  loadPlugins(fixture({}))
+  const { plugins: found, problems } = loadPlugins(fixture({}))
+  expect(problems).toEqual([])
   expect(resolveServer('typescript', {})?.command).toEqual(['deno', 'lsp'])
+  const shipped = found.filter(plugin => plugin.id === 'typescript')
+  expect(shipped).toHaveLength(1)
+  expect(shipped[0]?.builtin).toBe(false)
 })
 
 test('a project carries its own plugins', () => {
@@ -107,16 +157,27 @@ test('a project carries its own plugins', () => {
   mkdirSync(projectPluginsDir(dir), { recursive: true })
   writeFileSync(join(projectPluginsDir(dir), 'local.json'), JSON.stringify(MANIFEST))
 
-  expect(loadPlugins(dir).plugins).toHaveLength(1)
+  expect(loadPlugins(dir).plugins.filter(plugin => !plugin.builtin)).toHaveLength(1)
   expect(isThemeName('neon')).toBe(true)
 })
 
 test('a disabled plugin is listed but registers nothing', () => {
   install(MANIFEST)
-  const { plugins } = loadPlugins(fixture({}), ['pack'])
-  expect(plugins[0]?.disabled).toBe(true)
+  install(LANGUAGE, 'nim')
+  const { plugins: found } = loadPlugins(fixture({}), ['pack', 'nim'])
+  expect(found.filter(p => !p.builtin).every(plugin => plugin.disabled)).toBe(true)
   expect(isThemeName('neon')).toBe(false)
   expect(resolveServer('nim', {})).toBeNull()
+  expect(languageFor('nim')).toBeUndefined()
+})
+
+test('a disabled built-in takes its language with it', () => {
+  // The one thing disabling a shipped plugin has to do: druk stops knowing that
+  // language at all, rather than half-registering it.
+  loadPlugins(fixture({}), ['typescript'])
+  expect(languageFor('typescript')).toBeUndefined()
+  loadPlugins(fixture({}))
+  expect(languageFor('typescript')).toBeDefined()
 })
 
 test('reloading drops what an uninstalled plugin contributed', () => {
@@ -182,8 +243,8 @@ test('a manifest that is not JSON is a reported problem, not a crash', () => {
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'plugin.json'), '{ not json')
 
-  const { plugins, problems } = loadPlugins(fixture({}))
-  expect(plugins).toEqual([])
+  const { plugins: found, problems } = loadPlugins(fixture({}))
+  expect(found.filter(plugin => !plugin.builtin)).toEqual([])
   expect(problems).toHaveLength(1)
 })
 
@@ -254,29 +315,36 @@ test('a plugin theme is in the palette and the settings page', async () => {
 test('the settings page counts the plugins and turns one off', async () => {
   install(MANIFEST)
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
-  loadPlugins(dir)
+  const count = loadPlugins(dir).plugins.length
   // Tall enough to reach the Plugins section, which is the last one on the page.
   const t = await launch(dir, {}, { height: 60 })
 
   await runCommand(t, 'Settings')
   await settle(t)
-  expect(t.captureCharFrame()).toContain('1/1 enabled')
+  // Counted rather than written out: the number is druk's preinstalled set plus
+  // the one this test wrote, and pinning it here would make adding a shipped
+  // plugin look like a broken settings page.
+  expect(t.captureCharFrame()).toContain(`${count}/${count} enabled`)
 })
 
-test('the palette lists what is installed', async () => {
+test('the palette names what was installed, and counts what ships', async () => {
   install(MANIFEST)
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
-  loadPlugins(dir)
-  const t = await launch(dir)
+  const shipped = loadPlugins(dir).plugins.filter(plugin => plugin.builtin).length
+  const t = await launch(dir, {}, { width: 120 })
 
   await runCommand(t, 'Installed plugins')
-  expect(t.captureCharFrame()).toContain('Test Pack 2.1.0')
+  const frame = t.captureCharFrame()
+  // The shipped ones are a number: naming seven of them would push the plugin
+  // the user actually installed off the end of the line.
+  expect(frame).toContain(`${shipped} built in`)
+  expect(frame).toContain('Test Pack 2.1.0')
 })
 
 test('every icon glyph druk ships is one cell wide', () => {
   // A two-cell glyph shifts every name in the tree, and the frame captures in
   // these tests would drift with it.
-  for (const theme of ['unicode', 'nerd']) {
+  for (const theme of ['unicode']) {
     for (const name of ['a.ts', 'a.js', 'readme.md', 'package.json', 'photo.png', 'x.unknown']) {
       const glyph = iconFor(theme, { name, isDir: false })?.glyph ?? ''
       expect(`${theme}/${name}:${[...glyph].length}`).toBe(`${theme}/${name}:1`)

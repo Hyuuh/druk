@@ -1,9 +1,10 @@
 import type { KeyEvent, ScrollBoxRenderable } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, on, Show } from 'solid-js'
 
 import type { ServerState, ServerView } from '../lsp/status'
 import { ui } from '../themes'
+import { useKeys } from './useKeys'
 
 export interface LspStatusViewProps {
   /** Every server this session has tried to run, sorted by id. */
@@ -60,7 +61,7 @@ export function LspStatusView(props: LspStatusViewProps) {
   /** Rows a page spans — the pane is the editor slot: tabs, header, status bar off. */
   const page = () => Math.max(1, dimensions().height - 3)
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     // A page, not a modal: keys count only when this pane holds the focus, and
     // a chord the global keymap already claimed is not ours to reuse.
     if (props.blocked || !props.focused || key.defaultPrevented) return

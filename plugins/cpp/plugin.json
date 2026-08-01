@@ -1,0 +1,22 @@
+{
+  "id": "cpp",
+  "name": "C++",
+  "version": "1.0.0",
+  "description": "C++ highlighting and clangd.",
+  "languages": [
+    {
+      "id": "cpp",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "cpp"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "cpp",
+      "command": ["clangd"],
+      "filetypes": ["cpp"]
+    }
+  ]
+}

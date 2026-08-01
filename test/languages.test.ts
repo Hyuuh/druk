@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { LANGUAGES, languageFor, languageLabel } from '../src/languages'
+import { MARKET_DIR } from '../scripts/plugins'
+import { languageFor, languageLabel, languages } from '../src/languages'
 import {
   computeHighlights,
   filetypeForPath,
@@ -9,7 +10,12 @@ import {
   STALE,
 } from '../src/languages/highlight'
 import type { Highlighted, Segment } from '../src/languages/highlight'
+import { loadPlugins } from '../src/plugins'
 import { allSegments, parseHighlights, WHOLE } from './syntax'
+
+// Every language is a plugin now, and the market folder in this repository is
+// where they live — the loader reads it as a plugins folder.
+loadPlugins(process.env.XDG_CONFIG_HOME!, [], MARKET_DIR)
 
 const SAMPLES: Record<string, string> = {
   python: 'import os\ndef f(x):\n    # c\n    return x + 1\n',
@@ -47,7 +53,7 @@ const SAMPLES: Record<string, string> = {
 
 describe('languages', () => {
   test('every registered language declares a grammar or patterns', () => {
-    for (const lang of LANGUAGES) {
+    for (const lang of languages()) {
       const usable = lang.bundled || (lang.wasm && lang.query) || lang.patterns
       expect(`${lang.id}:${usable ? 'ok' : 'unusable'}`).toBe(`${lang.id}:ok`)
     }
@@ -56,7 +62,7 @@ describe('languages', () => {
   test('a label, where there is one, is shorter than the id it replaces', () => {
     // The point of `label` is that OpenTUI's filetype name is a mouthful. One that
     // is not shorter is a label with no reason to exist.
-    for (const lang of LANGUAGES.filter(l => l.label)) {
+    for (const lang of languages().filter(language => language.label)) {
       expect(lang.label!.length).toBeLessThan(lang.id.length)
     }
   })
@@ -75,7 +81,7 @@ describe('languages', () => {
   })
 
   test('ids are unique', () => {
-    const ids = LANGUAGES.map(l => l.id)
+    const ids = languages().map(language => language.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
 

@@ -1,5 +1,5 @@
 import type { DiffRenderable, KeyEvent, TreeSitterClient } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js'
 
 import { unifiedDiff } from '../core/diff'
@@ -15,6 +15,7 @@ import {
 import type { Highlighted } from '../languages/highlight'
 import { ui } from '../themes'
 import { MARKS, statusColor } from './FileTree'
+import { useKeys } from './useKeys'
 
 export type DiffMode = 'inline' | 'split'
 export type DiffFileStatus = FileStatus | ComparisonFileStatus
@@ -330,7 +331,7 @@ export function DiffView(props: DiffViewProps) {
   /** Rows a page spans — the pane is the editor slot: tabs, header, status bar off. */
   const page = () => Math.max(1, dimensions().height - 3)
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     // A page, not a modal: keys count only when this pane holds the focus, and
     // a chord the global keymap already claimed is not ours to reuse.
     if (props.blocked || !props.focused || key.defaultPrevented) return

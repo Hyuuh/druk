@@ -1,9 +1,10 @@
 import type { KeyEvent, ScrollBoxRenderable, TreeSitterClient } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, on, onMount } from 'solid-js'
 
 import { getSyntaxStyle, highlightClient } from '../languages/highlight'
 import { paintedTheme, ui } from '../themes'
+import { useKeys } from './useKeys'
 
 export interface MarkdownViewProps {
   /** The tab being read, so a switch can put the scroll back at the top. */
@@ -72,7 +73,7 @@ export function MarkdownView(props: MarkdownViewProps) {
   /** Rows a page spans — the pane is the editor slot: tabs, header, status bar off. */
   const page = () => Math.max(1, dimensions().height - 3)
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     // A page, not a modal: keys count only when this pane holds the focus, and
     // a chord the global keymap already claimed is not ours to reuse.
     if (props.blocked || !props.focused || key.defaultPrevented) return

@@ -1,0 +1,33 @@
+{
+  "id": "elixir",
+  "name": "Elixir",
+  "version": "1.1.0",
+  "description": "Elixir highlighting and expert, the Elixir language server.",
+  "languages": [
+    {
+      "id": "elixir",
+      "lineComment": "#",
+      "grammar": {
+        "vendored": "elixir"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "elixir",
+      "command": ["expert", "--stdio"],
+      "filetypes": ["elixir"],
+      "install": {
+        "kind": "download",
+        "urls": {
+          "darwin-arm64": "https://github.com/expert-lsp/expert/releases/latest/download/expert_darwin_arm64",
+          "darwin-x64": "https://github.com/expert-lsp/expert/releases/latest/download/expert_darwin_amd64",
+          "linux-arm64": "https://github.com/expert-lsp/expert/releases/latest/download/expert_linux_arm64",
+          "linux-x64": "https://github.com/expert-lsp/expert/releases/latest/download/expert_linux_amd64",
+          "win32-x64": "https://github.com/expert-lsp/expert/releases/latest/download/expert_windows_amd64.exe"
+        },
+        "command": "Download the binary from https://github.com/expert-lsp/expert/releases and put it on your $PATH"
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "csharp",
+  "name": "C#",
+  "version": "1.0.0",
+  "description": "C# highlighting.",
+  "languages": [
+    {
+      "id": "csharp",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "csharp"
+      }
+    }
+  ]
+}

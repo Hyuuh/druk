@@ -1,0 +1,22 @@
+{
+  "id": "lua",
+  "name": "Lua",
+  "version": "1.0.0",
+  "description": "Lua highlighting and lua-language-server.",
+  "languages": [
+    {
+      "id": "lua",
+      "lineComment": "--",
+      "grammar": {
+        "vendored": "lua"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "lua",
+      "command": ["lua-language-server"],
+      "filetypes": ["lua"]
+    }
+  ]
+}

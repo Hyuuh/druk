@@ -2,10 +2,11 @@
  * File icons — the glyph the tree draws where the expansion arrow otherwise
  * goes, and the registry plugins add icon themes to.
  *
- * Two ship with druk: `unicode`, whose glyphs are geometric shapes every font
- * has, and `nerd`, which needs a patched font. Neither is the default —
- * `iconTheme: 'none'` is, because a terminal cannot be asked what its font
- * holds and a row of tofu is worse than no icons at all.
+ * One ships with druk: `unicode`, whose glyphs are geometric shapes every font
+ * has. It is not the default — `iconTheme: 'none'` is, because a terminal cannot
+ * be asked what its font holds and a row of tofu is worse than no icons at all,
+ * and a set that needs a patched font (`nerd-icons`) is a market plugin for that
+ * same reason.
  *
  * A theme replaces the arrow rather than sitting beside it: the folder glyph
  * has an open and a closed form, so expansion is still readable and the row
@@ -107,87 +108,7 @@ const unicode: IconTheme = {
   folders: {},
 }
 
-/**
- * Nerd Font codepoints — the Devicons and Font Awesome ranges a patched font
- * carries. Deliberately a small set: a glyph druk gets wrong is a wrong picture
- * on every row that matches it, and a plugin icon theme is how anyone who wants
- * the full devicon table gets one.
- */
-const nerd: IconTheme = {
-  id: 'nerd',
-  name: 'Nerd Font',
-  file: entry('\uF15B'),
-  folder: entry('\uF07B', '#7aa2f7'),
-  folderOpen: entry('\uF07C', '#7aa2f7'),
-  names: {
-    'package.json': entry('\uE71E', '#cb3837'),
-    'package-lock.json': entry('\uE71E', '#cb3837'),
-    'bun.lock': entry('\uF023', '#f7e4c4'),
-    'bun.lockb': entry('\uF023', '#f7e4c4'),
-    'dockerfile': entry('\uF308', '#2496ed'),
-    'makefile': entry('\uF013', '#6d8086'),
-    'license': entry('\uF15C', '#d0bf41'),
-    '.gitignore': entry('\uF1D3', '#f14c28'),
-    '.gitattributes': entry('\uF1D3', '#f14c28'),
-    '.env': entry('\uF013', '#faf743'),
-  },
-  extensions: {
-    'ts': entry('\uE628', '#3178c6'),
-    'd.ts': entry('\uE628', '#4b6e8f'),
-    'tsx': entry('\uE7BA', '#3178c6'),
-    'js': entry('\uE781', '#f1e05a'),
-    'mjs': entry('\uE781', '#f1e05a'),
-    'cjs': entry('\uE781', '#f1e05a'),
-    'jsx': entry('\uE7BA', '#f1e05a'),
-    'py': entry('\uE73C', '#3572a5'),
-    'rs': entry('\uE7A8', '#dea584'),
-    'go': entry('\uE627', '#00add8'),
-    'rb': entry('\uE739', '#cc342d'),
-    'php': entry('\uE73D', '#777bb4'),
-    'java': entry('\uE738', '#b07219'),
-    'c': entry('\uE61E', '#599eff'),
-    'h': entry('\uE61E', '#a074c4'),
-    'cpp': entry('\uE61D', '#519aba'),
-    'zig': entry('\uF15B', '#f7a41d'),
-    'lua': entry('\uE620', '#51a0cf'),
-    'swift': entry('\uE755', '#e37933'),
-    'sh': entry('\uF489', '#89e051'),
-    'bash': entry('\uF489', '#89e051'),
-    'zsh': entry('\uF489', '#89e051'),
-    'md': entry('\uF48A', '#519aba'),
-    'txt': entry('\uF15C'),
-    'json': entry('\uE60B', '#cbcb41'),
-    'jsonc': entry('\uE60B', '#cbcb41'),
-    'yaml': entry('\uF481', '#cb171e'),
-    'yml': entry('\uF481', '#cb171e'),
-    'toml': entry('\uF013', '#9c4221'),
-    'html': entry('\uE736', '#e34c26'),
-    'css': entry('\uE749', '#563d7c'),
-    'scss': entry('\uE749', '#c6538c'),
-    'vue': entry('\uE7BA', '#41b883'),
-    'png': entry('\uF1C5', '#a074c4'),
-    'jpg': entry('\uF1C5', '#a074c4'),
-    'jpeg': entry('\uF1C5', '#a074c4'),
-    'gif': entry('\uF1C5', '#a074c4'),
-    'svg': entry('\uF1C5', '#ffb13b'),
-    'pdf': entry('\uF1C1', '#b30b00'),
-    'zip': entry('\uF1C6', '#afb42b'),
-    'tar': entry('\uF1C6', '#afb42b'),
-    'gz': entry('\uF1C6', '#afb42b'),
-    'lock': entry('\uF023', '#bbbbbb'),
-  },
-  folders: {
-    'node_modules': entry('\uF07B', '#cb3837'),
-    '.git': entry('\uF1D3', '#f14c28'),
-    'src': entry('\uF07B', '#7aa2f7'),
-    'test': entry('\uF07B', '#a6e22e'),
-    'tests': entry('\uF07B', '#a6e22e'),
-    'dist': entry('\uF07B', '#6d8086'),
-    'build': entry('\uF07B', '#6d8086'),
-  },
-}
-
-export const BUILTIN_ICON_THEMES: IconTheme[] = [unicode, nerd]
+export const BUILTIN_ICON_THEMES: IconTheme[] = [unicode]
 
 /** Every theme by id, built-ins and whatever plugins registered. */
 const registry: Record<string, IconTheme> = Object.fromEntries(

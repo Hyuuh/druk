@@ -1,5 +1,5 @@
-import { afterEach } from 'bun:test'
-import { mkdtempSync } from 'node:fs'
+import { afterAll, afterEach } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -25,6 +25,34 @@ process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), 'druk-test-config-'))
 process.env.XDG_DATA_HOME = mkdtempSync(join(tmpdir(), 'druk-test-data-'))
 
 /**
+ * And the cache home, where `src/core/market.ts` keeps the plugin catalog. A
+ * developer who has run druk would otherwise have a real catalog on disk, and
+ * the market tests would be asserting against whatever the registry published
+ * that day.
+ */
+process.env.XDG_CACHE_HOME = mkdtempSync(join(tmpdir(), 'druk-test-cache-'))
+
+/**
+ * Register the plugins druk ships inside the binary — its languages, and so the
+ * highlighting almost every test depends on.
+ *
+ * `main.tsx` does this before rendering; a test that mounts `<App/>` never goes
+ * through it, so without this a test process starts with an empty language
+ * registry and every file renders plain. A market plugin is a test's own to
+ * install (`loadMarketPlugins`, or a manifest written into the plugins folder).
+ *
+ * Dynamically imported on purpose: a static import hoists above the environment
+ * assignments up there, and `src/core/config` captures `CONFIG_FILE` when it is
+ * first evaluated.
+ */
+const { loadPlugins } = await import('../src/plugins')
+// The config home, not a directory of its own: `loadPlugins` only reads
+// `<rootDir>/.druk/plugins` off this argument, and the suite already leaves
+// enough behind in the temp folder — a stray directory per test process is how
+// a run ends up walking tens of thousands of them.
+loadPlugins(process.env.XDG_CONFIG_HOME!)
+
+/**
  * Destroy every harness a test `launch()`ed and didn't clean up itself.
  *
  * `renderer.destroy()` is what runs Solid's `onCleanup` — closing `App`'s fs
@@ -40,4 +68,19 @@ afterEach(async () => {
   const { liveHarnesses } = await import('./helpers')
   for (const t of liveHarnesses) t.renderer.destroy()
   liveHarnesses.clear()
+})
+
+/**
+ * Delete the fixtures this file made.
+ *
+ * A full run creates some three thousand temp projects, and nothing used to
+ * remove them: after a few dozen runs the temp folder held ~100k directories,
+ * every `mkdtemp` in it slowed down, and whole test files began timing out and
+ * being killed — failures that look like flaky tests and are not. `afterAll`
+ * rather than `afterEach`, since a file may hand one fixture to several tests.
+ */
+afterAll(async () => {
+  const { fixtures } = await import('./helpers')
+  for (const dir of fixtures) rmSync(dir, { recursive: true, force: true })
+  fixtures.clear()
 })

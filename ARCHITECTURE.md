@@ -11,6 +11,10 @@ src/
   main.tsx           load config → apply theme → render <App/>
   assets.d.ts        types for `with { type: 'file' }` imports (wasm, .scm)
 build.ts             compiles a standalone binary per platform (Bun.build + Solid plugin)
+plugins/             the market: one folder per plugin, served raw from main  ← plugins
+  index.json         generated catalog (`bun run plugins`) — what druk fetches
+  <id>/plugin.json   a language (grammar, patterns, server) or an appearance
+                     (themes, icon themes) — one kind per plugin, as data
 bin/druk.js          npm launcher: runs the binary, fetching it first if it is missing
 bin/binary.mjs       finds or downloads the platform binary from the GitHub release
 bin/postinstall.mjs  fetches it at install time, so the first run does not have to
@@ -36,6 +40,7 @@ scripts/
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
+    market.ts        the market as the editor sees it: updates, offers, installs
     lsp.ts           language servers: spawn per language, sync buffers, diagnostics,
                      completion requests (flushing the didChange debounce first)
     settings.ts      the two config layers (user / project) resolved into one store,
@@ -60,11 +65,13 @@ scripts/
     clipboard.ts     pbcopy/wl-copy/xclip/xsel wrappers
     session.ts       per-project open tabs + expanded folders, keyed by path
     update.ts        startup npm version check (best-effort, opt-out)
+    market.ts        the plugin catalog: fetch, cache, validate-then-write
     upgrade.ts       `druk update`: which install is running, and how to upgrade it
     assets.ts        pins OpenTUI's asset lookup; stages the native library (side-effect import)
   languages/
-    index.ts         language registry  ← add a language here
-    grammars.ts      wasm + query file imports, the form the binary can embed
+    index.ts         language registry — filled by plugins, read through functions
+    grammars.ts      wasm + query file imports, the form the binary can embed —
+                     what a manifest's `"grammar": {"vendored": …}` names
     queries/*.scm    highlight queries for grammars we vendor
     highlight.ts     tree-sitter client → non-overlapping highlight segments
   lsp/
@@ -75,22 +82,20 @@ scripts/
                      strip, edit application
     definition.ts    the pure half of go-to-definition: any of the reply's three
                      shapes as one file position
-    servers.ts       filetype → server command  ← add a language server here
+    servers.ts       filetype → server command, all of it registered by plugins
     status.ts        the shapes the LSP status page renders (state, log, docs)
   plugins/
     index.ts         discovery: manifests → registered contributions  ← plugins
-    manifest.ts      validating a plugin.json into themes / icons / servers
+    builtin.ts       the manifests compiled into the binary (static JSON imports)
+    manifest.ts      validating a plugin.json into themes / icons / languages / servers
     types.ts         Plugin and the problems a manifest can have
   icons/
-    index.ts         file-icon themes: the tree's glyph column  ← add an icon set
+    index.ts         file-icon themes: the tree's glyph column (unicode is the one built in)
   themes/
-    index.ts         theme registry  ← add a theme here
+    index.ts         theme registry — the two built-ins, plus what plugins add
     types.ts         Theme / ThemeUi shape
-    github-dark.ts   one file per theme: also github-light, ayu-dark/mirage/light,
-                     the four catppuccin flavors, dracula, everforest-dark/light,
-                     gruvbox-dark/light, kanagawa-wave/dragon/lotus, nord,
-                     one-dark, the three rosé pine variants, solarized-dark/light,
-                     tokyo-night, vesper
+    github-dark.ts   and github-light: the pair the defaults name, and the only
+                     palettes in the binary — every other one is a market plugin
   editor/
     vim.ts           modal editing state machine (normal / insert / visual)
     history.ts       undo/redo, coalesced per edit burst
@@ -119,26 +124,39 @@ nature, and threading twenty props would say less.
 
 ### Add a language
 
-1. Confirm a grammar wasm exists (most are in the `tree-sitter-wasms` package).
-2. Write a highlight query at `src/languages/queries/<id>.scm`, capturing the scopes
-   the themes style (`keyword`, `string`, `function`, `type`, `comment`, …).
-3. Import both in [`src/languages/grammars.ts`](src/languages/grammars.ts) and add them to
-   `GRAMMARS`. The imports have to be static and carry `with { type: 'file' }` — that is
-   what makes `bun build --compile` embed them; a path built at runtime resolves to
-   nothing inside the shipped binary.
-4. Add an entry to `LANGUAGES` in [`src/languages/index.ts`](src/languages/index.ts):
+A language is a plugin: `plugins/<language>/plugin.json`, with the server that
+serves it in the same manifest, then `bun run plugins`. Nothing in `src/` lists
+languages any more — the registry starts empty and `loadPlugins` fills it.
 
-```ts
-{ id: 'python', ...GRAMMARS.python }   // id must match OpenTUI's filetype name
+```json
+{ "id": "python", "grammar": { "vendored": "python" }, "lineComment": "#" }
 ```
 
-Grammars OpenTUI already bundles (javascript, typescript, markdown, zig) only need
-`bundled: true` — no wasm or query. Parser registration and highlighting both read from
-this one table. A dialect close enough to an existing language can reuse its grammar
-outright: `javascriptreact` and `tsrx` are both `...GRAMMARS.tsx`.
+The grammar comes from one of three places:
 
-OpenTUI resolves the extension, so a filetype it has never heard of also needs a line in
-`filetypeForPath` (`src/languages/highlight.ts`), beside the `bun.lock` and `.env` cases.
+- `{"vendored": "<key>"}` — one of the wasm/query pairs in
+  [`src/languages/grammars.ts`](src/languages/grammars.ts), embedded in the binary.
+  Adding a *new* vendored grammar is the one part that is still a source change:
+  a query at `src/languages/queries/<id>.scm` and two static
+  `with { type: 'file' }` imports, which is what `bun build --compile` can see.
+  A path built at runtime resolves to nothing inside the shipped binary.
+- `{"bundled": true}` — a grammar OpenTUI carries itself (javascript, typescript,
+  markdown, zig): no wasm, no query.
+- `{"wasm": "grammar.wasm", "query": "highlights.scm"}` — files in the plugin's own
+  folder, which the market fetches on install. This is how a language druk vendors
+  no grammar for arrives, and the only case that puts a wasm in a plugin.
+
+A dialect close enough to an existing language reuses its grammar: `typescriptreact`
+and `tsrx` both name `{"vendored": "tsx"}`.
+
+With no usable grammar, `patterns` is the whole answer — `{group, re, flags}` with
+the regex as a string, painted in order, later entries winning the characters they
+overlap. yaml, sql, svelte, hcl, ini, dotenv and liquid are all patterns.
+
+OpenTUI resolves most extensions, so a filetype it has never heard of claims its own
+with `extensions`, `filenames` or `filenamePattern` — `.tf`, `bun.lock`,
+`.env.local`. `filetypeForPath` asks the registry before OpenTUI for exactly this
+reason: without the claim the patterns never run and the file renders plain.
 
 The status bar shows the `id`, which is fine for almost all of them. Add a `label` only
 where OpenTUI's filetype name is not what a person would call the file — `typescriptreact`
@@ -223,6 +241,46 @@ Two rules the existing three follow:
   config. Everything downstream still copes with an id going missing: `themeFor` and
   `iconFor` fall back rather than leave a hole, because a plugin can be uninstalled
   while the config still names it.
+
+### The market
+
+`plugins/` in this repository *is* the market: one folder per plugin, a generated
+`plugins/index.json` beside them, served raw from `main`. A merged pull request is
+installable immediately, which is the whole reason the content lives there rather
+than in `src/` — druk ships two themes, one icon theme and no language servers, and
+everything else it used to carry is a plugin under that folder.
+
+Five things hold it together:
+
+- **The registry is a directory URL.** The index carries plugin ids and nothing
+  else fetchable; a manifest is always `<registry><id>/plugin.json`. An index
+  cannot aim a request at another host however it is written, and `pluginRegistry`
+  is validated as https.
+- **Fetch, then ask, then write.** [`core/market.ts`](src/core/market.ts) validates
+  a manifest with `parseManifest` — the editor's own check — before it is written,
+  and `app/market.ts` raises the confirm only once the manifest is in hand, so the
+  prompt names the commands the plugin will actually have druk spawn. That is the
+  one part of a manifest that is not inert: installing runs nothing, but a language
+  server is a program the next matching file will start.
+- **Stricter at install than at load.** `loadPlugins` lets a plugin keep its good
+  contributions and reports the rest; `fetchPlugin` refuses a manifest with *any*
+  problem, because a market manifest is validated before it is merged
+  (`test/plugins-repo.test.ts`) and anything wrong with one arriving over the wire
+  means the registry served something other than what was reviewed.
+- **Some of it ships inside the binary.** [`src/plugins/builtin.ts`](src/plugins/builtin.ts)
+  imports a handful of the same manifests as JSON, so a first run highlights the
+  languages most projects open with no network at all. A built-in is an ordinary
+  plugin otherwise — listed, disableable, and replaced outright by a copy of the
+  same id on disk, which is how the market updates one. The static imports are
+  load-bearing: a computed path resolves to nothing in the compiled binary, so the
+  preinstalled set is spelled out rather than globbed.
+- **The catalog is cached and best-effort.** `$XDG_CACHE_HOME/druk/market.json`,
+  read synchronously at startup so the palette has a market before any request, and
+  refreshed after six hours. Offline, the cache is the market; with neither, the
+  Plugins menu says so and nothing else changes.
+
+`bun run plugins` regenerates the index from the manifests, validating each one;
+the committed index is asserted to match, so forgetting it fails `bun run check`.
 
 ### Add a setting
 
@@ -435,6 +493,18 @@ is just a diff against the empty tree.
   the watcher still see every file, and an ignored directory is pruned at its top row
   (never descended into), which is why `ignoredPaths` can match git's collapsed
   `--directory` output by exact path.
+- **A buffer's text is always LF and never BOM-prefixed; the file's own spelling rides
+  along beside it.** `readTextFile` strips both and reports them as a `TextEncoding` on
+  the `FileBuffer`, and `writeFile` puts them back. This is not tidiness: OpenTUI's edit
+  buffer drops the `\r` of every CRLF break and rejoins lines with `\n`, and `TextDecoder`
+  eats a leading BOM — so a raw CRLF or BOM buffer comes back from the engine different
+  from what was read, and `onEditorChange`, which marks the buffer dirty on any difference,
+  reads that as an edit. That was a file dirty the moment it opened and a Ctrl+S that
+  rewrote every line of it (issue #38). Anything that re-reads a file has to carry the new
+  encoding with the new text — `formatAfterSave` especially, since prettier writes LF and a
+  buffer still claiming CRLF would convert its work straight back. `refText` normalizes for
+  the same reason: the other side of a diff is a buffer, so a blob committed with CRLF
+  would otherwise diff as every line changed.
 - **Viewer tabs have no buffer.** `isViewerPath` branches before the `readFile` in
   `openFile`, so a PNG/JPEG or PDF gets a tab that flows through the normal
   preview/pin/session logic while `buffers` never learns about it — the no-buffer
@@ -513,11 +583,14 @@ is just a diff against the empty tree.
   placeholder and destroys the native buffer while `editor` still points at it. Both
   pending timers touch it, so they are cleared from the ref's own `onCleanup` — the pane's
   `onCleanup` fires far too late and the timer throws from outside any handler.
-- **Network.** The only request druk makes is one npm registry lookup at startup to
-  check for a newer version. It is best-effort (2.5s timeout, failures ignored) and
-  disabled by `checkUpdates: false` in the config. druk runs no git command that talks to
-  a remote, which is also what keeps a credential prompt from ever opening `/dev/tty`
-  behind the alt-screen and freezing the single render thread.
+- **Network.** druk makes two kinds of request, both at startup and both
+  best-effort (2.5s timeout, failures ignored): one npm registry lookup for a newer
+  druk, disabled by `checkUpdates: false`, and the plugin market's `index.json`,
+  disabled by `pluginUpdates: false` and cached for six hours in between. Everything
+  after that is a fetch someone asked for — a manifest, because a plugin is being
+  installed. druk runs no git command that talks to a remote, which is also what
+  keeps a credential prompt from ever opening `/dev/tty` behind the alt-screen and
+  freezing the single render thread.
 - **Session restore.** Tabs and their buffers are seeded synchronously in the component
   body, not in an effect — mounting the editor before its buffer exists renders an empty
   document and marks the file modified.
@@ -540,6 +613,18 @@ is just a diff against the empty tree.
   with `with { type: 'file' }`, reads the embedded bytes and passes them as `wasmBinary`.
   PDFium's normal lookup for a sibling `.wasm` file cannot work inside Bun's compiled
   filesystem.
+- **A Linux binary embeds two native libraries, and staging has to pick.** OpenTUI
+  imports `@opentui/core-linux-<arch>` or its `-musl` sibling from a branch on
+  `OPENTUI_LIBC`, and `bun install` keeps both packages on a glibc machine — only the
+  musl one declares `libc` — so the bundler embeds both under content-hashed names
+  that say nothing about which is which. Taking the first (druk 1.12.0) staged the
+  musl library under the glibc key on every Linux install: the first launch worked,
+  and every launch after it died in dlopen with `invalid ELF header`, because glibc's
+  `/lib/<triple>/libc.so` is a linker script rather than an ELF. `forLibc` in
+  `core/assets.ts` now reads each candidate's DT_NEEDED — `libc.so.6` for glibc,
+  `libc.so` for musl — and stages nothing when that does not name exactly one. The
+  cache directory is named after *every* embedded library for the same reason: the
+  poisoned 1.12.0 directories can never be hit again.
 - **Focused colors.** Inputs and the editor render focused, and OpenTUI then uses the
   `focused*` colors — setting only `textColor` leaves text in the renderable's default,
   which is invisible on most themes. `ui/TextInput.tsx` exists so no panel forgets.

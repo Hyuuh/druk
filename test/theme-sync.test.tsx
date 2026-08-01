@@ -3,7 +3,18 @@ import { readFileSync } from 'node:fs'
 
 import { APPEARANCE_ENV, detectAppearance, watchAppearance } from '../src/core/appearance'
 import { CONFIG_FILE, DEFAULTS } from '../src/core/config'
-import { fixture, launch, runCommand, settle, toggleSetting, untilFrame } from './helpers'
+import {
+  fixture,
+  launch,
+  loadMarketPlugins,
+  runCommand,
+  settle,
+  toggleSetting,
+  untilFrame,
+} from './helpers'
+
+// The themes these tests name are market plugins now.
+loadMarketPlugins()
 
 afterEach(() => {
   delete process.env[APPEARANCE_ENV]

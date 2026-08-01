@@ -11,7 +11,10 @@ reconciler on a native Zig core). Shipped as a standalone binary — npm, Homebr
 installer — and run as a CLI.
 
 Features: file tree with bulk file operations and opt-in hiding of dotfiles and
-git-ignored files, preview/pinned tabs, tree-sitter syntax
+git-ignored files, a `▴` in the sidebar header that shuts every folder at once
+(palette → View → Collapse folders in sidebar, which folds whichever of the two
+sidebar views is up, and the button is drawn only while there is something to fold),
+preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide — the project scan and the fuzzy
 file picker both skip git-ignored paths, whatever the tree's `respectGitignore` says, so
 a build directory or an agent's worktree checkout is never a result; the panel previews
@@ -23,7 +26,7 @@ themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, whi
 overrides while it is on, since there the shape is what tells normal from insert),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
-→ / ←) and palette commands for commit/undo/stash/push/fetch/pull — a push origin
+→ / ←, or all of them from the header's `▴`) and palette commands for commit/undo/stash/push/fetch/pull — a push origin
 rejects offers to merge origin in and push again, VS Code's prompt, rather than
 naming the two commands and stopping — and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
@@ -105,8 +108,8 @@ command id to one chord, replacing whatever it had — the settings page's Short
 row lists every bindable command with the key it answers to, refuses a chord another
 custom binding holds and names whatever default a rebind takes the key from, while a
 clash or a value that is not a chord is reported on startup),
-file icons in the tree (`iconTheme` — `unicode` shapes any font has, `nerd` for a
-patched one, or a theme a plugin contributes; the glyph takes the expansion
+file icons in the tree (`iconTheme` — `unicode` shapes any font has, or a theme a
+plugin contributes, `nerd-icons` in the market for a patched font; the glyph takes the expansion
 arrow's column, since a folder icon has an open and a closed form, and the
 default is `none` because nothing can ask a terminal what its font holds),
 a plugin system (JSON manifests in `$XDG_CONFIG_HOME/druk/plugins/<id>/plugin.json`
@@ -117,8 +120,37 @@ binary needs no loader; `disabledPlugins` shelves one without deleting it, the
 settings page's Plugins section toggles them, palette → Plugins lists and reloads
 them, and a malformed manifest costs its plugin that one contribution and is
 reported on startup),
+a plugin market — `plugins/` **in this repository**, one folder per plugin, served
+raw from `main`, so a merged pull request is installable without a druk release;
+palette → Plugins → Plugin market installs one after a confirm that names the
+commands it would have druk spawn, an installed plugin with a newer version in the
+catalog is reported in the status bar at startup, a file whose language no
+installed plugin serves offers the plugin that does, and a config naming a theme
+nothing registers is offered its plugin back (`pluginUpdates` turns the whole of
+that off, `pluginRegistry` points it at a fork),
 file watching with conflict prompts,
 per-project session restore, and a startup update check.
+
+**Everything extensible is a plugin now, and most of them live in `plugins/`.**
+A plugin is one of two kinds and never both: a *language* plugin (the grammar,
+highlight query, patterns, line comment and label for one language, plus the
+server that serves it) or an *appearance* plugin (themes and icon themes).
+
+What is compiled in: two themes (`dark` / `light`, the GitHub pair the defaults
+name), the `unicode` icon theme, every tree-sitter grammar wasm — and a
+*preinstalled* set of plugin manifests, listed in `src/plugins/builtin.ts`:
+typescript (ts/tsx/js/jsx), json, markdown, html, css, yaml and toml. Those are
+the languages a first run has to highlight with no network.
+
+Everything else — Go, Rust, Python, the other twenty-odd languages with their
+servers, every palette beyond the GitHub pair, the Nerd Font icons — is a market
+plugin, and installing one fetches a single small JSON. The *grammar bytes* are
+embedded either way, so a market language plugin says
+`"grammar": { "vendored": "go" }` and needs no download; a language druk vendors
+no grammar for ships its own `.wasm` as an asset in the plugin folder.
+
+Adding a language, a server or a theme is therefore a JSON file and a
+`bun run plugins`, not a source change.
 
 ## Runtime and tooling
 
@@ -149,6 +181,7 @@ bun run build            # compile a binary for this machine into dist/<target>/
 bun run build linux-x64  # …or for a named target, if its native package is installed
 bun run release          # package dist/ for npm + release archives (--publish to ship)
 bun run formula          # Homebrew formula for those archives, into dist/release/druk.rb
+bun run plugins          # regenerate plugins/index.json — the market's catalog
 bun run test             # unit + UI, one file per process, sequential (~4 min)
 bun test test/foo.tsx    # a single file, where the flag buys nothing
 bun run check            # check-types + lint + format + test — the one to run
@@ -252,18 +285,23 @@ dependency rule, and recipes for the extension points:
 
 | Want to add a… | Edit |
 | --- | --- |
-| language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
+| language | a `languages` entry in a market manifest — `plugins/<language>/plugin.json`, then `bun run plugins`. `grammar` is `{"vendored": "<key in src/languages/grammars.ts>"}` for one druk embeds, `{"bundled": true}` for one OpenTUI carries, or `{"wasm": "…", "query": "…"}` for files in the plugin folder. `patterns` are `{group, re, flags}` (regex as a string) for a format with no usable grammar; `extensions` / `filenames` / `filenamePattern` claim the names OpenTUI resolves none of. Adding a *vendored* grammar is still a source change: two static imports in `src/languages/grammars.ts` |
+| language server | a `languageServers` entry in a market manifest — `plugins/<language>/plugin.json`, then `bun run plugins`. `install` is `{"kind": "npm", "packages": […]}` or `{"kind": "download", "urls": {"<platform>-<arch>": "…"}}` when druk can fetch it itself, and `{"kind": "manual", "command": "…"}` for a line to print — a `download` carries a `command` too, for the machines the release has no build for; users override per-server with the `lspServers` setting, which can only *replace* a command some plugin declared. A server whose command depends on what the project installed goes in `projectCommand` (`src/lsp/project.ts`) instead, which every server consults first — that part is code, and stays in `src/` |
 | PDF viewer | rendering in `src/core/pdf.ts`, UI in `src/ui/PdfView.tsx`, and bufferless routing in `src/app/workspace.ts` |
-| language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts`, with `install: npm(…)` or `install: download(…)` when druk can fetch it itself, or `install: manual(…)` for a line to print (users override per-server with the `lspServers` setting; the settings page toggles them and edits their commands) — a server whose command depends on what the project installed goes in `projectCommand` in `src/lsp/project.ts` instead, which every server consults first |
-| theme | new file in `src/themes/` + register in `src/themes/index.ts` — chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there, not listed per theme |
-| icon theme | an entry in `BUILTIN_ICON_THEMES` in `src/icons/index.ts` — one codepoint per glyph, since the tree gives it the arrow's single column |
+| theme | a `themes` entry in a market manifest — `plugins/<family>/plugin.json`, one plugin per palette family (catppuccin carries its four flavors), then `bun run plugins`. Only `dark` and `light` are built in, in `src/themes/`, because the defaults name them. Chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there and are never listed by a theme |
+| icon theme | an `icons` entry in a market manifest — one codepoint per glyph, since the tree gives it the arrow's single column, and a two-cell glyph is dropped rather than drawn. `unicode` alone is built in (`src/icons/index.ts`), being the set any font already has |
 | plugin contribution kind | a list on the manifest (`src/plugins/manifest.ts`) parsed into `Plugin` (`src/plugins/types.ts`), registered in `loadPlugins` (`src/plugins/index.ts`), and a `register…`/`clearPlugin…` pair on whichever registry owns it — the registry has to be read through a function everywhere, since plugins load after the modules that list its contents are evaluated |
 | previewable value | `preview` + `restore` on the palette `Command` (`src/app/commands.ts`) or on a row's `select` (`src/ui/SettingsView.tsx`) — `preview` paints while the selection sits on the value, `restore` runs when the list is torn down, so it must put back what the config says rather than remember what it replaced |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `VALIDATORS` — one validator per key, since the project file is read key by key) + a row in `src/app/settings.ts` (`specs`, with the `key` it edits) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | a row in `BINDABLE` (`src/app/keymap.ts`) plus a handler under the same id in `src/app/keyboard.ts` — or, for an editor-only key, `src/ui/EditorPane.tsx` — advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Ctrl+K peek and the welcome screen), with the row's `ids` naming the commands it spells out |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
+| market plugin | a folder under `plugins/` holding `plugin.json`, then `bun run plugins` to regenerate `plugins/index.json` — `test/plugins-repo.test.ts` fails when the committed index is stale, and bumping the manifest `version` is what makes installed copies see an update |
 | branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
+
+Key handlers subscribe through `useKeys` (`src/ui/useKeys.ts`), never OpenTUI's
+`useKeyboard` directly: it renames a Ctrl chord to the US key the character sits on, so
+a shortcut still fires with a Cyrillic layout up (`src/core/keylayout.ts`).
 
 `src/app/commands.ts` is the feature index — read it to learn what the editor can do.
 
@@ -330,10 +368,18 @@ expect(t.captureCharFrame()).toContain('const a = 1')
 
 `test/helpers.tsx` has `fixture()` (temp project), `launch()` (renders `<App/>`, and takes
 a config and a terminal size), `press()`, `pressTimes()`, `openFile()`, `settle()`,
-`until()`/`untilFrame()`/`untilGone()`, `pressEscape()` and `runCommand()`.
+`until()`/`untilFrame()`/`untilGone()`, `pressEscape()`, `runCommand()` and
+`loadMarketPlugins()`.
 Highlight helpers live in `test/syntax.ts` instead — `parseHighlights()` and
-`allSegments()` — so a unit test can use them without pulling in `<App/>`. Four rules the
+`allSegments()` — so a unit test can use them without pulling in `<App/>`. Five rules the
 harness exists to encode:
+
+- **A test process starts with the preinstalled plugins and nothing else.**
+  `test/setup.ts` registers them, so typescript, json, markdown, html, css, yaml and
+  toml highlight as they do on a real first run. Anything else — Go, Python, tsrx,
+  dotenv, a market theme — needs `loadMarketPlugins()` at the top of the file, which
+  reads this repository’s `plugins/` folder as a plugins folder. A test that asserts
+  on a *missing* plugin (the market’s install offer) must not call it.
 
 - **Yield before capturing.** The reconciler flushes on a macrotask; a frame captured
   straight after a key still shows the previous state. `press()`/`settle()` handle it.
@@ -348,6 +394,12 @@ harness exists to encode:
 - **Poll for what you are waiting for.** `until()` renders until a condition holds, so a
   watcher event or an async highlight costs what it actually takes. A fixed
   `settle(t, 400)` is right only when the assertion is that *nothing* happened.
+- **A fixture lives as long as its file.** `test/setup.ts` deletes every `fixture()`
+  directory in a global `afterAll`, so nothing may expect one to outlive the file that
+  made it. The sweep is not tidiness: a full run creates some three thousand temp
+  projects, and when they accumulated across runs the temp folder reached ~100k
+  entries, every `mkdtemp` in it slowed down, and whole files began timing out and
+  being killed — which reads as flaky tests and is not.
 
 `captureCharFrame()` returns text only — selection and focus are background colors, so
 assert on something textual (a prompt appearing, the status bar, file contents on disk).

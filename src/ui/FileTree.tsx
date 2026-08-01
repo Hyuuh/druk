@@ -1,12 +1,11 @@
 import { TextAttributes } from '@opentui/core'
-import type { MouseEvent, ScrollBoxRenderable } from '@opentui/core'
-import { useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js'
+import { createEffect, createMemo, For, on, Show } from 'solid-js'
 
 import type { TreeNode } from '../core/fs'
 import type { FileStatus } from '../core/git'
 import { iconFor } from '../icons'
 import { ui } from '../themes'
+import { createScrollList, scrollbarOptions } from './list'
 
 export interface FileTreeProps {
   rootName: string
@@ -28,30 +27,11 @@ export interface FileTreeProps {
   onActivate: (node: TreeNode) => void
   onPin: (node: TreeNode) => void
   onFocus: () => void
+  /** The header's ▴: shut every folder at once. */
+  onCollapseAll: () => void
 }
 
 const DOUBLE_CLICK_MS = 400
-
-/**
- * Shortest the scrollbar thumb may get, in rows.
- *
- * OpenTUI floors it at one *virtual* cell — half a row — so a tree of a few
- * hundred entries leaves a half-block that is neither visible at a glance nor
- * worth aiming at. Both the size and the thumb's travel come from this one
- * function, so raising the floor keeps dragging consistent with what is drawn.
- */
-const MIN_THUMB_ROWS = 3
-
-/** Two virtual cells per row, which is the unit the slider works in. */
-function enlargeThumb(box: ScrollBoxRenderable) {
-  const slider = box.verticalScrollBar?.slider as unknown as
-    | { getVirtualThumbSize: () => number; height: number }
-    | undefined
-  if (!slider) return
-  const size = slider.getVirtualThumbSize.bind(slider)
-  slider.getVirtualThumbSize = () =>
-    Math.min(slider.height * 2, Math.max(size(), MIN_THUMB_ROWS * 2))
-}
 
 export const MARKS: Record<FileStatus, string> = {
   untracked: 'U',
@@ -79,53 +59,8 @@ export function FileTree(props: FileTreeProps) {
     return undefined
   }
 
-  let box: ScrollBoxRenderable | undefined
-  const [scrollTop, setScrollTop] = createSignal(0)
-  const dimensions = useTerminalDimensions()
-
-  /**
-   * Only a window of rows exists as renderables. `viewportCulling` skips *drawing*
-   * off-screen children but still builds them, and the Zig core stops handing out
-   * renderables a few thousand in — expanding a directory of 8000 files used to
-   * leave the tree blank.
-   *
-   * Sized from the terminal rather than fixed: the window has to cover the whole
-   * viewport, and the tree can never be taller than the screen. A constant 200 left
-   * the bottom of the tree empty on a terminal past ~160 rows.
-   */
-  const OVERSCAN = 40
-  const page = () => dimensions().height + 2 * OVERSCAN
-  const visible = createMemo(() => {
-    const start = Math.max(0, Math.min(scrollTop() - OVERSCAN, props.nodes.length - page()))
-    return { start, nodes: props.nodes.slice(start, start + page()) }
-  })
-
-  /**
-   * Bring `row` into view on the next macrotask rather than now.
-   *
-   * Revealing a file expands its parents, so the row list grows in the same tick the
-   * selection moves. The scrollbox clamps `scrollTop` against a content height that
-   * layout has not recomputed yet, so scrolling immediately is silently clamped to 0
-   * and the file stays off-screen. One tick later the extent is real.
-   */
-  let pendingScroll: ReturnType<typeof setTimeout> | null = null
-  onCleanup(() => {
-    if (pendingScroll) clearTimeout(pendingScroll)
-  })
-
-  const revealRow = (row: number) => {
-    if (pendingScroll) clearTimeout(pendingScroll)
-    pendingScroll = setTimeout(() => {
-      pendingScroll = null
-      if (!box) return
-      const height = box.viewport.height
-      if (row < box.scrollTop) box.scrollTop = row
-      else if (row >= box.scrollTop + height) box.scrollTop = row - height + 1
-      // Read it back: the scrollbox clamps to its own extent, and a window built
-      // from a position the box never reached renders the wrong slice.
-      setScrollTop(box.scrollTop)
-    }, 0)
-  }
+  const list = createScrollList(() => props.nodes.length)
+  const visible = createMemo(() => props.nodes.slice(list.window().start, list.window().end))
 
   /**
    * The selection moves for reasons the tree cannot see — arrow keys, but also a tab
@@ -151,24 +86,9 @@ export function FileTree(props: FileTreeProps) {
 
   createEffect(
     on(selectedRow, row => {
-      if (row >= 0) revealRow(row)
+      if (row >= 0) list.reveal(row)
     }),
   )
-
-  /**
-   * The scrollbox emits no scroll event, so the window is refreshed from the
-   * renderable's own mouse hook — the same override EditorPane uses. Every mouse
-   * type is checked, not just `scroll`: dragging its own scrollbar moves the view
-   * too, and a window left behind renders the wrong slice.
-   */
-  const followScroll = (el: ScrollBoxRenderable) => {
-    const host = el as unknown as { onMouseEvent: (event: MouseEvent) => void }
-    const handle = host.onMouseEvent.bind(host)
-    host.onMouseEvent = (event: MouseEvent) => {
-      handle(event)
-      if (el.scrollTop !== scrollTop()) setScrollTop(el.scrollTop)
-    }
-  }
 
   // OpenTUI has no double-click event, so detect it from consecutive downs.
   let lastClick = { path: '', at: 0 }
@@ -216,23 +136,24 @@ export function FileTree(props: FileTreeProps) {
           attributes={TextAttributes.BOLD}
         />
         <box flexGrow={1} backgroundColor={ui.sidebarBg} />
+        {/* The same arrowhead a row's own folder wears, pointing the way it
+            folds — and gone when there is nothing open to fold. */}
+        <Show when={props.expanded.size > 0}>
+          <box flexShrink={0} backgroundColor={ui.sidebarBg} onMouseDown={props.onCollapseAll}>
+            <text fg={ui.dim} bg={ui.sidebarBg} content="▴ " />
+          </box>
+        </Show>
         <text fg={ui.faint} bg={ui.sidebarBg} flexShrink={0} content="explorer" />
       </box>
       <scrollbox
-        ref={el => {
-          box = el
-          followScroll(el)
-          enlargeThumb(el)
-        }}
+        ref={list.ref}
         flexGrow={1}
         backgroundColor={ui.sidebarBg}
-        scrollbarOptions={{
-          trackOptions: { foregroundColor: ui.scrollbar, backgroundColor: ui.sidebarBg },
-        }}
+        scrollbarOptions={scrollbarOptions()}
       >
         {/* Spacers keep the scrollable extent honest while only a window exists. */}
-        <box height={visible().start} flexShrink={0} backgroundColor={ui.sidebarBg} />
-        <For each={visible().nodes}>
+        <box height={list.window().start} flexShrink={0} backgroundColor={ui.sidebarBg} />
+        <For each={visible()}>
           {node => {
             const selected = () =>
               node.path === props.selectedPath || props.markedPaths.includes(node.path)
@@ -315,7 +236,7 @@ export function FileTree(props: FileTreeProps) {
           }}
         </For>
         <box
-          height={Math.max(0, props.nodes.length - visible().start - visible().nodes.length)}
+          height={Math.max(0, props.nodes.length - list.window().end)}
           flexShrink={0}
           backgroundColor={ui.sidebarBg}
         />

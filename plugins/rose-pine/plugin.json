@@ -1,0 +1,347 @@
+{
+  "id": "rose-pine",
+  "name": "Rosé Pine",
+  "version": "1.0.0",
+  "description": "Rosé Pine, Moon and Dawn. Palette from https://github.com/rose-pine/neovim (`lua/rose-pine/palette.lua`); the capture groups and UI slots follow the official VS Code port, https://github.com/rose-pine/vscode.",
+  "themes": [
+    {
+      "id": "rose-pine",
+      "name": "Rosé Pine",
+      "ui": {
+        "bg": "#191724",
+        "panelBg": "#1f1d2e",
+        "barBg": "#16141f",
+        "statusBg": "#c4a7e7",
+        "statusFg": "#191724",
+        "text": "#e0def4",
+        "dim": "#908caa",
+        "faint": "#6e6a86",
+        "accent": "#c4a7e7",
+        "activeTabFg": "#e0def4",
+        "inactiveTabFg": "#908caa",
+        "treeSelectedBg": "#403d52",
+        "treeFocusBg": "#26233a",
+        "dirty": "#f6c177",
+        "error": "#eb6f92",
+        "folder": "#e0def4",
+        "cursor": "#6e6a86",
+        "scrollbar": "#524f67",
+        "gutter": "#908caa",
+        "currentLine": "#21202e",
+        "indentGuide": "#221f2e",
+        "gitAdded": "#9ccfd8",
+        "gitModified": "#ebbcba",
+        "gitDeleted": "#eb6f92"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#6e6a86",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#31748f"
+        },
+        "string": {
+          "fg": "#f6c177"
+        },
+        "number": {
+          "fg": "#ebbcba"
+        },
+        "boolean": {
+          "fg": "#ebbcba"
+        },
+        "constant": {
+          "fg": "#ebbcba"
+        },
+        "function": {
+          "fg": "#ebbcba"
+        },
+        "type": {
+          "fg": "#9ccfd8"
+        },
+        "variable": {
+          "fg": "#e0def4"
+        },
+        "property": {
+          "fg": "#9ccfd8"
+        },
+        "tag": {
+          "fg": "#9ccfd8"
+        },
+        "operator": {
+          "fg": "#31748f"
+        },
+        "punctuation": {
+          "fg": "#908caa"
+        },
+        "label": {
+          "fg": "#c4a7e7"
+        },
+        "escape": {
+          "fg": "#31748f"
+        },
+        "embedded": {
+          "fg": "#e0def4"
+        },
+        "error": {
+          "fg": "#eb6f92"
+        },
+        "markup.heading": {
+          "fg": "#c4a7e7",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#e0def4",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#e0def4",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#f6c177"
+        },
+        "markup.link": {
+          "fg": "#9ccfd8"
+        },
+        "markup.link.url": {
+          "fg": "#9ccfd8",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#31748f"
+        },
+        "markup.quote": {
+          "fg": "#6e6a86",
+          "italic": true
+        }
+      }
+    },
+    {
+      "id": "rose-pine-moon",
+      "name": "Rosé Pine Moon",
+      "ui": {
+        "bg": "#232136",
+        "panelBg": "#2a273f",
+        "barBg": "#1f1d30",
+        "statusBg": "#c4a7e7",
+        "statusFg": "#232136",
+        "text": "#e0def4",
+        "dim": "#908caa",
+        "faint": "#6e6a86",
+        "accent": "#c4a7e7",
+        "activeTabFg": "#e0def4",
+        "inactiveTabFg": "#908caa",
+        "treeSelectedBg": "#44415a",
+        "treeFocusBg": "#393552",
+        "dirty": "#f6c177",
+        "error": "#eb6f92",
+        "folder": "#e0def4",
+        "cursor": "#6e6a86",
+        "scrollbar": "#56526e",
+        "gutter": "#908caa",
+        "currentLine": "#2a283e",
+        "indentGuide": "#2b283e",
+        "gitAdded": "#9ccfd8",
+        "gitModified": "#ea9a97",
+        "gitDeleted": "#eb6f92"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#6e6a86",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#3e8fb0"
+        },
+        "string": {
+          "fg": "#f6c177"
+        },
+        "number": {
+          "fg": "#ea9a97"
+        },
+        "boolean": {
+          "fg": "#ea9a97"
+        },
+        "constant": {
+          "fg": "#ea9a97"
+        },
+        "function": {
+          "fg": "#ea9a97"
+        },
+        "type": {
+          "fg": "#9ccfd8"
+        },
+        "variable": {
+          "fg": "#e0def4"
+        },
+        "property": {
+          "fg": "#9ccfd8"
+        },
+        "tag": {
+          "fg": "#9ccfd8"
+        },
+        "operator": {
+          "fg": "#3e8fb0"
+        },
+        "punctuation": {
+          "fg": "#908caa"
+        },
+        "label": {
+          "fg": "#c4a7e7"
+        },
+        "escape": {
+          "fg": "#3e8fb0"
+        },
+        "embedded": {
+          "fg": "#e0def4"
+        },
+        "error": {
+          "fg": "#eb6f92"
+        },
+        "markup.heading": {
+          "fg": "#c4a7e7",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#e0def4",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#e0def4",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#f6c177"
+        },
+        "markup.link": {
+          "fg": "#9ccfd8"
+        },
+        "markup.link.url": {
+          "fg": "#9ccfd8",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#3e8fb0"
+        },
+        "markup.quote": {
+          "fg": "#6e6a86",
+          "italic": true
+        }
+      }
+    },
+    {
+      "id": "rose-pine-dawn",
+      "name": "Rosé Pine Dawn",
+      "ui": {
+        "bg": "#faf4ed",
+        "panelBg": "#fffaf3",
+        "barBg": "#f8f0e7",
+        "statusBg": "#907aa9",
+        "statusFg": "#faf4ed",
+        "text": "#575279",
+        "dim": "#797593",
+        "faint": "#9893a5",
+        "accent": "#907aa9",
+        "activeTabFg": "#575279",
+        "inactiveTabFg": "#797593",
+        "treeSelectedBg": "#dfdad9",
+        "treeFocusBg": "#f2e9e1",
+        "dirty": "#ea9d34",
+        "error": "#b4637a",
+        "folder": "#575279",
+        "cursor": "#9893a5",
+        "scrollbar": "#cecacd",
+        "gutter": "#797593",
+        "currentLine": "#f4ede8",
+        "indentGuide": "#f0eae6",
+        "gitAdded": "#56949f",
+        "gitModified": "#d7827e",
+        "gitDeleted": "#b4637a"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#9893a5",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#286983"
+        },
+        "string": {
+          "fg": "#ea9d34"
+        },
+        "number": {
+          "fg": "#d7827e"
+        },
+        "boolean": {
+          "fg": "#d7827e"
+        },
+        "constant": {
+          "fg": "#d7827e"
+        },
+        "function": {
+          "fg": "#d7827e"
+        },
+        "type": {
+          "fg": "#56949f"
+        },
+        "variable": {
+          "fg": "#575279"
+        },
+        "property": {
+          "fg": "#56949f"
+        },
+        "tag": {
+          "fg": "#56949f"
+        },
+        "operator": {
+          "fg": "#286983"
+        },
+        "punctuation": {
+          "fg": "#797593"
+        },
+        "label": {
+          "fg": "#907aa9"
+        },
+        "escape": {
+          "fg": "#286983"
+        },
+        "embedded": {
+          "fg": "#575279"
+        },
+        "error": {
+          "fg": "#b4637a"
+        },
+        "markup.heading": {
+          "fg": "#907aa9",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#575279",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#575279",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#ea9d34"
+        },
+        "markup.link": {
+          "fg": "#56949f"
+        },
+        "markup.link.url": {
+          "fg": "#56949f",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#286983"
+        },
+        "markup.quote": {
+          "fg": "#9893a5",
+          "italic": true
+        }
+      }
+    }
+  ]
+}

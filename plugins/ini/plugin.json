@@ -1,0 +1,44 @@
+{
+  "id": "ini",
+  "name": "INI",
+  "version": "1.0.0",
+  "description": "INI and .conf highlighting, by patterns.",
+  "languages": [
+    {
+      "id": "ini",
+      "lineComment": "#",
+      "patterns": [
+        {
+          "group": "string",
+          "re": "\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'",
+          "flags": "g"
+        },
+        {
+          "group": "number",
+          "re": "\\b\\d+(?:\\.\\d+)?\\b",
+          "flags": "g"
+        },
+        {
+          "group": "boolean",
+          "re": "\\b(?:true|false|yes|no|on|off)\\b",
+          "flags": "gi"
+        },
+        {
+          "group": "property",
+          "re": "^[ \\t]*[\\w.$-]+(?=[ \\t]*=)",
+          "flags": "gm"
+        },
+        {
+          "group": "type",
+          "re": "^\\s*\\[[^\\]]+\\]",
+          "flags": "gm"
+        },
+        {
+          "group": "comment",
+          "re": "^[ \\t]*[#;].*",
+          "flags": "gm"
+        }
+      ]
+    }
+  ]
+}

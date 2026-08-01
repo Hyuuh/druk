@@ -1,0 +1,460 @@
+{
+  "id": "catppuccin",
+  "name": "Catppuccin",
+  "version": "1.0.0",
+  "description": "The four Catppuccin flavors. Palette from https://github.com/catppuccin/palette, capture groups following the project style guide.",
+  "themes": [
+    {
+      "id": "catppuccin-mocha",
+      "name": "Catppuccin Mocha",
+      "ui": {
+        "bg": "#1e1e2e",
+        "panelBg": "#181825",
+        "barBg": "#11111b",
+        "statusBg": "#89b4fa",
+        "statusFg": "#11111b",
+        "text": "#cdd6f4",
+        "dim": "#a6adc8",
+        "faint": "#6c7086",
+        "accent": "#89b4fa",
+        "activeTabFg": "#cdd6f4",
+        "inactiveTabFg": "#6c7086",
+        "treeSelectedBg": "#313244",
+        "treeFocusBg": "#45475a",
+        "dirty": "#f9e2af",
+        "error": "#f38ba8",
+        "folder": "#cdd6f4",
+        "cursor": "#f5e0dc",
+        "scrollbar": "#585b70",
+        "gutter": "#6c7086",
+        "currentLine": "#181825",
+        "indentGuide": "#28293a",
+        "gitAdded": "#a6e3a1",
+        "gitModified": "#f9e2af",
+        "gitDeleted": "#f38ba8"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#6c7086",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#cba6f7"
+        },
+        "string": {
+          "fg": "#a6e3a1"
+        },
+        "number": {
+          "fg": "#fab387"
+        },
+        "boolean": {
+          "fg": "#fab387"
+        },
+        "constant": {
+          "fg": "#fab387"
+        },
+        "function": {
+          "fg": "#89b4fa"
+        },
+        "type": {
+          "fg": "#f9e2af"
+        },
+        "variable": {
+          "fg": "#cdd6f4"
+        },
+        "property": {
+          "fg": "#89b4fa"
+        },
+        "tag": {
+          "fg": "#f38ba8"
+        },
+        "operator": {
+          "fg": "#89dceb"
+        },
+        "punctuation": {
+          "fg": "#9399b2"
+        },
+        "label": {
+          "fg": "#f5c2e7"
+        },
+        "escape": {
+          "fg": "#f5c2e7"
+        },
+        "embedded": {
+          "fg": "#cdd6f4"
+        },
+        "error": {
+          "fg": "#f38ba8"
+        },
+        "markup.heading": {
+          "fg": "#89b4fa",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#cdd6f4",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#cdd6f4",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#a6e3a1"
+        },
+        "markup.link": {
+          "fg": "#a6e3a1"
+        },
+        "markup.link.url": {
+          "fg": "#a6e3a1",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#cba6f7"
+        },
+        "markup.quote": {
+          "fg": "#6c7086",
+          "italic": true
+        }
+      }
+    },
+    {
+      "id": "catppuccin-macchiato",
+      "name": "Catppuccin Macchiato",
+      "ui": {
+        "bg": "#24273a",
+        "panelBg": "#1e2030",
+        "barBg": "#181926",
+        "statusBg": "#8aadf4",
+        "statusFg": "#181926",
+        "text": "#cad3f5",
+        "dim": "#a5adcb",
+        "faint": "#6e738d",
+        "accent": "#8aadf4",
+        "activeTabFg": "#cad3f5",
+        "inactiveTabFg": "#6e738d",
+        "treeSelectedBg": "#363a4f",
+        "treeFocusBg": "#494d64",
+        "dirty": "#eed49f",
+        "error": "#ed8796",
+        "folder": "#cad3f5",
+        "cursor": "#f4dbd6",
+        "scrollbar": "#5b6078",
+        "gutter": "#6e738d",
+        "currentLine": "#1e2030",
+        "indentGuide": "#2b2f42",
+        "gitAdded": "#a6da95",
+        "gitModified": "#eed49f",
+        "gitDeleted": "#ed8796"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#6e738d",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#c6a0f6"
+        },
+        "string": {
+          "fg": "#a6da95"
+        },
+        "number": {
+          "fg": "#f5a97f"
+        },
+        "boolean": {
+          "fg": "#f5a97f"
+        },
+        "constant": {
+          "fg": "#f5a97f"
+        },
+        "function": {
+          "fg": "#8aadf4"
+        },
+        "type": {
+          "fg": "#eed49f"
+        },
+        "variable": {
+          "fg": "#cad3f5"
+        },
+        "property": {
+          "fg": "#8aadf4"
+        },
+        "tag": {
+          "fg": "#ed8796"
+        },
+        "operator": {
+          "fg": "#91d7e3"
+        },
+        "punctuation": {
+          "fg": "#939ab7"
+        },
+        "label": {
+          "fg": "#f5bde6"
+        },
+        "escape": {
+          "fg": "#f5bde6"
+        },
+        "embedded": {
+          "fg": "#cad3f5"
+        },
+        "error": {
+          "fg": "#ed8796"
+        },
+        "markup.heading": {
+          "fg": "#8aadf4",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#cad3f5",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#cad3f5",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#a6da95"
+        },
+        "markup.link": {
+          "fg": "#a6da95"
+        },
+        "markup.link.url": {
+          "fg": "#a6da95",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#c6a0f6"
+        },
+        "markup.quote": {
+          "fg": "#6e738d",
+          "italic": true
+        }
+      }
+    },
+    {
+      "id": "catppuccin-frappe",
+      "name": "Catppuccin Frappé",
+      "ui": {
+        "bg": "#303446",
+        "panelBg": "#292c3c",
+        "barBg": "#232634",
+        "statusBg": "#8caaee",
+        "statusFg": "#232634",
+        "text": "#c6d0f5",
+        "dim": "#a5adce",
+        "faint": "#737994",
+        "accent": "#8caaee",
+        "activeTabFg": "#c6d0f5",
+        "inactiveTabFg": "#737994",
+        "treeSelectedBg": "#414559",
+        "treeFocusBg": "#51576d",
+        "dirty": "#e5c890",
+        "error": "#e78284",
+        "folder": "#c6d0f5",
+        "cursor": "#f2d5cf",
+        "scrollbar": "#626880",
+        "gutter": "#737994",
+        "currentLine": "#292c3c",
+        "indentGuide": "#373b4e",
+        "gitAdded": "#a6d189",
+        "gitModified": "#e5c890",
+        "gitDeleted": "#e78284"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#737994",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#ca9ee6"
+        },
+        "string": {
+          "fg": "#a6d189"
+        },
+        "number": {
+          "fg": "#ef9f76"
+        },
+        "boolean": {
+          "fg": "#ef9f76"
+        },
+        "constant": {
+          "fg": "#ef9f76"
+        },
+        "function": {
+          "fg": "#8caaee"
+        },
+        "type": {
+          "fg": "#e5c890"
+        },
+        "variable": {
+          "fg": "#c6d0f5"
+        },
+        "property": {
+          "fg": "#8caaee"
+        },
+        "tag": {
+          "fg": "#e78284"
+        },
+        "operator": {
+          "fg": "#99d1db"
+        },
+        "punctuation": {
+          "fg": "#949cbb"
+        },
+        "label": {
+          "fg": "#f4b8e4"
+        },
+        "escape": {
+          "fg": "#f4b8e4"
+        },
+        "embedded": {
+          "fg": "#c6d0f5"
+        },
+        "error": {
+          "fg": "#e78284"
+        },
+        "markup.heading": {
+          "fg": "#8caaee",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#c6d0f5",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#c6d0f5",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#a6d189"
+        },
+        "markup.link": {
+          "fg": "#a6d189"
+        },
+        "markup.link.url": {
+          "fg": "#a6d189",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#ca9ee6"
+        },
+        "markup.quote": {
+          "fg": "#737994",
+          "italic": true
+        }
+      }
+    },
+    {
+      "id": "catppuccin-latte",
+      "name": "Catppuccin Latte",
+      "ui": {
+        "bg": "#eff1f5",
+        "panelBg": "#e6e9ef",
+        "barBg": "#dce0e8",
+        "statusBg": "#1e66f5",
+        "statusFg": "#eff1f5",
+        "text": "#4c4f69",
+        "dim": "#6c6f85",
+        "faint": "#9ca0b0",
+        "accent": "#1e66f5",
+        "activeTabFg": "#4c4f69",
+        "inactiveTabFg": "#8c8fa1",
+        "treeSelectedBg": "#ccd0da",
+        "treeFocusBg": "#bcc0cc",
+        "dirty": "#df8e1d",
+        "error": "#d20f39",
+        "folder": "#4c4f69",
+        "cursor": "#dc8a78",
+        "scrollbar": "#acb0be",
+        "gutter": "#9ca0b0",
+        "currentLine": "#e6e9ef",
+        "indentGuide": "#e5e7ed",
+        "gitAdded": "#40a02b",
+        "gitModified": "#df8e1d",
+        "gitDeleted": "#d20f39"
+      },
+      "syntax": {
+        "comment": {
+          "fg": "#9ca0b0",
+          "italic": true
+        },
+        "keyword": {
+          "fg": "#8839ef"
+        },
+        "string": {
+          "fg": "#40a02b"
+        },
+        "number": {
+          "fg": "#fe640b"
+        },
+        "boolean": {
+          "fg": "#fe640b"
+        },
+        "constant": {
+          "fg": "#fe640b"
+        },
+        "function": {
+          "fg": "#1e66f5"
+        },
+        "type": {
+          "fg": "#df8e1d"
+        },
+        "variable": {
+          "fg": "#4c4f69"
+        },
+        "property": {
+          "fg": "#1e66f5"
+        },
+        "tag": {
+          "fg": "#d20f39"
+        },
+        "operator": {
+          "fg": "#04a5e5"
+        },
+        "punctuation": {
+          "fg": "#7c7f93"
+        },
+        "label": {
+          "fg": "#ea76cb"
+        },
+        "escape": {
+          "fg": "#ea76cb"
+        },
+        "embedded": {
+          "fg": "#4c4f69"
+        },
+        "error": {
+          "fg": "#d20f39"
+        },
+        "markup.heading": {
+          "fg": "#1e66f5",
+          "bold": true
+        },
+        "markup.strong": {
+          "fg": "#4c4f69",
+          "bold": true
+        },
+        "markup.italic": {
+          "fg": "#4c4f69",
+          "italic": true
+        },
+        "markup.raw": {
+          "fg": "#40a02b"
+        },
+        "markup.link": {
+          "fg": "#40a02b"
+        },
+        "markup.link.url": {
+          "fg": "#40a02b",
+          "underline": true
+        },
+        "markup.list": {
+          "fg": "#8839ef"
+        },
+        "markup.quote": {
+          "fg": "#9ca0b0",
+          "italic": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "sql",
+  "name": "SQL",
+  "version": "1.0.0",
+  "description": "SQL highlighting, by patterns.",
+  "languages": [
+    {
+      "id": "sql",
+      "lineComment": "--",
+      "patterns": [
+        {
+          "group": "punctuation",
+          "re": "[(),;.*]",
+          "flags": "g"
+        },
+        {
+          "group": "number",
+          "re": "\\b\\d+(?:\\.\\d+)?\\b",
+          "flags": "g"
+        },
+        {
+          "group": "string",
+          "re": "'(?:[^']|'')*'",
+          "flags": "g"
+        },
+        {
+          "group": "keyword",
+          "re": "\\b(?:select|from|where|insert|into|values|update|set|delete|create|table|drop|alter|add|primary|key|foreign|references|join|left|right|inner|outer|on|group|order|by|having|limit|offset|as|and|or|not|null|distinct|union|index|view|with|returning|default|constraint|unique|check|cascade)\\b",
+          "flags": "gi"
+        },
+        {
+          "group": "type",
+          "re": "\\b(?:int|integer|bigint|smallint|serial|text|varchar|char|boolean|bool|date|timestamp|timestamptz|numeric|decimal|real|json|jsonb|uuid)\\b",
+          "flags": "gi"
+        },
+        {
+          "group": "comment",
+          "re": "--.*$|\\/\\*[\\s\\S]*?\\*\\/",
+          "flags": "gm"
+        }
+      ]
+    }
+  ]
+}

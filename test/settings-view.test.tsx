@@ -2,8 +2,19 @@ import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
 import { CONFIG_FILE } from '../src/core/config'
-import { fixture, launch, openFile, press, pressEscape, runCommand } from './helpers'
+import {
+  fixture,
+  launch,
+  loadMarketPlugins,
+  openFile,
+  press,
+  pressEscape,
+  runCommand,
+} from './helpers'
 import type { Harness } from './helpers'
+
+// The themes these tests name are market plugins now.
+loadMarketPlugins()
 
 const PROJECT = { 'a.ts': 'const a = 1\n' }
 

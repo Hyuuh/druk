@@ -1,9 +1,9 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
 
 import type { UpdateInfo } from '../core/update'
 import { ui } from '../themes'
 import { Overlay } from './Overlay'
+import { useKeys } from './useKeys'
 
 export interface UpdateBannerProps {
   update: UpdateInfo
@@ -12,7 +12,7 @@ export interface UpdateBannerProps {
 }
 
 export function UpdateBanner(props: UpdateBannerProps) {
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     const k = key.name
     // The banner arrives asynchronously, possibly mid-keystroke: claim only the
     // keys it acts on rather than eating whatever the user was in the middle of.

@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { lstatSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { decodeText } from './fs'
 // Not `run`: every query in this file names its own result `run`, and the two
 // spellings sitting in one scope is how a call ends up aimed at the wrong one.
 import { notInstalled, run as runProcess } from './process'
@@ -761,7 +762,10 @@ function hasIgnoredAncestor(cwd: string, path: string, ignored: Set<string>): bo
  */
 export function refText(cwd: string, relPath: string, ref = 'HEAD'): string | null {
   const run = git(cwd, ['show', `${ref}:./${relPath}`], 3000)
-  return run.status === 0 ? run.stdout : null
+  // Normalized like every other text druk reads: the working-tree side of a diff
+  // comes from an open buffer, which is always LF, so a blob committed with CRLF
+  // would otherwise diff as every line changed.
+  return run.status === 0 ? decodeText(run.stdout).text : null
 }
 
 export interface Upstream {

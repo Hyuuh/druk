@@ -4,7 +4,7 @@ import type { StyleDefinitionInput, TreeSitterClient } from '@opentui/core'
 
 import { paintedTheme, syntaxTheme, ui } from '../themes'
 import type { ThemeName } from '../themes'
-import { languageFor, VENDORED_LANGUAGES } from './index'
+import { filetypeForName, languageFor, languageGeneration, vendoredLanguages } from './index'
 import type { Language } from './index'
 
 /** Two dots so it outranks any syntax capture on the same whitespace. */
@@ -16,8 +16,21 @@ let syntaxStyle: SyntaxStyle | null = null
 /** Theme the cached `syntaxStyle` was built for — style ids are per instance. */
 let styleFor: ThemeName | null = null
 
-function registerVendoredParsers(client: TreeSitterClient): void {
-  for (const lang of VENDORED_LANGUAGES) {
+/** The registry generation the client was last told about; -1 is "never". */
+let registeredGeneration = -1
+
+/**
+ * Teach the worker every grammar the registered languages carry.
+ *
+ * Run again whenever the language registry changes, not once at startup:
+ * languages arrive with plugins, and a plugin installed or reloaded mid-session
+ * would otherwise stay unhighlighted until the next launch. Registering the same
+ * filetype twice is what the worker already does for a reloaded plugin, and it
+ * takes the later one.
+ */
+function registerParsers(client: TreeSitterClient): void {
+  registeredGeneration = languageGeneration()
+  for (const lang of vendoredLanguages()) {
     try {
       client.addFiletypeParser({
         filetype: lang.id,
@@ -104,34 +117,18 @@ export function styleForId(id: number): StyleDefinitionInput | undefined {
 }
 
 /**
- * `.env`, `.env.local`, `.env.production.sample`, `staging.env` — OpenTUI maps
- * none of them, and the extension is not where the name is.
+ * Map a file path to a tree-sitter filetype ("foo.ts" -> "typescript"), if known.
+ *
+ * The registry is asked first, and OpenTUI second: a language declares the names
+ * and extensions OpenTUI resolves none of (`.tf`, `.tsrx`, `.env.local`,
+ * `bun.lock`), and a plugin claiming one has to win — that claim is the only
+ * thing making its patterns run at all.
  */
-const DOTENV = /^\.env(?:\.[\w.-]+)?$|\.env$/
-
-/**
- * Files whose name says what they are while their extension does not. `bun.lock`
- * is JSON with comments and trailing commas; the json grammar reads it happily
- * enough to be worth far more than no colour at all.
- */
-const BY_NAME: Record<string, string> = {
-  'bun.lock': 'json',
-}
-
-/** Map a file path to a tree-sitter filetype ("foo.ts" -> "typescript"), if known. */
 export function filetypeForPath(path: string): string | undefined {
   // Both separators: druk ships for Windows, where nothing after the last `/`
   // is the file name.
   const name = path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
-  if (BY_NAME[name]) return BY_NAME[name]
-  if (DOTENV.test(name)) return 'dotenv'
-  if (name.endsWith('.tsrx')) return 'tsrx'
-  if (name.endsWith('.liquid')) return 'liquid'
-  // OpenTUI resolves none of these, so unlike yaml or sql the extension has to be
-  // claimed here or the patterns never run and a `.tf` renders as plain text.
-  if (name.endsWith('.tf') || name.endsWith('.tfvars')) return 'terraform'
-  if (name.endsWith('.hcl')) return 'hcl'
-  return pathToFiletype(path) ?? undefined
+  return filetypeForName(name) ?? pathToFiletype(path) ?? undefined
 }
 
 /**
@@ -151,7 +148,7 @@ async function ensureClient(): Promise<TreeSitterClient | null> {
       try {
         const c = getTreeSitterClient()
         await c.initialize()
-        registerVendoredParsers(c)
+        registerParsers(c)
         return c
       } catch {
         clientDead = true // highlighting is best-effort; editor still works
@@ -159,7 +156,12 @@ async function ensureClient(): Promise<TreeSitterClient | null> {
       }
     })()
   }
-  return initPromise
+  const client = await initPromise
+  // A plugin registered a language after the worker was initialized — the check
+  // is here rather than in `registerLanguage` because the client may not exist
+  // yet when plugins load, and this is the one path every highlight goes through.
+  if (client && registeredGeneration !== languageGeneration()) registerParsers(client)
+  return client
 }
 
 /**

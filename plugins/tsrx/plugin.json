@@ -1,0 +1,23 @@
+{
+  "id": "tsrx",
+  "name": "Octane (tsrx)",
+  "version": "1.0.0",
+  "description": "Octane's tsrx: the tsx grammar plus the @if / @for / @{ directives it cannot parse.",
+  "languages": [
+    {
+      "id": "tsrx",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "tsx"
+      },
+      "patterns": [
+        {
+          "group": "keyword.directive",
+          "re": "@(?:if|else|for|empty|switch|case|default|try|pending|catch)\\b|@(?=\\{)|(?<=;[ \\t]*)key\\b(?=[ \\t]+[\\w$.[\\]]+[ \\t]*\\))",
+          "flags": "g"
+        }
+      ],
+      "extensions": [".tsrx"]
+    }
+  ]
+}

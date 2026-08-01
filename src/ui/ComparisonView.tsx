@@ -1,5 +1,4 @@
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard } from '@opentui/solid'
 import { Show } from 'solid-js'
 import type { Accessor } from 'solid-js'
 
@@ -7,6 +6,7 @@ import type { ComparisonCommitDetail, ComparisonContent, ComparisonFile } from '
 import { ui } from '../themes'
 import { DiffView, diffStatusColor } from './DiffView'
 import type { DiffMode } from './DiffView'
+import { useKeys } from './useKeys'
 
 export interface ComparisonViewProps {
   /** Null for a commit whose first-parent diff is empty — a merge, most often. */
@@ -37,7 +37,7 @@ export function ComparisonView(props: ComparisonViewProps) {
   /** The one case `DiffView` can draw, and the one it owns the keyboard for. */
   const text = () => (props.content?.binary === false ? props.content : null)
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     if (props.blocked || !props.focused || key.defaultPrevented || text()) return
     if (props.commit && (key.name === 'left' || key.name === 'right')) {
       props.onMoveFile(key.name === 'left' ? -1 : 1)

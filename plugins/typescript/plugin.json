@@ -1,0 +1,51 @@
+{
+  "id": "typescript",
+  "name": "TypeScript",
+  "version": "1.0.0",
+  "description": "TypeScript, JavaScript and their React dialects, with typescript-language-server. A project on TypeScript 7 is served by its own `tsc --lsp` instead.",
+  "languages": [
+    {
+      "id": "typescript",
+      "label": "ts",
+      "lineComment": "//",
+      "grammar": {
+        "bundled": true
+      }
+    },
+    {
+      "id": "javascript",
+      "label": "js",
+      "lineComment": "//",
+      "grammar": {
+        "bundled": true
+      }
+    },
+    {
+      "id": "typescriptreact",
+      "label": "tsx",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "tsx"
+      }
+    },
+    {
+      "id": "javascriptreact",
+      "label": "jsx",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "tsx"
+      }
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "typescript",
+      "command": ["typescript-language-server", "--stdio"],
+      "filetypes": ["typescript", "typescriptreact", "javascript", "javascriptreact"],
+      "install": {
+        "kind": "npm",
+        "packages": ["typescript-language-server", "typescript@5"]
+      }
+    }
+  ]
+}

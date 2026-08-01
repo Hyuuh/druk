@@ -1,4 +1,5 @@
 import type { IconTheme } from '../icons'
+import type { Language } from '../languages'
 import type { ServerSpec } from '../lsp/servers'
 import type { Theme } from '../themes'
 
@@ -12,9 +13,20 @@ export interface Plugin {
   source: string
   /** Disabled by `disabledPlugins`: read and listed, but nothing registered. */
   disabled: boolean
+  /**
+   * Shipped inside the binary. Nothing to update or uninstall — but it can be
+   * disabled, and a copy installed from the market takes its place.
+   */
+  builtin: boolean
   themes: { id: string; theme: Theme }[]
   icons: IconTheme[]
+  languages: Language[]
   servers: ServerSpec[]
+  /**
+   * Files the manifest refers to, relative to its folder. The market fetches
+   * these beside `plugin.json`; a plugin with none is one file.
+   */
+  assets: string[]
 }
 
 /**

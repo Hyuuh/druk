@@ -4,6 +4,7 @@ import type { EditorBridge } from './editor'
 import type { FileOps } from './fileOps'
 import type { Git, GitOp } from './git'
 import type { Lsp } from './lsp'
+import type { Market } from './market'
 import type { Navigation } from './navigation'
 import type { Overlays } from './Overlays'
 import type { Panes } from './panes'
@@ -24,6 +25,7 @@ export interface AppContext {
   git: Git
   gitOp: GitOp
   lsp: Lsp
+  market: Market
   branches: Branches
   comparison: Comparison
   workspace: Workspace

@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 
 import type { KeyEvent } from '@opentui/core'
-import { useKeyboard, useTerminalDimensions } from '@opentui/solid'
+import { useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 
 import type { ConfigScope } from '../core/config'
@@ -10,6 +10,7 @@ import { ui } from '../themes'
 import { listRows, modalWidth, PAD } from './modal'
 import { ModalPanel } from './Overlay'
 import { TextInput } from './TextInput'
+import { useKeys } from './useKeys'
 
 /** One input inside an edit. A lone field needs no label; several do. */
 export interface SettingField {
@@ -118,7 +119,7 @@ export function SettingsView(props: SettingsViewProps) {
     else row.cycle(1)
   }
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     // A page, not a modal: keys count only when this pane holds the focus, and
     // a chord the global keymap already claimed is not ours to reuse. The value
     // list owns the keyboard while open — j/k must type into its filter.
@@ -392,7 +393,7 @@ function SettingEditor(props: {
   const width = () => modalWidth(props.paneWidth, 0.7, 30, 60)
   const count = () => props.edit.fields.length
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     if (key.defaultPrevented) return
     const k = key.name
     if (k === 'return' || k === 'enter') {
@@ -513,7 +514,7 @@ function SettingPicker(props: {
   /** First row shown: slides so the selection stays inside the window. */
   const windowStart = () => Math.max(0, selected() - visibleRows() + 1)
 
-  useKeyboard((key: KeyEvent) => {
+  useKeys((key: KeyEvent) => {
     if (key.defaultPrevented) return
     const k = key.name
     const count = Math.max(1, matches().length)

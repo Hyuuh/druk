@@ -1,0 +1,54 @@
+{
+  "id": "yaml",
+  "name": "YAML",
+  "version": "1.0.0",
+  "description": "YAML highlighting. Patterns rather than a grammar: tree-sitter-yaml needs an external scanner OpenTUI cannot link.",
+  "languages": [
+    {
+      "id": "yaml",
+      "lineComment": "#",
+      "patterns": [
+        {
+          "group": "punctuation",
+          "re": "^\\s*-\\s|[:[\\]{},]",
+          "flags": "gm"
+        },
+        {
+          "group": "number",
+          "re": "\\b\\d+(?:\\.\\d+)?\\b",
+          "flags": "g"
+        },
+        {
+          "group": "boolean",
+          "re": "\\b(?:true|false|yes|no|on|off|null)\\b",
+          "flags": "gi"
+        },
+        {
+          "group": "string",
+          "re": "\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'",
+          "flags": "g"
+        },
+        {
+          "group": "label",
+          "re": "[&*][\\w-]+",
+          "flags": "g"
+        },
+        {
+          "group": "property",
+          "re": "^[ \\t]*-?[ \\t]*['\"]?[\\w.$/@-]+['\"]?(?=[ \\t]*:)",
+          "flags": "gm"
+        },
+        {
+          "group": "punctuation.special",
+          "re": "^---$|^\\.\\.\\.$",
+          "flags": "gm"
+        },
+        {
+          "group": "comment",
+          "re": "(?:^|[ \\t])#.*",
+          "flags": "gm"
+        }
+      ]
+    }
+  ]
+}

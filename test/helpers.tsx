@@ -5,11 +5,28 @@ import { join } from 'node:path'
 
 import { testRender } from '@opentui/solid'
 
+import { MARKET_DIR } from '../scripts/plugins'
 import { App } from '../src/app/App'
 import { DEFAULTS } from '../src/core/config'
 import type { Config } from '../src/core/config'
+import { loadPlugins } from '../src/plugins'
 
 export type Harness = Awaited<ReturnType<typeof launch>>
+
+/**
+ * Register every plugin in this repository's market folder — the themes, icon
+ * sets and language servers druk used to ship in `src/`. The market folder has
+ * the same shape as a plugins folder, so the loader reads it as one.
+ *
+ * Call it at the top of a file whose subject is one of those themes; it is
+ * module state, so it lasts for that file's process and no further.
+ */
+export function loadMarketPlugins(): void {
+  // The config home stands in for a project root: only `<rootDir>/.druk/plugins`
+  // is read off it, and a temp directory per call is litter the suite does not
+  // need — it already leaves one per fixture.
+  loadPlugins(process.env.XDG_CONFIG_HOME!, [], MARKET_DIR)
+}
 
 /**
  * Every harness `launch()` has handed out and not yet destroyed. `App` opens fs
@@ -22,9 +39,21 @@ export type Harness = Awaited<ReturnType<typeof launch>>
  */
 export const liveHarnesses = new Set<Harness>()
 
+/**
+ * Every fixture this process made, deleted when it exits.
+ *
+ * A run of the suite creates some three thousand of these, and nothing used to
+ * remove them: after a few dozen runs the temp folder held ~100k directories and
+ * every `mkdtemp` in it slowed down, until whole test files started timing out
+ * and being killed. `test/setup.ts` empties this in a global `afterAll` — once
+ * per file rather than per test, since a file may hand one fixture to several.
+ */
+export const fixtures = new Set<string>()
+
 /** Temp project used by a test. `files` maps relative paths to contents. */
 export function fixture(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'druk-'))
+  fixtures.add(dir)
   for (const [name, content] of Object.entries(files)) {
     const path = join(dir, name)
     mkdirSync(join(path, '..'), { recursive: true })
@@ -39,7 +68,14 @@ export async function launch(
   /** Terminal size, for anything that has to degrade on a small screen. */
   size: { width?: number; height?: number } = {},
   /** `openFile` renders single-file mode, as `druk <file>` does. */
-  options: { openFile?: string; openLine?: number; openCol?: number; checkUpdates?: boolean } = {},
+  options: {
+    openFile?: string
+    openLine?: number
+    openCol?: number
+    checkUpdates?: boolean
+    /** Encode keys as the kitty protocol, which is what a modern terminal sends. */
+    kittyKeyboard?: boolean
+  } = {},
 ) {
   const t = await testRender(
     () =>
@@ -59,6 +95,10 @@ export async function launch(
           lsp: false,
           lspAutoInstall: false,
           themeSync: false,
+          // Off for the same reason as the install offer above: on, a file whose
+          // language has no plugin would reach for the market — a real request,
+          // and then a modal over whatever the test was doing.
+          pluginUpdates: false,
           ...config,
         },
         // Off by default: the real check is unconditional, and without this every
@@ -68,6 +108,7 @@ export async function launch(
     {
       width: size.width ?? 80,
       height: size.height ?? 20,
+      kittyKeyboard: options.kittyKeyboard ?? false,
       // Mirror src/index.tsx. OpenTUI defaults this on and tears the renderer down
       // itself, so without it a Ctrl+C test measures the harness, not the app.
       exitOnCtrlC: false,

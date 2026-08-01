@@ -9,6 +9,8 @@
  * To add a command: add an action to `CommandActions`, then an entry below. Set
  * `hint` when a keybinding also triggers it (keybindings live in App).
  */
+import type { MarketEntry } from '../core/market'
+import { isNewer } from '../core/update'
 import { themeLabel, themeNames } from '../themes'
 import type { ThemeName } from '../themes'
 import { ALT } from '../ui/keys'
@@ -55,6 +57,7 @@ export interface CommandActions {
   navForward: () => void
   toggleFocus: () => void
   toggleSidebar: () => void
+  collapseSidebar: () => void
   toggleGitView: () => void
   toggleMarkdown: () => void
   setTheme: (name: ThemeName) => void
@@ -96,18 +99,56 @@ export interface CommandActions {
   gitDeleteBranchForce: () => void
   listPlugins: () => void
   reloadPlugins: () => void
+  installPlugin: (id: string) => void
+  uninstallPlugin: (id: string) => void
+  updatePlugins: () => void
+  checkPluginUpdates: () => void
   showHelp: () => void
   quit: () => void
 }
 
 export interface CommandContext {
   activeTheme: ThemeName
+  /** The market catalog as last read, and what of it is installed. */
+  market: MarketEntry[]
+  installed: { id: string; version: string; builtin?: boolean }[]
 }
 
 /** Marks the entry matching the current setting, so submenus show state. */
 const check = (on: boolean) => (on ? '* ' : '  ')
 
+/** Enough of a plugin's description to search on, without wrapping the row. */
+const BLURB = 52
+
+/**
+ * The market as palette rows: installed (`✓`), an update waiting (`↑`), or
+ * neither. The blurb is in the label because the palette filters on labels —
+ * typing "gopls" has to find the Go plugin, whose name never mentions it.
+ */
+function marketRows(actions: CommandActions, ctx: CommandContext): Command[] {
+  if (ctx.market.length === 0) {
+    return [
+      {
+        id: 'plugins.market.empty',
+        label: 'Nothing yet — fetch the market',
+        run: actions.checkPluginUpdates,
+      },
+    ]
+  }
+  return ctx.market.map(entry => {
+    const have = ctx.installed.find(plugin => plugin.id === entry.id)
+    const state = !have ? '  ' : isNewer(entry.version, have.version) ? '↑ ' : '✓ '
+    const blurb = entry.description.slice(0, BLURB)
+    return {
+      id: `plugins.market.${entry.id}`,
+      label: `${state}${entry.name} ${entry.version}${blurb ? ` — ${blurb}` : ''}`,
+      run: () => actions.installPlugin(entry.id),
+    }
+  })
+}
+
 export function buildCommands(actions: CommandActions, ctx: CommandContext): Command[] {
+  const uninstallable = ctx.installed.filter(plugin => !plugin.builtin)
   return [
     { id: 'open', label: 'Open file…', hint: 'Ctrl+P', run: actions.openFile },
     { id: 'save', label: 'Save file', hint: 'Ctrl+S', run: actions.save },
@@ -265,6 +306,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           run: actions.toggleGitView,
         },
         {
+          id: 'view.collapse',
+          label: 'Collapse folders in sidebar',
+          hint: '▴ in its header',
+          run: actions.collapseSidebar,
+        },
+        {
           id: 'view.markdown',
           label: 'Markdown: rendered / source',
           hint: `Ctrl+${ALT}+M`,
@@ -353,6 +400,34 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         // What they contribute and where they come from; the settings page's
         // Plugins section is what turns one off.
         { id: 'plugins.list', label: 'Installed plugins', run: actions.listPlugins },
+        {
+          id: 'plugins.market',
+          label: 'Plugin market',
+          children: marketRows(actions, ctx),
+        },
+        { id: 'plugins.update', label: 'Update plugins', run: actions.updatePlugins },
+        {
+          id: 'plugins.check',
+          label: 'Check for plugin updates',
+          run: actions.checkPluginUpdates,
+        },
+        // Built-ins are left out: they live in the binary, so there is nothing to
+        // delete — the settings page's Plugins section is where one is turned
+        // off. And a submenu with no children reads as a bug, so it only appears
+        // once something is installed.
+        ...(uninstallable.length > 0
+          ? [
+              {
+                id: 'plugins.uninstall',
+                label: 'Uninstall a plugin',
+                children: uninstallable.map(plugin => ({
+                  id: `plugins.uninstall.${plugin.id}`,
+                  label: `${plugin.id} ${plugin.version}`,
+                  run: () => actions.uninstallPlugin(plugin.id),
+                })),
+              },
+            ]
+          : []),
         // Manifests are read once, at startup — this is how a theme being
         // written is seen without restarting the editor.
         { id: 'plugins.reload', label: 'Reload plugins', run: actions.reloadPlugins },
