@@ -92,10 +92,15 @@ jobs:
           chmod +x */druk || true
       - run: bun run release
       # After `bun run release`, which clears dist/release before it writes the archives,
-      # and before the upload — formula.ts checksums those archives and drops druk.rb in
-      # beside them, so the `dist/release/*` glob below carries it to the release without
-      # naming it. Attaching it is what lets the tap job stay a plain file copy, and it
-      # leaves a hand-installable formula on every release even when no tap exists.
+      # and before the upload — formula.ts checksums those archives, builds the bottles
+      # brew pours from the binaries in dist/<target>/, and drops druk.rb in beside them,
+      # so the `dist/release/*` glob below carries all of it to the release without naming
+      # anything. Attaching the formula is what lets the tap job stay a plain file copy,
+      # and it leaves a hand-installable formula on every release even when no tap exists.
+      #
+      # The bottles have to be assets of *this* release: the formula's `root_url` points
+      # at it, and a release missing them sends every `brew install` back to a source
+      # build — which is what fails on a machine whose Xcode trails its macOS (issue #40).
       - run: bun run formula
       # git, not `gh release create --target`: GITHUB_TOKEN may create a release for a
       # tag that already exists, but creating one that has to create the tag too comes

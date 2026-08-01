@@ -109,48 +109,48 @@ row lists every bindable command with the key it answers to, refuses a chord ano
 custom binding holds and names whatever default a rebind takes the key from, while a
 clash or a value that is not a chord is reported on startup),
 file icons in the tree (`iconTheme` — `unicode` shapes any font has, or a theme a
-plugin contributes, `nerd-icons` in the market for a patched font; the glyph takes the expansion
+extension contributes, `nerd-icons` in the market for a patched font; the glyph takes the expansion
 arrow's column, since a folder icon has an open and a closed form, and the
 default is `none` because nothing can ask a terminal what its font holds),
-a plugin system (JSON manifests in `$XDG_CONFIG_HOME/druk/plugins/<id>/plugin.json`
-— or `<id>.json` for a one-file plugin — and in `<project>/.druk/plugins/` for a
+a extension system (JSON manifests in `$XDG_CONFIG_HOME/druk/extensions/<id>/extension.json`
+— or `<id>.json` for a one-file extension — and in `<project>/.druk/extensions/` for a
 project's own; a manifest contributes themes, icon themes and language servers,
 and is data rather than code, so installing one runs nothing and the compiled
-binary needs no loader; `disabledPlugins` shelves one without deleting it, the
-settings page's Plugins section toggles them, palette → Plugins lists and reloads
-them, and a malformed manifest costs its plugin that one contribution and is
+binary needs no loader; `disabledExtensions` shelves one without deleting it, the
+settings page's Extensions section toggles them, palette → Extensions lists and reloads
+them, and a malformed manifest costs its extension that one contribution and is
 reported on startup),
-a plugin market — `plugins/` **in this repository**, one folder per plugin, served
+a extension market — `extensions/` **in this repository**, one folder per extension, served
 raw from `main`, so a merged pull request is installable without a druk release;
-palette → Plugins → Plugin market installs one after a confirm that names the
-commands it would have druk spawn, an installed plugin with a newer version in the
+palette → Extensions → Extension market installs one after a confirm that names the
+commands it would have druk spawn, an installed extension with a newer version in the
 catalog is reported in the status bar at startup, a file whose language no
-installed plugin serves offers the plugin that does, and a config naming a theme
-nothing registers is offered its plugin back (`pluginUpdates` turns the whole of
-that off, `pluginRegistry` points it at a fork),
+installed extension serves offers the extension that does, and a config naming a theme
+nothing registers is offered its extension back (`extensionUpdates` turns the whole of
+that off, `extensionRegistry` points it at a fork),
 file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
-**Everything extensible is a plugin now, and most of them live in `plugins/`.**
-A plugin is one of two kinds and never both: a *language* plugin (the grammar,
+**Everything extensible is a extension now, and most of them live in `extensions/`.**
+A extension is one of two kinds and never both: a *language* extension (the grammar,
 highlight query, patterns, line comment and label for one language, plus the
-server that serves it) or an *appearance* plugin (themes and icon themes).
+server that serves it) or an *appearance* extension (themes and icon themes).
 
 What is compiled in: two themes (`dark` / `light`, the GitHub pair the defaults
 name), the `unicode` icon theme, every tree-sitter grammar wasm — and a
-*preinstalled* set of plugin manifests, listed in `src/plugins/builtin.ts`:
+*preinstalled* set of extension manifests, listed in `src/extensions/builtin.ts`:
 typescript (ts/tsx/js/jsx), json, markdown, html, css, yaml and toml. Those are
 the languages a first run has to highlight with no network.
 
 Everything else — Go, Rust, Python, the other twenty-odd languages with their
 servers, every palette beyond the GitHub pair, the Nerd Font icons — is a market
-plugin, and installing one fetches a single small JSON. The *grammar bytes* are
-embedded either way, so a market language plugin says
+extension, and installing one fetches a single small JSON. The *grammar bytes* are
+embedded either way, so a market language extension says
 `"grammar": { "vendored": "go" }` and needs no download; a language druk vendors
-no grammar for ships its own `.wasm` as an asset in the plugin folder.
+no grammar for ships its own `.wasm` as an asset in the extension folder.
 
 Adding a language, a server or a theme is therefore a JSON file and a
-`bun run plugins`, not a source change.
+`bun run extensions`, not a source change.
 
 ## Runtime and tooling
 
@@ -181,7 +181,7 @@ bun run build            # compile a binary for this machine into dist/<target>/
 bun run build linux-x64  # …or for a named target, if its native package is installed
 bun run release          # package dist/ for npm + release archives (--publish to ship)
 bun run formula          # Homebrew formula for those archives, into dist/release/druk.rb
-bun run plugins          # regenerate plugins/index.json — the market's catalog
+bun run extensions          # regenerate extensions/index.json — the market's catalog
 bun run test             # unit + UI, one file per process, sequential (~4 min)
 bun test test/foo.tsx    # a single file, where the flag buys nothing
 bun run check            # check-types + lint + format + test — the one to run
@@ -278,6 +278,21 @@ trailing digits, and `druk-darwin-arm64` ends in `64`. Drop the stanza and every
 alike reports `stable 64`, so `brew upgrade letstri/tap/druk` — what `core/upgrade.ts`
 tells brew users to run — never sees a new version.
 
+**The formula ships bottles, and has to.** `bun run formula` also tars each binary as a
+keg — `druk/<version>/bin/druk` — into `dist/release/druk-<version>.<tag>.bottle.tar.gz`,
+and the `bottle do` block it writes points `root_url` at the same release. Without them a
+`brew install` is a *source build* as far as Homebrew is concerned, whatever the formula's
+`install` actually does: `FormulaInstaller#install` runs `perform_build_from_source_checks`
+before it looks at what will be installed, which is fatal on a machine whose Xcode is older
+than the running macOS asks for — a macOS beta rejecting the current release Xcode, which
+is [#40](https://github.com/letstri/druk/issues/40) — and raises `UnbottledError` where no
+developer tools are installed at all. Two details are load-bearing: the file names, because
+brew derives a bottle's URL from a non-GitHub-Packages `root_url` as
+`<name>-<version>.<tag>.bottle.tar.gz` (one dash, where `brew bottle` itself writes two);
+and the tags, which name the *oldest* system a binary runs on rather than the one it was
+built on — brew pours the newest bottle at or below the running macOS, so `arm64_ventura`
+and `ventura` cover every later release, including ones a given druk predates.
+
 ## Architecture
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) first. It has the folder map, the one-way
@@ -285,18 +300,18 @@ dependency rule, and recipes for the extension points:
 
 | Want to add a… | Edit |
 | --- | --- |
-| language | a `languages` entry in a market manifest — `plugins/<language>/plugin.json`, then `bun run plugins`. `grammar` is `{"vendored": "<key in src/languages/grammars.ts>"}` for one druk embeds, `{"bundled": true}` for one OpenTUI carries, or `{"wasm": "…", "query": "…"}` for files in the plugin folder. `patterns` are `{group, re, flags}` (regex as a string) for a format with no usable grammar; `extensions` / `filenames` / `filenamePattern` claim the names OpenTUI resolves none of. Adding a *vendored* grammar is still a source change: two static imports in `src/languages/grammars.ts` |
-| language server | a `languageServers` entry in a market manifest — `plugins/<language>/plugin.json`, then `bun run plugins`. `install` is `{"kind": "npm", "packages": […]}` or `{"kind": "download", "urls": {"<platform>-<arch>": "…"}}` when druk can fetch it itself, and `{"kind": "manual", "command": "…"}` for a line to print — a `download` carries a `command` too, for the machines the release has no build for; users override per-server with the `lspServers` setting, which can only *replace* a command some plugin declared. A server whose command depends on what the project installed goes in `projectCommand` (`src/lsp/project.ts`) instead, which every server consults first — that part is code, and stays in `src/` |
+| language | a `languages` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `grammar` is `{"vendored": "<key in src/languages/grammars.ts>"}` for one druk embeds, `{"bundled": true}` for one OpenTUI carries, or `{"wasm": "…", "query": "…"}` for files in the extension folder. `patterns` are `{group, re, flags}` (regex as a string) for a format with no usable grammar; `extensions` / `filenames` / `filenamePattern` claim the names OpenTUI resolves none of. Adding a *vendored* grammar is still a source change: two static imports in `src/languages/grammars.ts` |
+| language server | a `languageServers` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `install` is `{"kind": "npm", "packages": […]}` or `{"kind": "download", "urls": {"<platform>-<arch>": "…"}}` when druk can fetch it itself, and `{"kind": "manual", "command": "…"}` for a line to print — a `download` carries a `command` too, for the machines the release has no build for; users override per-server with the `lspServers` setting, which can only *replace* a command some extension declared. A server whose command depends on what the project installed goes in `projectCommand` (`src/lsp/project.ts`) instead, which every server consults first — that part is code, and stays in `src/` |
 | PDF viewer | rendering in `src/core/pdf.ts`, UI in `src/ui/PdfView.tsx`, and bufferless routing in `src/app/workspace.ts` |
-| theme | a `themes` entry in a market manifest — `plugins/<family>/plugin.json`, one plugin per palette family (catppuccin carries its four flavors), then `bun run plugins`. Only `dark` and `light` are built in, in `src/themes/`, because the defaults name them. Chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there and are never listed by a theme |
+| theme | a `themes` entry in a market manifest — `extensions/<family>/extension.json`, one extension per palette family (catppuccin carries its four flavors), then `bun run extensions`. Only `dark` and `light` are built in, in `src/themes/`, because the defaults name them. Chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there and are never listed by a theme |
 | icon theme | an `icons` entry in a market manifest — one codepoint per glyph, since the tree gives it the arrow's single column, and a two-cell glyph is dropped rather than drawn. `unicode` alone is built in (`src/icons/index.ts`), being the set any font already has |
-| plugin contribution kind | a list on the manifest (`src/plugins/manifest.ts`) parsed into `Plugin` (`src/plugins/types.ts`), registered in `loadPlugins` (`src/plugins/index.ts`), and a `register…`/`clearPlugin…` pair on whichever registry owns it — the registry has to be read through a function everywhere, since plugins load after the modules that list its contents are evaluated |
+| extension contribution kind | a list on the manifest (`src/extensions/manifest.ts`) parsed into `Extension` (`src/extensions/types.ts`), registered in `loadExtensions` (`src/extensions/index.ts`), and a `register…`/`clearExtension…` pair on whichever registry owns it — the registry has to be read through a function everywhere, since extensions load after the modules that list its contents are evaluated |
 | previewable value | `preview` + `restore` on the palette `Command` (`src/app/commands.ts`) or on a row's `select` (`src/ui/SettingsView.tsx`) — `preview` paints while the selection sits on the value, `restore` runs when the list is torn down, so it must put back what the config says rather than remember what it replaced |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `VALIDATORS` — one validator per key, since the project file is read key by key) + a row in `src/app/settings.ts` (`specs`, with the `key` it edits) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |
 | keybinding | a row in `BINDABLE` (`src/app/keymap.ts`) plus a handler under the same id in `src/app/keyboard.ts` — or, for an editor-only key, `src/ui/EditorPane.tsx` — advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Ctrl+K peek and the welcome screen), with the row's `ids` naming the commands it spells out |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
-| market plugin | a folder under `plugins/` holding `plugin.json`, then `bun run plugins` to regenerate `plugins/index.json` — `test/plugins-repo.test.ts` fails when the committed index is stale, and bumping the manifest `version` is what makes installed copies see an update |
+| market extension | a folder under `extensions/` holding `extension.json`, then `bun run extensions` to regenerate `extensions/index.json` — `test/extensions-repo.test.ts` fails when the committed index is stale, and bumping the manifest `version` is what makes installed copies see an update |
 | branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
 
 Key handlers subscribe through `useKeys` (`src/ui/useKeys.ts`), never OpenTUI's
@@ -369,17 +384,17 @@ expect(t.captureCharFrame()).toContain('const a = 1')
 `test/helpers.tsx` has `fixture()` (temp project), `launch()` (renders `<App/>`, and takes
 a config and a terminal size), `press()`, `pressTimes()`, `openFile()`, `settle()`,
 `until()`/`untilFrame()`/`untilGone()`, `pressEscape()`, `runCommand()` and
-`loadMarketPlugins()`.
+`loadMarketExtensions()`.
 Highlight helpers live in `test/syntax.ts` instead — `parseHighlights()` and
 `allSegments()` — so a unit test can use them without pulling in `<App/>`. Five rules the
 harness exists to encode:
 
-- **A test process starts with the preinstalled plugins and nothing else.**
+- **A test process starts with the preinstalled extensions and nothing else.**
   `test/setup.ts` registers them, so typescript, json, markdown, html, css, yaml and
   toml highlight as they do on a real first run. Anything else — Go, Python, tsrx,
-  dotenv, a market theme — needs `loadMarketPlugins()` at the top of the file, which
-  reads this repository’s `plugins/` folder as a plugins folder. A test that asserts
-  on a *missing* plugin (the market’s install offer) must not call it.
+  dotenv, a market theme — needs `loadMarketExtensions()` at the top of the file, which
+  reads this repository’s `extensions/` folder as a extensions folder. A test that asserts
+  on a *missing* extension (the market’s install offer) must not call it.
 
 - **Yield before capturing.** The reconciler flushes on a macrotask; a frame captured
   straight after a key still shows the previous state. `press()`/`settle()` handle it.
