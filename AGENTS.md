@@ -14,12 +14,18 @@ Features: file tree with bulk file operations and opt-in hiding of dotfiles and
 git-ignored files, preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide — the project scan and the fuzzy
 file picker both skip git-ignored paths, whatever the tree's `respectGitignore` says, so
-a build directory or an agent's worktree checkout is never a result), command palette,
+a build directory or an agent's worktree checkout is never a result; the panel previews
+the selected hit in its file, syntax-coloured and with the hit picked out, over as many
+lines either side as the terminal has room for, and folds a file behind its heading with
+Tab or every file at once with Shift+Tab, which turns the results into a list of files),
+command palette,
 themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, which vim mode
 overrides while it is on, since there the shape is what tells normal from insert),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
-→ / ←) and palette commands for commit/undo/stash/push/fetch/pull and for branches
+→ / ←) and palette commands for commit/undo/stash/push/fetch/pull — a push origin
+rejects offers to merge origin in and push again, VS Code's prompt, rather than
+naming the two commands and stopping — and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
 side-by-side) for whichever change the panel's cursor is on — the arrows page through
 them, the panel is the only way in, and the diff is a tab of its own in the strip
@@ -98,6 +104,18 @@ command id to one chord, replacing whatever it had — the settings page's Short
 row lists every bindable command with the key it answers to, refuses a chord another
 custom binding holds and names whatever default a rebind takes the key from, while a
 clash or a value that is not a chord is reported on startup),
+file icons in the tree (`iconTheme` — `unicode` shapes any font has, `nerd` for a
+patched one, or a theme a plugin contributes; the glyph takes the expansion
+arrow's column, since a folder icon has an open and a closed form, and the
+default is `none` because nothing can ask a terminal what its font holds),
+a plugin system (JSON manifests in `$XDG_CONFIG_HOME/druk/plugins/<id>/plugin.json`
+— or `<id>.json` for a one-file plugin — and in `<project>/.druk/plugins/` for a
+project's own; a manifest contributes themes, icon themes and language servers,
+and is data rather than code, so installing one runs nothing and the compiled
+binary needs no loader; `disabledPlugins` shelves one without deleting it, the
+settings page's Plugins section toggles them, palette → Plugins lists and reloads
+them, and a malformed manifest costs its plugin that one contribution and is
+reported on startup),
 file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
@@ -233,6 +251,8 @@ dependency rule, and recipes for the extension points:
 | language | `src/languages/grammars.ts` + a query in `src/languages/queries/`, then `src/languages/index.ts`; an extension OpenTUI does not resolve also needs a line in `filetypeForPath` |
 | language server | an entry in `DEFAULT_SERVERS` in `src/lsp/servers.ts`, with `install: npm(…)` when druk can fetch it itself or `install: manual(…)` for a line to print (users override per-server with the `lspServers` setting; the settings page toggles them and edits their commands) — a server whose command depends on what the project installed goes in `projectCommand` in `src/lsp/project.ts` instead, which every server consults first |
 | theme | new file in `src/themes/` + register in `src/themes/index.ts` — chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there, not listed per theme |
+| icon theme | an entry in `BUILTIN_ICON_THEMES` in `src/icons/index.ts` — one codepoint per glyph, since the tree gives it the arrow's single column |
+| plugin contribution kind | a list on the manifest (`src/plugins/manifest.ts`) parsed into `Plugin` (`src/plugins/types.ts`), registered in `loadPlugins` (`src/plugins/index.ts`), and a `register…`/`clearPlugin…` pair on whichever registry owns it — the registry has to be read through a function everywhere, since plugins load after the modules that list its contents are evaluated |
 | previewable value | `preview` + `restore` on the palette `Command` (`src/app/commands.ts`) or on a row's `select` (`src/ui/SettingsView.tsx`) — `preview` paints while the selection sits on the value, `restore` runs when the list is torn down, so it must put back what the config says rather than remember what it replaced |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `VALIDATORS` — one validator per key, since the project file is read key by key) + a row in `src/app/settings.ts` (`specs`, with the `key` it edits) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …) |

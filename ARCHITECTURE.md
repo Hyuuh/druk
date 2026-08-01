@@ -76,6 +76,12 @@ scripts/
                      shapes as one file position
     servers.ts       filetype → server command  ← add a language server here
     status.ts        the shapes the LSP status page renders (state, log, docs)
+  plugins/
+    index.ts         discovery: manifests → registered contributions  ← plugins
+    manifest.ts      validating a plugin.json into themes / icons / servers
+    types.ts         Plugin and the problems a manifest can have
+  icons/
+    index.ts         file-icon themes: the tree's glyph column  ← add an icon set
   themes/
     index.ts         theme registry  ← add a theme here
     types.ts         Theme / ThemeUi shape
@@ -184,6 +190,38 @@ plain object because it is only read when the style table is rebuilt.
 Indent guides ride the same pipeline: `computeHighlights` appends one `indent.guide`
 capture per indent stop, so they inherit the newline-offset conversion and run-merging
 that syntax highlights use.
+
+### Add a plugin contribution kind
+
+A plugin is a JSON manifest — `plugin.json` in a folder under
+`$XDG_CONFIG_HOME/druk/plugins/`, `<name>.json` for a one-file plugin, and the same
+two shapes under `<project>/.druk/plugins/`. It contributes themes, icon themes and
+language servers, and nothing else: manifests are data, so installing one executes
+nothing, and `bun build --compile` embeds only what it can see at build time — a
+plugin is by definition not that, which is why there is no code entry point to load.
+
+To add a fourth kind: parse and validate it in
+[`src/plugins/manifest.ts`](src/plugins/manifest.ts), put it on `Plugin`
+([`types.ts`](src/plugins/types.ts)), register it in `loadPlugins`
+([`index.ts`](src/plugins/index.ts)), and give the registry that owns it a
+`register…` / `clearPlugin…` pair — the clear is what makes reload and disable work,
+since a load must leave nothing behind from the load before.
+
+Two rules the existing three follow:
+
+- **Read every registry through a function.** `themeNames()`, `iconThemeNames()`,
+  `servers()` — never a module-level constant computed from the table. Plugins are
+  registered while `main()` runs, which is *after* `app/settings.ts` and
+  `app/commands.ts` have been evaluated, so a `const THEME_NAMES = Object.keys(…)`
+  captures the built-ins alone and a plugin's theme silently never appears.
+- **Load before the config is read.** `isThemeName` and `isIconThemeName` back the
+  validators for `theme` and `iconTheme`, so a plugin theme in the config is only a
+  valid value once its plugin has registered it. `main.tsx` calls `loadPlugins` first,
+  and takes `disabledPlugins` from `readDisabledPlugins` — a deliberate pre-read of
+  that one key, since deciding which plugins to skip cannot itself wait for a parsed
+  config. Everything downstream still copes with an id going missing: `themeFor` and
+  `iconFor` fall back rather than leave a hole, because a plugin can be uninstalled
+  while the config still names it.
 
 ### Add a setting
 
