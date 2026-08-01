@@ -21,8 +21,12 @@ import type { TargetName } from '../build'
  *
  * Run after `bun run build <targets>`; only targets with a built binary are packaged.
  */
-const NPM_DIR = './dist/npm'
-const RELEASE_DIR = './dist/release'
+// Only the *outputs* move with DRUK_DIST; the sources below stay relative to the repo.
+// `test/release-notices.test.ts` packages into a temp directory through it, so the suite
+// never rewrites the dist/ a developer just built into.
+const DIST = process.env.DRUK_DIST ?? './dist'
+const NPM_DIR = `${DIST}/npm`
+const RELEASE_DIR = `${DIST}/release`
 const NOTICE = './THIRD_PARTY_NOTICES.md'
 const PDFIUM_LICENSE = './third_party/PDFIUM_LICENSE'
 
@@ -40,7 +44,7 @@ const requested = process.argv.slice(2).filter(arg => !arg.startsWith('-'))
 const publish = process.argv.includes('--publish')
 
 const targets = (requested.length ? (requested as TargetName[]) : ALL_TARGETS).filter(target =>
-  existsSync(`./dist/${target}/${binaryName(target)}`),
+  existsSync(`${DIST}/${target}/${binaryName(target)}`),
 )
 
 if (targets.length === 0) {
@@ -57,7 +61,7 @@ for (const target of targets) {
   const exe = binaryName(target)
 
   const archive = `${RELEASE_DIR}/druk-${target}.${os === 'linux' ? 'tar.gz' : 'zip'}`
-  const from = `./dist/${target}`
+  const from = `${DIST}/${target}`
   await cp(NOTICE, `${from}/THIRD_PARTY_NOTICES.md`)
   await cp(PDFIUM_LICENSE, `${from}/PDFIUM_LICENSE`)
   if (os === 'linux') {
