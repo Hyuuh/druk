@@ -23,9 +23,9 @@ let registeredGeneration = -1
  * Teach the worker every grammar the registered languages carry.
  *
  * Run again whenever the language registry changes, not once at startup:
- * languages arrive with plugins, and a plugin installed or reloaded mid-session
+ * languages arrive with extensions, and an extension installed or reloaded mid-session
  * would otherwise stay unhighlighted until the next launch. Registering the same
- * filetype twice is what the worker already does for a reloaded plugin, and it
+ * filetype twice is what the worker already does for a reloaded extension, and it
  * takes the later one.
  */
 function registerParsers(client: TreeSitterClient): void {
@@ -121,7 +121,7 @@ export function styleForId(id: number): StyleDefinitionInput | undefined {
  *
  * The registry is asked first, and OpenTUI second: a language declares the names
  * and extensions OpenTUI resolves none of (`.tf`, `.tsrx`, `.env.local`,
- * `bun.lock`), and a plugin claiming one has to win — that claim is the only
+ * `bun.lock`), and an extension claiming one has to win — that claim is the only
  * thing making its patterns run at all.
  */
 export function filetypeForPath(path: string): string | undefined {
@@ -157,9 +157,9 @@ async function ensureClient(): Promise<TreeSitterClient | null> {
     })()
   }
   const client = await initPromise
-  // A plugin registered a language after the worker was initialized — the check
+  // An extension registered a language after the worker was initialized — the check
   // is here rather than in `registerLanguage` because the client may not exist
-  // yet when plugins load, and this is the one path every highlight goes through.
+  // yet when extensions load, and this is the one path every highlight goes through.
   if (client && registeredGeneration !== languageGeneration()) registerParsers(client)
   return client
 }

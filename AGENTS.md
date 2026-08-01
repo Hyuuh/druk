@@ -112,17 +112,23 @@ file icons in the tree (`iconTheme` — `unicode` shapes any font has, or a them
 extension contributes, `nerd-icons` in the market for a patched font; the glyph takes the expansion
 arrow's column, since a folder icon has an open and a closed form, and the
 default is `none` because nothing can ask a terminal what its font holds),
-a extension system (JSON manifests in `$XDG_CONFIG_HOME/druk/extensions/<id>/extension.json`
+an extension system (JSON manifests in `$XDG_CONFIG_HOME/druk/extensions/<id>/extension.json`
 — or `<id>.json` for a one-file extension — and in `<project>/.druk/extensions/` for a
 project's own; a manifest contributes themes, icon themes and language servers,
 and is data rather than code, so installing one runs nothing and the compiled
-binary needs no loader; `disabledExtensions` shelves one without deleting it, the
-settings page's Extensions section toggles them, palette → Extensions lists and reloads
-them, and a malformed manifest costs its extension that one contribution and is
+binary needs no loader; `disabledExtensions` shelves one without deleting it,
+and a malformed manifest costs its extension that one contribution and is
 reported on startup),
-a extension market — `extensions/` **in this repository**, one folder per extension, served
+an extensions page (palette → Extensions) built the way the settings page is —
+a full-slot page of sections, `/` to filter the rows: **Installed** lists every
+manifest with what it contributes, Enter enabling or disabling one and Backspace
+uninstalling one that is not built in; **Available** is the market minus what is
+already there, Enter raising the install confirm; **Market** holds the update
+check, the startup-check switch and the registry URL. Nothing about extensions
+is on the settings page,
+an extension market — `extensions/` **in this repository**, one folder per extension, served
 raw from `main`, so a merged pull request is installable without a druk release;
-palette → Extensions → Extension market installs one after a confirm that names the
+the extensions page's Available section installs one after a confirm that names the
 commands it would have druk spawn, an installed extension with a newer version in the
 catalog is reported in the status bar at startup, a file whose language no
 installed extension serves offers the extension that does, and a config naming a theme
@@ -131,8 +137,8 @@ that off, `extensionRegistry` points it at a fork),
 file watching with conflict prompts,
 per-project session restore, and a startup update check.
 
-**Everything extensible is a extension now, and most of them live in `extensions/`.**
-A extension is one of two kinds and never both: a *language* extension (the grammar,
+**Everything extensible is an extension now, and most of them live in `extensions/`.**
+An extension is one of two kinds and never both: a *language* extension (the grammar,
 highlight query, patterns, line comment and label for one language, plus the
 server that serves it) or an *appearance* extension (themes and icon themes).
 
@@ -312,6 +318,7 @@ dependency rule, and recipes for the extension points:
 | keybinding | a row in `BINDABLE` (`src/app/keymap.ts`) plus a handler under the same id in `src/app/keyboard.ts` — or, for an editor-only key, `src/ui/EditorPane.tsx` — advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Ctrl+K peek and the welcome screen), with the row's `ids` naming the commands it spells out |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
 | market extension | a folder under `extensions/` holding `extension.json`, then `bun run extensions` to regenerate `extensions/index.json` — `test/extensions-repo.test.ts` fails when the committed index is stale, and bumping the manifest `version` is what makes installed copies see an update |
+| row on the extensions page | one of the three section builders in `src/app/extensionsPage.ts`; `src/ui/ExtensionsView.tsx` draws whatever they return and owns nothing but the selection. A row that needs free text hands an edit back from `activate`, the way a setting's `select` does |
 | branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
 
 Key handlers subscribe through `useKeys` (`src/ui/useKeys.ts`), never OpenTUI's
@@ -393,7 +400,7 @@ harness exists to encode:
   `test/setup.ts` registers them, so typescript, json, markdown, html, css, yaml and
   toml highlight as they do on a real first run. Anything else — Go, Python, tsrx,
   dotenv, a market theme — needs `loadMarketExtensions()` at the top of the file, which
-  reads this repository’s `extensions/` folder as a extensions folder. A test that asserts
+  reads this repository’s `extensions/` folder as an extensions folder. A test that asserts
   on a *missing* extension (the market’s install offer) must not call it.
 
 - **Yield before capturing.** The reconciler flushes on a macrotask; a frame captured

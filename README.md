@@ -201,7 +201,7 @@ instead of breaking startup.
 
 | Setting | Default | |
 | --- | --- | --- |
-| `theme` | `"dark"` | `dark` and `light` ship with druk; ayu, catppuccin, dracula, everforest, gruvbox, kanagawa, nord, one-dark, rosé pine, solarized, tokyo night and vesper are one install away in the [plugin market](#plugins) |
+| `theme` | `"dark"` | `dark` and `light` ship with druk; ayu, catppuccin, dracula, everforest, gruvbox, kanagawa, nord, one-dark, rosé pine, solarized, tokyo night and vesper are one install away in the [extension market](#extensions) |
 | `transparent` | `false` | set `true` to leave the editor, tab strip and sidebar unpainted, so a translucent terminal shows through |
 | `iconTheme` | `"none"` | file icons in the tree: `unicode` (shapes any font has), or a set from the market — `nerd-icons` needs a patched font |
 | `tabSize` | `2` | 1–16 |
@@ -213,46 +213,51 @@ instead of breaking startup.
 | `showDotfiles` | `true` | set `false` to hide dotfiles in the file tree |
 | `respectGitignore` | `false` | set `true` to hide git-ignored files in the file tree |
 | `diffView` | `"inline"` | `inline` or `split` — how the diff view lays out changes |
-| `pluginUpdates` | `true` | check the plugin market at startup: update notices, and the offer of a plugin for a language or theme you are missing. `false` never contacts it |
-| `pluginRegistry` | druk's own | an https folder holding `index.json` and `<id>/plugin.json` — point it at a fork if you keep your own market |
+| `extensionUpdates` | `true` | check the extension market at startup: update notices, and the offer of an extension for a language or theme you are missing. `false` never contacts it |
+| `extensionRegistry` | druk's own | an https folder holding `index.json` and `<id>/extension.json` — point it at a fork if you keep your own market |
 
 druk also remembers each project's open tabs, active file and expanded folders, and
 restores them the next time you open that directory.
 
-## Plugins
+## Extensions
 
-**Almost everything druk can do with a language or a colour is a plugin**, and the
+**Almost everything druk can do with a language or a colour is an extension**, and the
 market is a folder in this repository that druk reads directly — so a new theme, or
 support for a new language, reaches you when its pull request merges, not when druk
 next releases.
 
-A plugin is one of two kinds: a **language** (highlighting, and the language server
+An extension is one of two kinds: a **language** (highlighting, and the language server
 that serves it) or an **appearance** (themes and icon themes).
 
 Out of the box druk highlights TypeScript, JavaScript and their React dialects,
-JSON, Markdown, HTML, CSS and its preprocessors, YAML and TOML — those plugins ship
+JSON, Markdown, HTML, CSS and its preprocessors, YAML and TOML — those extensions ship
 inside the binary. Go, Rust, Python, C, C++, Java, Ruby, Elixir, PHP, Swift, Lua,
 Bash and about fifteen more are one install away, each bringing its language server
 with it.
 Themes beyond the GitHub pair and the Nerd Font icons are there too.
 
-`F1` → `Plugins` → `Plugin market` lists what is on offer; `Enter` installs one after
-showing what it adds and, for a language server, the command druk would run. druk
-also offers on its own: open a Go file with no Go plugin and it says so, and a config
-naming a theme you no longer have is offered the plugin that carries it. When an
-installed plugin has a newer version, the status bar says so at startup —
-`Plugins → Update plugins` takes it. Installing is usually one small JSON file: the
+`F1` → `Extensions` opens a page of its own, the way `Settings` does. **Installed**
+lists every extension with what it contributes — `Enter` turns one off and back on,
+`Backspace` uninstalls one. **Available** is the market minus what you already have;
+`Enter` installs one after showing what it adds and, for a language server, the command
+druk would run. **Market** holds the update check, the startup-check switch and the
+registry URL. `/` filters the rows.
+
+druk also offers on its own: open a Go file with no Go extension and it says so, and a
+config naming a theme you no longer have is offered the extension that carries it. When
+an installed extension has a newer version, the status bar says so at startup, and the
+page's `Update everything` row takes it. Installing is usually one small JSON file: the
 grammars themselves are already in the binary.
 
 Contributing one is a JSON file and a pull request: see
-[`plugins/README.md`](https://github.com/letstri/druk/tree/main/plugins).
+[`extensions/README.md`](https://github.com/letstri/druk/tree/main/extensions).
 
-A plugin is a JSON file, so you can also just write one. Drop it in
-`~/.config/druk/plugins/` — either `<name>.json`, or `<name>/plugin.json` — and run
-`Plugins` → `Reload plugins`. A project can carry its own in
-`<project>/.druk/plugins/`.
+An extension is a JSON file, so you can also just write one. Drop it in
+`~/.config/druk/extensions/` — either `<name>.json`, or `<name>/extension.json` — and use
+the extensions page's `Reload from disk` row. A project can carry its own in
+`<project>/.druk/extensions/`.
 
-An appearance plugin:
+An appearance extension:
 
 ```json
 {
@@ -282,7 +287,7 @@ An appearance plugin:
 }
 ```
 
-And a language plugin — the other kind, never mixed with the first:
+And a language extension — the other kind, never mixed with the first:
 
 ```json
 {
@@ -311,20 +316,20 @@ And a language plugin — the other kind, never mixed with the first:
 `grammar` can also be `{"vendored": "go"}` for one of the grammars already inside
 druk, or `{"bundled": true}` for one OpenTUI carries; with no grammar at all, a
 `patterns` list of regexes highlights the file instead — that is how YAML, SQL and
-Terraform are done. [`plugins/README.md`](https://github.com/letstri/druk/tree/main/plugins)
+Terraform are done. [`extensions/README.md`](https://github.com/letstri/druk/tree/main/extensions)
 has the full shape.
 
 Copy the colours of a market theme out of
-[`plugins/`](https://github.com/letstri/druk/tree/main/plugins) to see every `ui`
+[`extensions/`](https://github.com/letstri/druk/tree/main/extensions) to see every `ui`
 key and the syntax groups worth styling. Each icon must be a single-cell character —
 an emoji is refused, because it would shift every name in the tree by a column. An
 `id` that matches one already registered replaces it, so this is how to repaint
-`dark`, or how a project's own plugin folder overrides a market plugin for the
+`dark`, or how a project's own extension folder overrides a market extension for the
 languages that project uses.
 
-Manifests are data, never code: installing a plugin runs nothing — though a language
+Manifests are data, never code: installing an extension runs nothing — though a language
 server it declares is a program druk starts when a matching file opens, which is why
-the install prompt names that command. They are read at startup — `F1` → `Plugins` →
-`Reload plugins` picks up a change without restarting, and lists what is installed. The settings page's Plugins section turns one off
-(`disabledPlugins` in the config), and a manifest with a mistake in it says so in the
-status bar rather than failing quietly.
+the install prompt names that command. They are read at startup — the extensions page's
+`Reload from disk` row picks up a change without restarting. Its Installed section turns
+one off (`disabledExtensions` in the config), and a manifest with a mistake in it says so
+in the status bar rather than failing quietly.

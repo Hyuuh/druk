@@ -1,5 +1,5 @@
 /**
- * The plugin market as the editor sees it: what is on offer, what is out of
+ * The extension market as the editor sees it: what is on offer, what is out of
  * date, and what the open file would want installed.
  *
  * Every path into an install goes through the same two steps — fetch and
@@ -15,22 +15,22 @@ import { createMemo, createSignal } from 'solid-js'
 import { unregisteredNames } from '../core/config'
 import {
   fetchCatalog,
-  fetchPlugin,
+  fetchExtension,
   isStale,
   readCachedCatalog,
   removeFromDisk,
   updatesFor,
   writeCachedCatalog,
-  writePlugin,
+  writeExtension,
 } from '../core/market'
 import type { Fetched, Fetcher, MarketEntry } from '../core/market'
 import { isNewer } from '../core/update'
-import { plugins, PLUGINS_DIR } from '../plugins'
+import { extensions, EXTENSIONS_DIR } from '../extensions'
 import type { PromptState } from './prompts'
 import type { Settings } from './settings'
 import type { Status } from './status'
 
-/** What a plugin adds, in the words the prompt and the palette use. */
+/** What an extension adds, in the words the prompt and the palette use. */
 function summarize(entry: MarketEntry): string {
   const counts = [
     [entry.provides.themes.length, 'theme'],
@@ -55,7 +55,7 @@ export function createMarket(deps: {
 
   // Seeded from the cache so the palette has a market to show before — and
   // without — any network round trip.
-  const [catalog, setCatalog] = createSignal<MarketEntry[]>(readCachedCatalog()?.plugins ?? [])
+  const [catalog, setCatalog] = createSignal<MarketEntry[]>(readCachedCatalog()?.extensions ?? [])
   /**
    * Ids already offered this session. A decline is a decision, and re-asking on
    * every file of that language would make the offer a nuisance rather than a
@@ -67,24 +67,25 @@ export function createMarket(deps: {
   /** Manifests fetched for an open prompt, waiting for the answer to be written. */
   const fetched = new Map<string, Fetched & { ok: true }>()
 
-  const registry = () => settings.config.pluginRegistry
+  const registry = () => settings.config.extensionRegistry
 
-  const entry = (id: string): MarketEntry | undefined => catalog().find(plugin => plugin.id === id)
+  const entry = (id: string): MarketEntry | undefined =>
+    catalog().find(extension => extension.id === id)
 
   const installedVersions = () =>
-    plugins().map(plugin => ({ id: plugin.id, version: plugin.version }))
+    extensions().map(extension => ({ id: extension.id, version: extension.version }))
 
-  /** Installed plugins the market has a newer version of. */
+  /** Installed extensions the market has a newer version of. */
   const updates = createMemo(() => updatesFor(installedVersions(), catalog(), isNewer))
 
   /**
    * Refresh the catalog. `force` skips the freshness check — the palette's
-   * "Check for plugin updates" means now, not "if the cache has expired".
+   * "Check for extension updates" means now, not "if the cache has expired".
    */
   const refresh = async (force = false): Promise<MarketEntry[]> => {
     const cached = readCachedCatalog()
     if (!force && !isStale(cached, Date.now())) {
-      if (cached) setCatalog(cached.plugins)
+      if (cached) setCatalog(cached.extensions)
       return catalog()
     }
     const fresh = await fetchCatalog(registry(), fetcher)
@@ -104,38 +105,38 @@ export function createMarket(deps: {
   const ready = (): Promise<MarketEntry[]> => (loading ??= refresh())
 
   /**
-   * Fetch `id`'s manifest and ask. Silent about a plugin it cannot fetch when
+   * Fetch `id`'s manifest and ask. Silent about an extension it cannot fetch when
    * the offer was druk's idea rather than the user's — an editor that reports a
    * failed background request on every launch is worse than one that says
    * nothing.
    */
   const offer = async (id: string, why: string, quiet = false): Promise<void> => {
     const found = entry(id)
-    if (!found) return void (quiet || status.say(`No plugin "${id}" in the market`, 'warn'))
-    const installed = plugins().find(plugin => plugin.id === id)
-    const result = await fetchPlugin(id, { registry: registry(), fetcher })
-    if (!result.ok) return void (quiet || status.say(`Plugin ${id}: ${result.error}`, 'error'))
+    if (!found) return void (quiet || status.say(`No extension "${id}" in the market`, 'warn'))
+    const installed = extensions().find(extension => extension.id === id)
+    const result = await fetchExtension(id, { registry: registry(), fetcher })
+    if (!result.ok) return void (quiet || status.say(`Extension ${id}: ${result.error}`, 'error'))
     // An offer druk raised itself must never replace a question the user is
     // already being asked — a save conflict, a delete — since the modal reads
     // as an answer to whatever is on screen and the other prompt would vanish.
     if (quiet && prompts.prompt()) return
     fetched.set(id, result)
     prompts.setPrompt({
-      kind: 'installPlugin',
+      kind: 'installExtension',
       id,
       name: found.name,
       summary: summarize(found),
       why,
       // The one part of a manifest that is not inert: these are spawned when a
       // file of a matching type opens, so the answer is about them.
-      runs: result.plugin.servers.map(server => server.command.join(' ')),
+      runs: result.extension.servers.map(server => server.command.join(' ')),
       ...(installed ? { current: installed.version } : null),
     })
   }
 
   /**
    * Write the manifest the open prompt was about, and register it. Asynchronous
-   * because a plugin may carry assets — a grammar for a language druk ships
+   * because an extension may carry assets — a grammar for a language druk ships
    * none for — and those are fetched now rather than at prompt time, so the
    * question is answered before the megabytes move.
    */
@@ -143,15 +144,15 @@ export function createMarket(deps: {
     const result = fetched.get(id)
     fetched.delete(id)
     if (!result) return
-    if (result.plugin.assets.length > 0) status.say(`Installing ${result.plugin.name}…`)
+    if (result.extension.assets.length > 0) status.say(`Installing ${result.extension.name}…`)
     void (async () => {
-      const error = await writePlugin(id, result, PLUGINS_DIR, {
+      const error = await writeExtension(id, result, EXTENSIONS_DIR, {
         registry: registry(),
         fetcher,
       })
       if (error) return void status.say(`Could not install ${id}: ${error}`, 'error')
-      const load = settings.reloadPlugins()
-      const installed = load.plugins.find(plugin => plugin.id === id)
+      const load = settings.reloadExtensions()
+      const installed = load.extensions.find(extension => extension.id === id)
       status.say(`Installed ${installed?.name ?? id} ${installed?.version ?? ''}`.trim())
     })()
   }
@@ -170,40 +171,40 @@ export function createMarket(deps: {
   const remove = (id: string): void => {
     // A built-in has no folder to delete: it is inside the binary, and the next
     // load would bring it straight back. Disabling is the operation that exists.
-    const installed = plugins().find(plugin => plugin.id === id)
+    const installed = extensions().find(extension => extension.id === id)
     if (installed?.builtin) {
       return void status.say(`"${id}" ships with druk — disable it instead`, 'warn')
     }
-    const error = removeFromDisk(id, PLUGINS_DIR)
+    const error = removeFromDisk(id, EXTENSIONS_DIR)
     if (error) return void status.say(`Could not remove ${id}: ${error}`, 'error')
-    settings.reloadPlugins()
-    status.say(`Removed plugin "${id}"`)
+    settings.reloadExtensions()
+    status.say(`Removed extension "${id}"`)
   }
 
-  /** The palette's "Check for plugin updates": always a fetch, always an answer. */
+  /** The palette's "Check for extension updates": always a fetch, always an answer. */
   const checkNow = async (): Promise<void> => {
     const before = catalog().length
     const fresh = await refresh(true)
     if (fresh.length === 0) {
-      return void status.say('Could not reach the plugin market', 'warn')
+      return void status.say('Could not reach the extension market', 'warn')
     }
     const pending = updates()
     if (pending.length > 0) {
       return void status.say(
-        `${pending.length} plugin update${pending.length === 1 ? '' : 's'} available`,
+        `${pending.length} extension update${pending.length === 1 ? '' : 's'} available`,
       )
     }
     status.say(
       before === 0
-        ? `Plugin market: ${fresh.length} plugin${fresh.length === 1 ? '' : 's'}`
-        : 'Every plugin is up to date',
+        ? `Extension market: ${fresh.length} extension${fresh.length === 1 ? '' : 's'}`
+        : 'Every extension is up to date',
     )
   }
 
   const updateAll = async (): Promise<void> => {
     await refresh(true)
     const pending = updates()
-    if (pending.length === 0) return void status.say('Every plugin is up to date')
+    if (pending.length === 0) return void status.say('Every extension is up to date')
     // One prompt at a time: each manifest is fetched and confirmed on its own,
     // and the palette command is how the next one is reached. A queue of modals
     // would be worse than a list.
@@ -215,7 +216,7 @@ export function createMarket(deps: {
    * language per session, and never for one the user has already said no to.
    */
   const suggestForFiletype = (filetype: string): void => {
-    if (!settings.config.pluginUpdates || !settings.config.lsp) return
+    if (!settings.config.extensionUpdates || !settings.config.lsp) return
     // Marked before the await, not after: `clientFor` asks on every sync of
     // every open document, so a check that waited for the fetch would queue a
     // dozen of them before the first one answered.
@@ -223,9 +224,9 @@ export function createMarket(deps: {
     asked.add(filetype)
     void (async () => {
       await ready()
-      const found = catalog().find(plugin => plugin.provides.filetypes.includes(filetype))
+      const found = catalog().find(extension => extension.provides.filetypes.includes(filetype))
       if (!found || declined.has(found.id)) return
-      if (plugins().some(plugin => plugin.id === found.id)) return
+      if (extensions().some(extension => extension.id === found.id)) return
       declined.add(found.id) // asked is asked, whatever the answer turns out to be
       await offer(found.id, `No language server for ${filetype}. Install ${found.name}?`, true)
     })()
@@ -240,7 +241,8 @@ export function createMarket(deps: {
     const { themes, icons } = unregisteredNames(rootDir)
     for (const name of [...themes, ...icons]) {
       const found = catalog().find(
-        plugin => plugin.provides.themes.includes(name) || plugin.provides.icons.includes(name),
+        extension =>
+          extension.provides.themes.includes(name) || extension.provides.icons.includes(name),
       )
       if (!found || declined.has(found.id)) continue
       declined.add(found.id)
@@ -251,14 +253,14 @@ export function createMarket(deps: {
 
   /** The startup pass: refresh, report updates, then offer what the config wants. */
   const check = async (): Promise<void> => {
-    if (!settings.config.pluginUpdates) return
+    if (!settings.config.extensionUpdates) return
     await ready()
     const pending = updates()
     if (pending.length > 0) {
       status.say(
         pending.length === 1
-          ? `${pending[0]!.entry.name} ${pending[0]!.entry.version} is out — palette → Plugins`
-          : `${pending.length} plugin updates available — palette → Plugins`,
+          ? `${pending[0]!.entry.name} ${pending[0]!.entry.version} is out — palette → Extensions`
+          : `${pending.length} extension updates available — palette → Extensions`,
       )
     }
     suggestMissingNames()

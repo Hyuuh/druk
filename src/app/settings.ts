@@ -18,11 +18,11 @@ import type { Config, ConfigScope } from '../core/config'
 import { FILE_TOKEN } from '../core/format'
 import { bindingProblem, formatChord, parseChord } from '../core/keybindings'
 import { MARKET_URL } from '../core/market'
+import { loadExtensions } from '../extensions'
+import type { ExtensionLoad } from '../extensions'
 import { iconThemeLabel, iconThemeNames, NO_ICONS } from '../icons'
 import { invalidateSyntaxStyle } from '../languages/highlight'
 import { servers } from '../lsp/servers'
-import { contributionSummary, loadPlugins, plugins, PLUGINS_DIR } from '../plugins'
-import type { Plugin, PluginLoad } from '../plugins'
 import { paintedTheme, setTheme, setTransparency, themeLabel, themeNames } from '../themes'
 import type { ThemeName } from '../themes'
 import { ALT, setKeyOverrides } from '../ui/keys'
@@ -37,7 +37,7 @@ const EDITOR_MIN = 20
 
 const TAB_SIZES = [2, 4, 8]
 
-// Functions, not constants: plugins register themes and icon themes at startup,
+// Functions, not constants: extensions register themes and icon themes at startup,
 // which happens after this module is evaluated.
 const themeList = (): ThemeName[] => themeNames()
 const iconList = (): string[] => iconThemeNames()
@@ -211,28 +211,28 @@ export function createSettings(deps: {
    * The theme is repainted unconditionally rather than through `paintTheme`,
    * which returns early when the name has not changed: a reload can leave the
    * same id pointing at different colors, or at none — `setTheme` falls back to
-   * the default for a theme whose plugin has just been disabled.
+   * the default for a theme whose extension has just been disabled.
    */
-  const reloadPlugins = (): PluginLoad => {
-    const load = loadPlugins(rootDir, config.disabledPlugins)
+  const reloadExtensions = (): ExtensionLoad => {
+    const load = loadExtensions(rootDir, config.disabledExtensions)
     setTheme(config.theme)
     invalidateSyntaxStyle()
     return load
   }
 
-  const togglePlugin = (id: string) => {
-    const disabled = view().disabledPlugins
+  const toggleExtension = (id: string) => {
+    const disabled = view().disabledExtensions
     const off = disabled.includes(id)
     patchConfig({
-      disabledPlugins: off ? disabled.filter(entry => entry !== id) : [...disabled, id],
+      disabledExtensions: off ? disabled.filter(entry => entry !== id) : [...disabled, id],
     })
-    reloadPlugins()
-    status.say(`Plugin "${id}" ${off ? 'enabled' : 'disabled'}`)
+    reloadExtensions()
+    status.say(`Extension "${id}" ${off ? 'enabled' : 'disabled'}`)
   }
 
   const toggleMarket = () => {
-    patchConfig({ pluginUpdates: !view().pluginUpdates })
-    status.say(`Plugin market ${onOff(config.pluginUpdates)}`)
+    patchConfig({ extensionUpdates: !view().extensionUpdates })
+    status.say(`Extension market ${onOff(config.extensionUpdates)}`)
   }
 
   /**
@@ -244,13 +244,9 @@ export function createSettings(deps: {
     if (!trimmed.startsWith('https://')) {
       return status.say('A registry must be an https URL', 'error')
     }
-    patchConfig({ pluginRegistry: trimmed })
-    status.say(`Plugin registry: ${config.pluginRegistry}`)
+    patchConfig({ extensionRegistry: trimmed })
+    status.say(`Extension registry: ${config.extensionRegistry}`)
   }
-
-  /** One plugin as the page's list shows it: state, name, what it contributes. */
-  const pluginLabel = (plugin: Plugin) =>
-    `${plugin.disabled ? '✗' : '✓'} ${plugin.name} ${plugin.version} — ${contributionSummary(plugin)}`
 
   const applyTabSize = (size: number) => {
     patchConfig({ tabSize: size })
@@ -858,50 +854,6 @@ export function createSettings(deps: {
         pick: at => bindingEdit(BINDABLE[at]!),
       },
     },
-    {
-      // Enter lists what was found and picking one flips it on or off. Installing
-      // is dropping a manifest in the folder, so there is nothing here to add
-      // one with — the row names the folder when it is empty.
-      section: 'Plugins',
-      key: 'disabledPlugins',
-      label: 'Installed',
-      value:
-        plugins().length === 0
-          ? 'none'
-          : `${plugins().filter(plugin => !plugin.disabled).length}/${plugins().length} enabled`,
-      cycle: () =>
-        status.say(
-          plugins().length === 0
-            ? `No plugins — manifests go in ${PLUGINS_DIR}`
-            : 'Enter opens the plugin list',
-        ),
-      select: {
-        options: plugins().map(pluginLabel),
-        pick: at => togglePlugin(plugins()[at]!.id),
-      },
-    },
-    {
-      section: 'Plugins',
-      key: 'pluginUpdates',
-      label: 'Market',
-      value: onOff(view().pluginUpdates),
-      cycle: toggleMarket,
-    },
-    {
-      // Free text: a registry is a URL nobody would pick from a list, and the
-      // only two answers that matter are druk's own and a fork's.
-      section: 'Plugins',
-      key: 'pluginRegistry',
-      label: 'Registry',
-      value: view().pluginRegistry === MARKET_URL ? 'druk' : view().pluginRegistry,
-      cycle: () => status.say('Enter sets the market URL'),
-      edit: {
-        title: 'Plugin registry',
-        fields: [{ initial: view().pluginRegistry, placeholder: MARKET_URL }],
-        hint: ['An https folder holding index.json and <id>/plugin.json', 'Empty: druk’s own'],
-        apply: values => applyRegistry(values[0] ?? ''),
-      },
-    },
   ]
 
   /**
@@ -949,8 +901,8 @@ export function createSettings(deps: {
     toggleLspCompletion,
     toggleServer,
     applyIconTheme,
-    reloadPlugins,
-    togglePlugin,
+    reloadExtensions,
+    toggleExtension,
     toggleMarket,
     applyRegistry,
     setFormatter,

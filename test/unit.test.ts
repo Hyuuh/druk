@@ -85,24 +85,13 @@ describe('updates', () => {
   })
 })
 
-/** One market row, so the Plugins submenu has a leaf that installs something. */
-const MARKET = [
-  {
-    id: 'nim',
-    name: 'Nim',
-    version: '1.0.0',
-    description: 'nimlangserver',
-    provides: { themes: [], icons: [], filetypes: ['nim'] },
-  },
-]
-
 describe('registries', () => {
   test('every command leaf is runnable, unique, and reachable', () => {
     const ran: string[] = []
     const actions = new Proxy({} as CommandActions, {
       get: (_t, name: string) => () => ran.push(name),
     })
-    const tree = buildCommands(actions, { activeTheme: 'dark', market: MARKET, installed: [] })
+    const tree = buildCommands(actions, { activeTheme: 'dark' })
     const leaves = flattenCommands(tree)
 
     expect(leaves.length).toBeGreaterThan(10)
@@ -121,11 +110,7 @@ describe('registries', () => {
     const actions = new Proxy({} as CommandActions, {
       get: (_t, name: string) => (arg?: unknown) => ran.push(`${name}:${arg ?? ''}`),
     })
-    const themes = buildCommands(actions, {
-      activeTheme: 'dark',
-      market: MARKET,
-      installed: [],
-    }).find(c => c.id === 'themes')
+    const themes = buildCommands(actions, { activeTheme: 'dark' }).find(c => c.id === 'themes')
     const leaves = themes?.children ?? []
 
     expect(leaves.length).toBe(Object.keys(THEMES).length)

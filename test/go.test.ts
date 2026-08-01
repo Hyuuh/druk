@@ -6,11 +6,11 @@ import {
   segmentsIn,
   styleIdForGroup,
 } from '../src/languages/highlight'
-import { loadMarketPlugins } from './helpers'
+import { loadMarketExtensions } from './helpers'
 import { parseHighlights, WHOLE } from './syntax'
 
-// Go is a market plugin, not one of the preinstalled languages.
-loadMarketPlugins()
+// Go is a market extension, not one of the preinstalled languages.
+loadMarketExtensions()
 
 async function captured(source: string) {
   const client = await highlightClient()

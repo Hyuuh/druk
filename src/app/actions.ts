@@ -1,4 +1,4 @@
-import { basename, dirname, relative } from 'node:path'
+import { dirname, relative } from 'node:path'
 
 import { createMemo } from 'solid-js'
 
@@ -20,7 +20,6 @@ import {
 } from '../core/git'
 import type { FileStatus } from '../core/git'
 import { pathTokenAt, resolveImportPath } from '../core/imports'
-import { contributionSummary, plugins, PLUGINS_DIR } from '../plugins'
 import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
@@ -387,53 +386,19 @@ export function createCommands(ctx: AppContext) {
     gitRenameBranch: () => ctx.branches.open('rename'),
     gitDeleteBranch: () => ctx.branches.open('delete'),
     gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
-    listPlugins: () => {
-      // The ones druk ships are a count, not a list: they outnumber everything
-      // else and naming them would push what the user actually installed off the
-      // end of a status line. The settings page is where all of them are shown.
-      const shipped = plugins().filter(plugin => plugin.builtin).length
-      const installed = plugins().filter(plugin => !plugin.builtin)
-      const named = installed.map(
-        plugin =>
-          `${plugin.name} ${plugin.version} (${contributionSummary(plugin)})${plugin.disabled ? ' — off' : ''}`,
-      )
-      if (named.length === 0) {
-        return say(`${shipped} built in, none installed — manifests go in ${PLUGINS_DIR}`)
-      }
-      say([`${shipped} built in`, ...named].join(' · '))
+    openExtensions: () => {
+      // One page at a time: the slot under this one is the editor's.
+      ctx.workspace.setDiff(null)
+      ctx.workspace.setPage('extensions')
+      panes.setFocus('editor')
     },
-    reloadPlugins: () => {
-      const load = settings.reloadPlugins()
-      const problem = load.problems[0]
-      if (problem) {
-        return say(`${basename(dirname(problem.source))}: ${problem.reason}`, 'warn')
-      }
-      say(
-        load.plugins.length === 0
-          ? `No plugins — manifests go in ${PLUGINS_DIR}`
-          : `${load.plugins.length} plugin${load.plugins.length === 1 ? '' : 's'} reloaded`,
-      )
-    },
-    installPlugin: (id: string) => ctx.market.install(id),
-    uninstallPlugin: (id: string) => ctx.market.remove(id),
-    updatePlugins: () => void ctx.market.updateAll(),
-    checkPluginUpdates: () => void ctx.market.checkNow(),
+    checkExtensionUpdates: () => void ctx.market.checkNow(),
     showHelp: () => ctx.overlays.setHelp(true),
     quit: ctx.prompts.quit,
   }
 
-  // `market.catalog()` and `plugins()` are signals, so the market rows repaint
-  // after a fetch or an install without the palette knowing either happened.
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, {
-      activeTheme: config.theme,
-      market: ctx.market.catalog(),
-      installed: plugins().map(plugin => ({
-        id: plugin.id,
-        version: plugin.version,
-        builtin: plugin.builtin,
-      })),
-    }),
+    buildCommands(actions, { activeTheme: config.theme }),
   )
 
   return { commands, actions }

@@ -5,7 +5,7 @@ import { CONFIG_FILE } from '../src/core/config'
 import {
   fixture,
   launch,
-  loadMarketPlugins,
+  loadMarketExtensions,
   openFile,
   press,
   pressEscape,
@@ -13,8 +13,8 @@ import {
 } from './helpers'
 import type { Harness } from './helpers'
 
-// The themes these tests name are market plugins now.
-loadMarketPlugins()
+// The themes these tests name are market extensions now.
+loadMarketExtensions()
 
 const PROJECT = { 'a.ts': 'const a = 1\n' }
 

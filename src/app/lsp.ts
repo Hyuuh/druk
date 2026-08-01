@@ -92,7 +92,7 @@ export function createLsp(deps: {
   const offered = new Set<string>()
 
   /**
-   * Set by App: no installed plugin serves this filetype, so the market may have
+   * Set by App: no installed extension serves this filetype, so the market may have
    * one. A setter rather than a dependency because the market controller is
    * built after this one — it reads the settings this one already holds.
    */
@@ -189,8 +189,8 @@ export function createLsp(deps: {
     const filetype = filetypeForPath(path)
     const resolved = resolveServer(filetype, settings.config.lspServers)
     if (!resolved) {
-      // No plugin names a server for this language. druk ships none itself, so
-      // this is the normal state for a language whose plugin is not installed —
+      // No extension names a server for this language. druk ships none itself, so
+      // this is the normal state for a language whose extension is not installed —
       // the market decides whether that is worth an offer.
       if (filetype) onNoServer?.(filetype)
       return null
