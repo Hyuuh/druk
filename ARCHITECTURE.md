@@ -530,6 +530,18 @@ is just a diff against the empty tree.
   OpenTUI had already looked. `main.tsx` releases the root right after the imports:
   it holds only the library, and any later lookup under it (tree-sitter's wasm, on
   the first highlight) would throw and silently kill highlighting.
+- **A Linux binary embeds two native libraries, and staging has to pick.** OpenTUI
+  imports `@opentui/core-linux-<arch>` or its `-musl` sibling from a branch on
+  `OPENTUI_LIBC`, and `bun install` keeps both packages on a glibc machine — only the
+  musl one declares `libc` — so the bundler embeds both under content-hashed names
+  that say nothing about which is which. Taking the first (druk 1.12.0) staged the
+  musl library under the glibc key on every Linux install: the first launch worked,
+  and every launch after it died in dlopen with `invalid ELF header`, because glibc's
+  `/lib/<triple>/libc.so` is a linker script rather than an ELF. `forLibc` in
+  `core/assets.ts` now reads each candidate's DT_NEEDED — `libc.so.6` for glibc,
+  `libc.so` for musl — and stages nothing when that does not name exactly one. The
+  cache directory is named after *every* embedded library for the same reason: the
+  poisoned 1.12.0 directories can never be hit again.
 - **Focused colors.** Inputs and the editor render focused, and OpenTUI then uses the
   `focused*` colors — setting only `textColor` leaves text in the renderable's default,
   which is invisible on most themes. `ui/TextInput.tsx` exists so no panel forgets.
