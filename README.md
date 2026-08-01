@@ -56,6 +56,7 @@ druk                  # the current directory
 druk ./my-app         # a directory
 druk src/main.ts      # a single file
 druk src/main.ts:42   # …opened at line 42
+druk src/main.ts:42:7 # …at line 42, column 7
 ```
 
 `npx druk` and `bunx druk` work without installing anything.

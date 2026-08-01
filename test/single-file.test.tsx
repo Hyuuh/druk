@@ -146,7 +146,7 @@ describe('the CLI itself', () => {
 describe('resolveTarget', () => {
   test('a directory is the project, with no file to open', () => {
     const dir = fixture(PROJECT)
-    expect(resolveTarget(dir, '/')).toEqual({ rootDir: dir, openFile: null, line: null })
+    expect(resolveTarget(dir, '/')).toEqual({ rootDir: dir, openFile: null, line: null, col: null })
   })
 
   test('a file opens alone, rooted at the folder holding it', () => {
@@ -155,6 +155,7 @@ describe('resolveTarget', () => {
       rootDir: join(dir, 'src'),
       openFile: join(dir, 'src/deep.ts'),
       line: null,
+      col: null,
     })
   })
 
@@ -164,12 +165,18 @@ describe('resolveTarget', () => {
       rootDir: dir,
       openFile: join(dir, 'two.ts'),
       line: null,
+      col: null,
     })
   })
 
   test('no argument at all means the working directory', () => {
     const dir = fixture(PROJECT)
-    expect(resolveTarget(undefined, dir)).toEqual({ rootDir: dir, openFile: null, line: null })
+    expect(resolveTarget(undefined, dir)).toEqual({
+      rootDir: dir,
+      openFile: null,
+      line: null,
+      col: null,
+    })
   })
 
   test('a path that is not there is refused rather than guessed at', () => {
@@ -184,9 +191,11 @@ describe('resolveTarget', () => {
       rootDir: dir,
       openFile: join(dir, 'two.ts'),
       line: 41,
+      col: null,
     })
-    // A column suffix is tolerated and ignored.
-    expect(resolveTarget('two.ts:42:7', dir)?.line).toBe(41)
+    // Both numbers are 0-based in the result; the CLI form is 1-based.
+    expect(resolveTarget('two.ts:42:7', dir)).toMatchObject({ line: 41, col: 6 })
+    expect(resolveTarget('two.ts:42:0', dir)?.col).toBe(0)
     // But a missing file is still a missing file.
     expect(resolveTarget('nope.ts:42', dir)).toBeNull()
   })
@@ -197,6 +206,7 @@ describe('resolveTarget', () => {
       rootDir: dir,
       openFile: join(dir, 'odd.ts:1'),
       line: null,
+      col: null,
     })
   })
 })
@@ -207,4 +217,19 @@ test('opening at a line puts the cursor there', async () => {
   const t = await launch(dir, {}, {}, { openFile: join(dir, 'big.ts'), openLine: 41 })
 
   expect(t.captureCharFrame()).toContain('Ln 42, Col 1')
+})
+
+test('opening at a line and column puts the cursor on both', async () => {
+  const lines = Array.from({ length: 60 }, (_, i) => `const v${i} = ${i}`).join('\n')
+  const dir = fixture({ 'big.ts': `${lines}\n` })
+  const t = await launch(dir, {}, {}, { openFile: join(dir, 'big.ts'), openLine: 41, openCol: 6 })
+
+  expect(t.captureCharFrame()).toContain('Ln 42, Col 7')
+})
+
+test('a column past the end of the line stops at the end', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const t = await launch(dir, {}, {}, { openFile: join(dir, 'a.ts'), openLine: 0, openCol: 999 })
+
+  expect(t.captureCharFrame()).toContain('Ln 1, Col 12')
 })
