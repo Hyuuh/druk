@@ -40,6 +40,7 @@ export async function main(target: Target): Promise<void> {
         rootDir={rootDir}
         openFile={openFile}
         openLine={target.line}
+        openCol={target.col}
         initialConfig={config}
         initialProject={project}
       />

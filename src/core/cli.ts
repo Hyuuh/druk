@@ -30,6 +30,8 @@ export interface Target {
   openFile: string | null
   /** 0-based line from `druk file.ts:42`; null when none was asked for. */
   line: number | null
+  /** 0-based column from `druk file.ts:42:7`; null when none was asked for. */
+  col: number | null
 }
 
 /**
@@ -47,16 +49,21 @@ export interface Target {
 export function resolveTarget(arg: string | undefined, cwd: string): Target | null {
   const target = resolve(cwd, arg ?? '.')
   if (exists(target)) {
-    if (isDirectory(target)) return { rootDir: target, openFile: null, line: null }
-    return { rootDir: dirname(target), openFile: target, line: null }
+    if (isDirectory(target)) return { rootDir: target, openFile: null, line: null, col: null }
+    return { rootDir: dirname(target), openFile: target, line: null, col: null }
   }
 
   // Lazy, so `file.ts:42:7` reads as line 42 column 7, not a file named `file.ts:42`.
-  const at = /^(.+?):(\d+)(?::\d+)?$/.exec(arg ?? '')
+  const at = /^(.+?):(\d+)(?::(\d+))?$/.exec(arg ?? '')
   if (at) {
     const file = resolve(cwd, at[1]!)
     if (exists(file) && !isDirectory(file)) {
-      return { rootDir: dirname(file), openFile: file, line: Math.max(0, Number(at[2]) - 1) }
+      return {
+        rootDir: dirname(file),
+        openFile: file,
+        line: Math.max(0, Number(at[2]) - 1),
+        col: at[3] ? Math.max(0, Number(at[3]) - 1) : null,
+      }
     }
   }
   return null

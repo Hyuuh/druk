@@ -68,6 +68,8 @@ export function App(props: {
   openFile?: string | null
   /** `druk file.ts:42`: 0-based line to land on in `openFile`. */
   openLine?: number | null
+  /** `druk file.ts:42:7`: 0-based column to land on, beside `openLine`. */
+  openCol?: number | null
   /** The user's own settings; the project's overrides go on top of them. */
   initialConfig: Config
   /**
@@ -296,8 +298,9 @@ export function App(props: {
     const line = props.openLine
     const buffer = workspace.activeBuffer()
     if (line != null && buffer) {
-      const total = buffer.content.split('\n').length
-      editor.requestGoto(Math.min(line, total - 1), 0)
+      const lines = buffer.content.split('\n')
+      const row = Math.min(line, lines.length - 1)
+      editor.requestGoto(row, Math.min(props.openCol ?? 0, lines[row]!.length))
     }
   })
 

@@ -39,7 +39,7 @@ export async function launch(
   /** Terminal size, for anything that has to degrade on a small screen. */
   size: { width?: number; height?: number } = {},
   /** `openFile` renders single-file mode, as `druk <file>` does. */
-  options: { openFile?: string; openLine?: number; checkUpdates?: boolean } = {},
+  options: { openFile?: string; openLine?: number; openCol?: number; checkUpdates?: boolean } = {},
 ) {
   const t = await testRender(
     () =>
@@ -47,6 +47,7 @@ export async function launch(
         rootDir: dir,
         openFile: options.openFile ?? null,
         openLine: options.openLine ?? null,
+        openCol: options.openCol ?? null,
         // LSP is off unless a test opts in: the default would spawn whatever
         // real language server the machine has on PATH, per launch. The install
         // offer is off for a sharper reason — it is a modal, so on a machine
