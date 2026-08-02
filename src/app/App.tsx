@@ -452,6 +452,7 @@ export function App(props: {
                 width={settings.treeWidth()}
                 onFocus={() => panes.setFocus('tree')}
                 onSearch={extensionsPanel.search}
+                onOpenSearch={extensionsPanel.openSearch}
                 onActivate={extensionsPanel.activate}
               />
             </Show>

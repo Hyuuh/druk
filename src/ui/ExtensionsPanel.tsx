@@ -22,6 +22,8 @@ export interface ExtensionsPanelProps {
   width: number
   onFocus: () => void
   onSearch: (value: string) => void
+  /** The search row clicked: start typing into it. `/` does the same. */
+  onOpenSearch: () => void
   /** A row clicked: move the cursor there, and flip it, install it or fold it. */
   onActivate: (index: number) => void
 }
@@ -82,15 +84,29 @@ export function ExtensionsPanel(props: ExtensionsPanelProps) {
 
       {/* The panel's own search, and the only one it has: this view is about
           extensions and nothing else, so one field covers what is installed and
-          what the market offers alike. */}
-      <Show when={props.query !== null}>
-        <box height={1} flexDirection="row" backgroundColor={ui.sidebarBg} paddingLeft={1}>
-          <text fg={ui.faint} bg={ui.sidebarBg} flexShrink={0} content="/" />
-          <box flexGrow={1}>
-            <TextInput value={props.query ?? ''} placeholder="find…" onInput={props.onSearch} />
-          </box>
+          what the market offers alike.
+
+          Always drawn, never conditionally: a search that only appears once its
+          key is pressed is a search nobody finds. It is a real input only while
+          it is being typed into, though — the panel's letters are its own the
+          rest of the time, and two focused inputs would split the typing. */}
+      <box
+        height={1}
+        flexDirection="row"
+        backgroundColor={ui.sidebarBg}
+        paddingLeft={1}
+        onMouseDown={() => props.onOpenSearch()}
+      >
+        <text fg={ui.faint} bg={ui.sidebarBg} flexShrink={0} content="/ " />
+        <box flexGrow={1}>
+          <Show
+            when={props.query !== null}
+            fallback={<text fg={ui.faint} bg={ui.sidebarBg} content="search extensions" />}
+          >
+            <TextInput value={props.query ?? ''} placeholder="search…" onInput={props.onSearch} />
+          </Show>
         </box>
-      </Show>
+      </box>
 
       <Show
         when={props.rows.length > 0}
@@ -184,7 +200,7 @@ export function ExtensionsPanel(props: ExtensionsPanelProps) {
         </scrollbox>
       </Show>
       <box height={1} backgroundColor={ui.sidebarBg} paddingLeft={1}>
-        <text fg={ui.faint} bg={ui.sidebarBg} content="↑↓ · Enter on/off · / find" />
+        <text fg={ui.faint} bg={ui.sidebarBg} content="↑↓ · Enter · Bksp uninstall" />
       </box>
     </box>
   )

@@ -125,8 +125,9 @@ cycles the three, and the strip falls to initials where the names do not fit):
 `INSTALLED` lists every manifest, Enter turning one on or off and Backspace
 uninstalling one that is not built in, `AVAILABLE` is the market minus what is
 already there and starts *folded* — the catalog is dozens of entries above what
-you have — with → or Enter to open it and `/` to search both sections at once, a
-search landing the cursor on its first hit so the Enter after it installs;
+you have — with → or Enter to open it, and a search box drawn under the header at
+all times (`/`, or a click, starts typing into it) covering both sections at once
+and landing the cursor on its first hit, so the Enter after it installs;
 `u` updates everything and `r` re-reads the manifests. Only the two that are
 settings — the startup check and the registry URL — are on the settings page,
 an extension market — `extensions/` **in this repository**, one folder per extension, served
