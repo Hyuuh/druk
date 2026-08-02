@@ -352,8 +352,8 @@ test("the panel is the sidebar's third view, beside files and git", async () => 
   const panel = t.captureCharFrame()
   expect(panel).toContain('extensions')
   expect(panel).toContain('INSTALLED')
-  // The market has not been read in a test, so there is nothing to offer.
-  expect(panel).toContain('AVAILABLE')
+  // The market is not a heading either: it arrives only once something is typed.
+  expect(panel).not.toContain('AVAILABLE')
 })
 
 test('every icon glyph druk ships is one cell wide', () => {

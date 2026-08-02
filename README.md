@@ -238,10 +238,14 @@ Themes beyond the GitHub pair and the Nerd Font icons are there too.
 
 `Ctrl+Opt+X` opens the extensions panel — the sidebar's third view, beside Files and
 Git. `INSTALLED` lists what you have: `Enter` turns one off and back on, `Backspace`
-uninstalls one. `AVAILABLE` is the market minus what you already have, and starts
-folded — `→` opens it, or the search box at the top of the panel (`/`, or click it)
-covers both sections at once and lands on the first hit, so `Enter` installs. An install shows what the extension adds and, for a language
-server, the command druk would run. `u` updates everything; `r` re-reads the manifests.
+uninstalls one.
+
+The market is not listed. Search for it: the box at the top of the panel (`/`, or
+click it) covers what you have and what the market offers alike, and an `AVAILABLE`
+section appears with the matches — capped at fifty, with a row saying how many were
+left out. The cursor lands on the first hit, so `Enter` installs, after showing what
+the extension adds and, for a language server, the command druk would run. `u`
+updates everything; `r` re-reads the manifests.
 
 The two that are settings rather than extensions — whether to check the market at
 startup, and the registry URL — are on the settings page.

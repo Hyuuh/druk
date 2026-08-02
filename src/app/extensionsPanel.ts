@@ -7,9 +7,10 @@
  * row performs belongs to somebody else: `settings` writes the config and
  * reloads the manifests, `market` fetches and installs.
  *
- * Available starts folded. The catalog is dozens of entries the user did not ask
- * for, and unfolded above what they have installed it buries it; the count on
- * the section row is what says there is something behind it.
+ * The market is not on screen until it is searched for — not even as a folded
+ * heading. A registry may carry a thousand entries, and none of them is what the
+ * panel is for: what you have installed is. Typing is what asks for the rest, and
+ * even then the matches are capped, with a row saying how many were left out.
  */
 import { createMemo, createSignal } from 'solid-js'
 
@@ -36,8 +37,17 @@ export type ExtensionRow =
       about: string
     }
   | { kind: 'available'; id: string; label: string; version: string; about: string }
+  /** An inert line: what the cap left out. Enter on it does nothing. */
+  | { kind: 'note'; id: string; label: string }
 
 const SECTIONS = { installed: 'INSTALLED', available: 'AVAILABLE' } as const
+
+/**
+ * Market matches a search will list. A one-letter query against a big registry
+ * matches most of it, and a sidebar is no place to scroll a thousand rows —
+ * narrowing the search is faster than paging through them.
+ */
+const MAX_RESULTS = 50
 
 export function createExtensionsPanel(deps: {
   settings: Settings
@@ -46,7 +56,7 @@ export function createExtensionsPanel(deps: {
 }) {
   const { settings, market, status } = deps
 
-  const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>({ available: true })
+  const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>({})
   const [cursor, setCursor] = createSignal(0)
   /** The panel's own search field; null until `/` opens it. */
   const [query, setQuery] = createSignal<string | null>(null)
@@ -78,7 +88,9 @@ export function createExtensionsPanel(deps: {
       .filter(row => matches(`${row.label} ${row.id} ${row.about}`)),
   )
 
+  /** Empty until something is typed: the market is what the search is for. */
   const availableList = createMemo(() => {
+    if (!query()?.trim()) return []
     const held = new Set(extensions().map(extension => extension.id))
     return market
       .catalog()
@@ -95,24 +107,41 @@ export function createExtensionsPanel(deps: {
 
   const rows = createMemo<ExtensionRow[]>(() => {
     const out: ExtensionRow[] = []
-    const push = (key: 'installed' | 'available', list: ExtensionRow[]) => {
-      // A search that matched nothing in a section drops the heading too: an
-      // empty heading reads as a list that failed to load.
-      if (list.length === 0 && query()) return
-      // A search opens what it found — a hit behind a folded heading is the same
-      // as no hit at all.
-      const shut = !query() && collapsed()[key] === true
+    const installed = installedList()
+    // A search that matched nothing here drops the heading too: an empty heading
+    // reads as a list that failed to load. A search also opens what it found —
+    // a hit behind a folded heading is the same as no hit at all.
+    if (installed.length > 0 || !query()) {
+      const shut = !query() && collapsed().installed === true
       out.push({
         kind: 'section',
-        id: key,
-        label: SECTIONS[key],
-        count: list.length,
+        id: 'installed',
+        label: SECTIONS.installed,
+        count: installed.length,
         collapsed: shut,
       })
-      if (!shut) out.push(...list)
+      if (!shut) out.push(...installed)
     }
-    push('installed', installedList())
-    push('available', availableList())
+    const available = availableList()
+    if (available.length === 0) return out
+    out.push({
+      kind: 'section',
+      id: 'available',
+      label: SECTIONS.available,
+      count: available.length,
+      collapsed: false,
+    })
+    out.push(...available.slice(0, MAX_RESULTS))
+    // Never a silent cap: a list that stops at fifty with nothing said reads as
+    // a market that only has fifty.
+    if (available.length > MAX_RESULTS) {
+      out.push({
+        kind: 'note',
+        id: 'more',
+        // Short: the sidebar is thirty columns and a longer line wraps.
+        label: `+${available.length - MAX_RESULTS} more matches`,
+      })
+    }
     return out
   })
 
@@ -137,6 +166,7 @@ export function createExtensionsPanel(deps: {
     moveTo(index)
     const current = rows()[Math.max(0, Math.min(index, rows().length - 1))]
     if (!current) return
+    if (current.kind === 'note') return
     if (current.kind === 'section') return toggleSection(current.id)
     if (current.kind === 'available') return market.install(current.id)
     settings.toggleExtension(current.id)
@@ -168,7 +198,9 @@ export function createExtensionsPanel(deps: {
     // Onto the first hit, not onto the heading above it: after typing a name the
     // next key is Enter, and Enter on a heading folds a section instead of
     // installing what was searched for.
-    const first = rows().findIndex(entry => entry.kind !== 'section')
+    const first = rows().findIndex(
+      entry => entry.kind === 'installed' || entry.kind === 'available',
+    )
     setCursor(Math.max(0, first))
   }
 

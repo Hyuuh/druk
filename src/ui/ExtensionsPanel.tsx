@@ -48,8 +48,8 @@ export function ExtensionsPanel(props: ExtensionsPanelProps) {
    * to — once one is waiting that is the whole of what the row has to say.
    */
   const version = (row: ExtensionRow) => {
-    if (row.kind === 'section') return ''
     if (row.kind === 'available') return row.version
+    if (row.kind !== 'installed') return ''
     return row.update ? `→ ${row.update}` : row.version
   }
 
@@ -163,7 +163,10 @@ export function ExtensionsPanel(props: ExtensionsPanelProps) {
                       </>
                     )}
                   </Show>
-                  <Show when={row.kind !== 'section'}>
+                  <Show when={row.kind === 'note'}>
+                    <text fg={ui.faint} bg={bg()} content={`   ${row.label}`} />
+                  </Show>
+                  <Show when={row.kind === 'installed' || row.kind === 'available'}>
                     {/* The state glyph never gives, as the tree's indent does not:
                         shrinking it would slide every name a column left. */}
                     <text

@@ -84,7 +84,12 @@ export function BranchPicker(props: BranchPickerProps) {
                     content={branch.current ? '* ' : '  '}
                   />
                   <box flexGrow={1} backgroundColor={bg()}>
-                    <text fg={active() ? ui.text : ui.dim} bg={bg()} content={name()} />
+                    <text
+                      wrapMode="none"
+                      fg={active() ? ui.text : ui.dim}
+                      bg={bg()}
+                      content={name()}
+                    />
                   </box>
                   <text fg={ui.faint} bg={bg()} flexShrink={0} content={note()} />
                 </box>

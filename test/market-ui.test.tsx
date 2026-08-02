@@ -17,6 +17,7 @@ import {
   openFile,
   press,
   pressEscape,
+  pressTimes,
   runCommand,
   settle,
   until,
@@ -70,13 +71,16 @@ const INDEX = {
 const realFetch = globalThis.fetch
 /** Every url the editor asked for, so a test can assert it asked for nothing. */
 let requested: string[] = []
+/** What the stubbed registry serves as its index; a test may swap it. */
+let catalog: unknown = INDEX
 
 beforeEach(() => {
   requested = []
+  catalog = INDEX
   globalThis.fetch = ((url: string) => {
     requested.push(String(url))
     const body = String(url).endsWith('index.json')
-      ? INDEX
+      ? catalog
       : String(url).endsWith('go/extension.json')
         ? GO_EXTENSION
         : String(url).endsWith('nim/extension.json')
@@ -183,7 +187,7 @@ test('the extensions page lists the market and installs from it', async () => {
   await untilFrame(t, 'Installed Go 1.1.0')
 })
 
-test('the panel folds the market away until it is asked for', async () => {
+test('the market is not in the panel until it is searched for', async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   const t = await launch(dir, { extensionUpdates: true }, { height: 40 })
 
@@ -192,20 +196,50 @@ test('the panel folds the market away until it is asked for', async () => {
 
   await runCommand(t, 'Extensions panel')
   await settle(t)
-  const shut = t.captureCharFrame()
-  expect(shut).toContain('INSTALLED')
-  expect(shut).toContain('AVAILABLE')
-  // Folded, so the catalog is a count rather than a dozen rows above what is
-  // installed.
-  expect(shut).not.toContain('Go')
+  const idle = t.captureCharFrame()
+  expect(idle).toContain('INSTALLED')
+  // Not even a folded heading: a registry may carry a thousand entries, and
+  // none of them is what the panel is for.
+  expect(idle).not.toContain('AVAILABLE')
+  expect(idle).not.toContain('Go')
 
-  // The search reaches it without unfolding anything by hand.
   await press(t, input => void input.typeText('/'))
   await press(t, input => void input.typeText('gopls'))
-  expect(t.captureCharFrame()).toContain('Go')
+  const searched = t.captureCharFrame()
+  expect(searched).toContain('AVAILABLE')
+  expect(searched).toContain('Go')
 
   await pressEscape(t)
-  expect(t.captureCharFrame()).not.toContain('Go')
+  expect(t.captureCharFrame()).not.toContain('AVAILABLE')
+})
+
+test('a search that matches most of a big market says what it left out', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const t = await launch(dir, { extensionUpdates: true }, { height: 40 })
+  catalog = {
+    extensions: Array.from({ length: 120 }, (_, at) => ({
+      id: `pack${at}`,
+      name: `Pack ${at}`,
+      version: '1.0.0',
+      description: 'a language pack',
+      provides: { themes: [], icons: [], filetypes: [`x${at}`] },
+    })),
+  }
+
+  await runCommand(t, 'Check for extension updates')
+  await untilFrame(t, 'Extension market: 120 extensions')
+  await runCommand(t, 'Extensions panel')
+  await settle(t)
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('pack'))
+
+  // The cap is 50, and the row that says so is the whole point: a list that
+  // stopped at fifty in silence would read as a market that has fifty.
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('AVAILABLE')
+  expect(frame).toContain('Pack 0')
+  await pressTimes(t, 60, input => input.pressArrow('down'))
+  expect(t.captureCharFrame()).toContain('+70 more matches')
 })
 
 test('installing a language extension teaches druk the language, extension and all', async () => {
