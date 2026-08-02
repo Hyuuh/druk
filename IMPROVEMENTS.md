@@ -57,14 +57,14 @@ Claims re-checked against the tree (not just the previous doc):
 ## Product thesis
 
 > **VS Code muscle memory in a real TUI** — file tree, preview tabs, mouse, palette,
-> settings page, search — shipped as **one binary**, no plugin zoo.
+> settings page, search — shipped as **one binary**, no extension zoo.
 
 Recent keybinding + settings + image + sidebar-panel work **reinforces** that thesis.
 Sidebar Files/Git tabs are the next small VS Code-shaped polish. Keep doubling down.
 
 | Keep / double down | Deliberate non-goals (for now) |
 | --- | --- |
-| Instant open, single binary | Plugin marketplace |
+| Instant open, single binary | Extension marketplace |
 | Tree + tabs + mouse + palette + settings page | Embedded AI chat |
 | Great search & project nav | Full IDE debugger |
 | Git as daily driver (view + safe mutations) | Interactive rebase / mergetool |
@@ -190,7 +190,7 @@ Finish with tests (tab click / `showView` / pageRows) and land as the next small
 
 ### Avoid
 
-- Plugin system early  
+- Extension system early  
 - Full Neovim parity  
 - Extra undo stacks  
 - Putting every toggle back into the palette (settings page won)
@@ -314,18 +314,18 @@ Mutations already: commit, undo commit, push, fetch, pull, stash, stash pop, dif
 
 | Capability | Micro | Helix | Neovim | **Druk now** | Target |
 | --- | --- | --- | --- | --- | --- |
-| Mouse + tree + tabs | Partial | No | Plugins | **Strong** | Best-in-class |
-| Settings UX | Basic | Config file | Plugins | **Strong** (live page) | Keep |
+| Mouse + tree + tabs | Partial | No | Extensions | **Strong** | Best-in-class |
+| Settings UX | Basic | Config file | Extensions | **Strong** (live page) | Keep |
 | VS Code-like chords | Partial | No | Configurable | **Stronger** (`Ctrl+P` / F1) | Keep |
 | Single binary | Yes | Yes | No | **Strong** | Keep |
 | Tree-sitter | No | Yes | Yes | **Strong** | Keep |
-| Image open | — | — | Plugins | **Good** (half-block PNG/JPEG) | Kitty later |
-| LSP / diagnostics | Plugins | Yes | Yes | **None** | Must close |
-| Multi-cursor | Yes | Select | Plugins | **None** | Select-all-matches |
-| Git UI | Basic | None built-in | Plugins | **Good+** (panel; tabs landing) | Best TUI git-lite |
+| Image open | — | — | Extensions | **Good** (half-block PNG/JPEG) | Kitty later |
+| LSP / diagnostics | Extensions | Yes | Yes | **None** | Must close |
+| Multi-cursor | Yes | Select | Extensions | **None** | Select-all-matches |
+| Git UI | Basic | None built-in | Extensions | **Good+** (panel; tabs landing) | Best TUI git-lite |
 | Project replace | Yes | Yes | Yes | **No** | Close |
 | Configurable keys | Yes | Yes | Yes | **Hardcoded** | Medium |
-| Plugins | Small | No | Huge | **None** | Stay none |
+| Extensions | Small | No | Huge | **None** | Stay none |
 
 ---
 
@@ -389,7 +389,7 @@ Add / extend for:
 
 ## 7. Explicit “not now”
 
-1. Plugin API  
+1. Extension API  
 2. Embedded terminal  
 3. Debugger / DAP  
 4. Collaborative editing  
@@ -424,5 +424,5 @@ Add / extend for:
 5. Integrated terminal: still no?
 
 **Defaults still recommended:** tree-only hide (already documented); LSP in v2.0 theme;
-vim 80%; discard with hard confirm; themes stay in palette; no plugins; no embedded
+vim 80%; discard with hard confirm; themes stay in palette; no extensions; no embedded
 terminal.

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import {
   fixture,
   launch,
-  loadMarketPlugins,
+  loadMarketExtensions,
   press,
   pressEscape,
   runCommand,
@@ -15,8 +15,8 @@ import {
 } from './helpers'
 
 // druk ships no language servers: the specs these tests override live in the
-// market, so the plugin that carries them has to be registered first.
-loadMarketPlugins()
+// market, so the extension that carries them has to be registered first.
+loadMarketExtensions()
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
 const MARKER = join(import.meta.dir, 'fixtures', 'marker-lsp.ts')

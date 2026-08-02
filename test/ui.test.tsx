@@ -10,7 +10,7 @@ import type { Harness } from './helpers'
 /** Row index of a top-level command, so tests survive new commands. */
 function rowOf(label: string): number {
   const actions = new Proxy({} as CommandActions, { get: () => () => {} })
-  const tree = buildCommands(actions, { activeTheme: 'dark', market: [], installed: [] })
+  const tree = buildCommands(actions, { activeTheme: 'dark' })
   return tree.findIndex(command => command.label === label)
 }
 

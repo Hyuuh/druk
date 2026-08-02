@@ -11,17 +11,18 @@ import { watchTree } from '../core/fs'
 import { isImagePath } from '../core/image'
 import { isPdfPath } from '../core/pdf'
 import { checkForUpdate, currentVersion } from '../core/update'
+import { extensionProblems } from '../extensions'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
 import { SEVERITY_RANK } from '../lsp/protocol'
 import type { ProblemSeverity } from '../lsp/protocol'
-import { pluginProblems } from '../plugins'
 import { ui } from '../themes'
 import { ComparePanel } from '../ui/ComparePanel'
 import { ComparisonView } from '../ui/ComparisonView'
 import { DiffView } from '../ui/DiffView'
 import type { DiffFile } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
+import { ExtensionsView } from '../ui/ExtensionsView'
 import { FileTree } from '../ui/FileTree'
 import { GitPanel } from '../ui/GitPanel'
 import { ImageView } from '../ui/ImageView'
@@ -37,6 +38,7 @@ import { createBranches } from './branches'
 import { createComparison } from './comparison'
 import type { AppContext } from './context'
 import { createEditorBridge } from './editor'
+import { createExtensionsPage } from './extensionsPage'
 import { createFileOps } from './fileOps'
 import { createGit, createGitOp, wireGitEffects } from './git'
 import { installKeyboard } from './keyboard'
@@ -80,7 +82,7 @@ export function App(props: {
    */
   initialProject?: Partial<Config>
   /**
-   * The startup checks — druk's own version, and the plugin market — are
+   * The startup checks — druk's own version, and the extension market — are
    * unconditional for users. This switch exists so the test harness can keep
    * hundreds of launches off the npm registry and off the market.
    */
@@ -116,7 +118,8 @@ export function App(props: {
   const promptState = createPromptState()
   const lsp = createLsp({ rootDir, settings, status, prompts: promptState })
   const market = createMarket({ rootDir, settings, status, prompts: promptState })
-  // A file whose language no installed plugin serves is the market's cue.
+  const extensionsPage = createExtensionsPage({ settings, market, status })
+  // A file whose language no installed extension serves is the market's cue.
   lsp.onMissingServer(market.suggestForFiletype)
   // Also on the quit path: the renderer tears the root down before exiting, and
   // a leaked server would outlive the editor (tests leak them per launch).
@@ -287,17 +290,17 @@ export function App(props: {
     const { invalid, conflicts } = settings.keymap()
     const bad = invalid[0]
     const clash = conflicts.find(entry => entry.rejected)
-    // Same reason as the two above: a plugin that contributes nothing because
+    // Same reason as the two above: an extension that contributes nothing because
     // its manifest is wrong looks exactly like one that is not installed.
-    const badPlugin = pluginProblems()[0]
+    const badExtension = extensionProblems()[0]
     if (bad) say(`Shortcut "${bad.value}" for ${bad.label}: ${bad.reason}`, 'warn')
     else if (clash) {
       say(
         `${clash.key} is bound twice — ${clash.winner} keeps it, ${clash.loser} has no key`,
         'warn',
       )
-    } else if (badPlugin) {
-      say(`Plugin ${basename(dirname(badPlugin.source))}: ${badPlugin.reason}`, 'warn')
+    } else if (badExtension) {
+      say(`Extension ${basename(dirname(badExtension.source))}: ${badExtension.reason}`, 'warn')
     }
     // Same refusal `druk file.ts` deserves as opening one from the tree, and for the
     // same reason: an empty editor with a status line under it looks like a bug.
@@ -660,6 +663,18 @@ export function App(props: {
                 scope={settings.scope()}
                 onToggleScope={settings.toggleScope}
                 configFile={settings.configFile()}
+                width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                focused={panes.focus() === 'editor'}
+                blocked={overlays.overlay()}
+                onFocus={() => panes.setFocus('editor')}
+                onClose={() => workspace.setPage(null)}
+              />
+            </box>
+          </Show>
+          <Show when={workspace.page() === 'extensions'}>
+            <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={60}>
+              <ExtensionsView
+                rows={extensionsPage.rows()}
                 width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
                 focused={panes.focus() === 'editor'}
                 blocked={overlays.overlay()}

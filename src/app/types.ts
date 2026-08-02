@@ -50,13 +50,13 @@ export type Prompt =
   /** A language server is missing and druk can fetch it; `id` is the server id. */
   | { kind: 'installServer'; id: string; name: string; install: FetchableInstall }
   /**
-   * A market plugin is worth installing. `why` is what raised it (a file whose
+   * A market extension is worth installing. `why` is what raised it (a file whose
    * language has no server, a config naming a theme nothing registers, or an
-   * update), and `runs` names the commands the plugin would have druk spawn —
+   * update), and `runs` names the commands the extension would have druk spawn —
    * the one thing about a manifest that is not inert.
    */
   | {
-      kind: 'installPlugin'
+      kind: 'installExtension'
       id: string
       name: string
       summary: string

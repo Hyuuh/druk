@@ -4,11 +4,11 @@ import { join } from 'node:path'
 
 import { APPEARANCE_ENV } from '../src/core/appearance'
 import { CONFIG_FILE } from '../src/core/config'
-import { fixture, launch, loadMarketPlugins, press, runCommand, settle } from './helpers'
+import { fixture, launch, loadMarketExtensions, press, runCommand, settle } from './helpers'
 import type { Harness } from './helpers'
 
-// The themes these tests name are market plugins now.
-loadMarketPlugins()
+// The themes these tests name are market extensions now.
+loadMarketExtensions()
 
 afterEach(() => {
   delete process.env[APPEARANCE_ENV]

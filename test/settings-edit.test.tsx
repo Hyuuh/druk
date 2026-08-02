@@ -5,7 +5,7 @@ import { CONFIG_FILE } from '../src/core/config'
 import {
   fixture,
   launch,
-  loadMarketPlugins,
+  loadMarketExtensions,
   press,
   pressEscape,
   pressTimes,
@@ -14,8 +14,8 @@ import {
 import type { Harness } from './helpers'
 
 // druk ships no language servers: the specs these tests override live in the
-// market, so the plugin that carries them has to be registered first.
-loadMarketPlugins()
+// market, so the extension that carries them has to be registered first.
+loadMarketExtensions()
 
 const PROJECT = { 'a.ts': 'const a = 1\n' }
 

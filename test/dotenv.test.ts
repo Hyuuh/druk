@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import { filetypeForPath, getSyntaxStyle } from '../src/languages/highlight'
-import { loadMarketPlugins } from './helpers'
+import { loadMarketExtensions } from './helpers'
 import { allSegments } from './syntax'
 
-// This language is a market plugin, not one of the preinstalled ones.
-loadMarketPlugins()
+// This language is a market extension, not one of the preinstalled ones.
+loadMarketExtensions()
 
 /** What each group got painted on, so a pattern change shows up as text. */
 async function painted(source: string) {

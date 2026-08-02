@@ -3,9 +3,9 @@ import { render } from '@opentui/solid'
 import { App } from './app/App'
 import { releaseAssetRoot } from './core/assets'
 import type { Target } from './core/cli'
-import { loadConfig, loadProjectConfig, readDisabledPlugins, resolveConfig } from './core/config'
+import { loadConfig, loadProjectConfig, readDisabledExtensions, resolveConfig } from './core/config'
+import { loadExtensions } from './extensions'
 import { highlightClient } from './languages/highlight'
-import { loadPlugins } from './plugins'
 import { setTheme } from './themes'
 
 /** Everything past argument handling — imported dynamically by index.tsx so the
@@ -18,10 +18,10 @@ export async function main(target: Target): Promise<void> {
 
   const { rootDir, openFile } = target
 
-  // Before the config, not after: a plugin's theme and icon theme are only
-  // valid values of those settings once the plugin has registered them, and the
+  // Before the config, not after: an extension's theme and icon theme are only
+  // valid values of those settings once the extension has registered them, and the
   // validators drop what they do not recognise.
-  loadPlugins(rootDir, readDisabledPlugins(rootDir))
+  loadExtensions(rootDir, readDisabledExtensions(rootDir))
 
   // Apply the saved theme before the first render — the project's, where it has
   // one, or the first frame paints in the user's and then repaints.

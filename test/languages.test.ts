@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { MARKET_DIR } from '../scripts/plugins'
+import { MARKET_DIR } from '../scripts/extensions'
+import { loadExtensions } from '../src/extensions'
 import { languageFor, languageLabel, languages } from '../src/languages'
 import {
   computeHighlights,
@@ -10,12 +11,11 @@ import {
   STALE,
 } from '../src/languages/highlight'
 import type { Highlighted, Segment } from '../src/languages/highlight'
-import { loadPlugins } from '../src/plugins'
 import { allSegments, parseHighlights, WHOLE } from './syntax'
 
-// Every language is a plugin now, and the market folder in this repository is
-// where they live — the loader reads it as a plugins folder.
-loadPlugins(process.env.XDG_CONFIG_HOME!, [], MARKET_DIR)
+// Every language is an extension now, and the market folder in this repository is
+// where they live — the loader reads it as an extensions folder.
+loadExtensions(process.env.XDG_CONFIG_HOME!, [], MARKET_DIR)
 
 const SAMPLES: Record<string, string> = {
   python: 'import os\ndef f(x):\n    # c\n    return x + 1\n',

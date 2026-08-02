@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 
-import { MARKET_DIR } from '../scripts/plugins'
+import { MARKET_DIR } from '../scripts/extensions'
 import { flagOutput } from '../src/core/cli'
+import { loadExtensions } from '../src/extensions'
 import { vendoredLanguages } from '../src/languages'
 import { GRAMMARS } from '../src/languages/grammars'
-import { loadPlugins } from '../src/plugins'
 
 describe('flags', () => {
   test('--version prints a bare version, which the installers compare against', () => {
@@ -38,7 +38,7 @@ describe('grammar assets', () => {
 
   test('every vendored language points at one of them', () => {
     const known = new Set(Object.values(GRAMMARS).flatMap(g => [g.wasm, g.query]))
-    loadPlugins(process.env.XDG_CONFIG_HOME!, [], MARKET_DIR)
+    loadExtensions(process.env.XDG_CONFIG_HOME!, [], MARKET_DIR)
     for (const lang of vendoredLanguages()) {
       expect(`${lang.id}: ${known.has(lang.wasm!) && known.has(lang.query!)}`).toBe(
         `${lang.id}: true`,

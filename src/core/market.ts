@@ -1,22 +1,22 @@
 /**
- * The plugin market: the catalog druk reads, and installing an entry from it.
+ * The extension market: the catalog druk reads, and installing an entry from it.
  *
- * The market is a folder in druk's own repository — `plugins/<id>/plugin.json`,
- * with a generated `plugins/index.json` beside them — served raw from `main`.
+ * The market is a folder in druk's own repository — `extensions/<id>/extension.json`,
+ * with a generated `extensions/index.json` beside them — served raw from `main`.
  * A merged pull request is therefore installable straight away, without waiting
- * for a druk release, which is the whole reason plugins live there rather than
+ * for a druk release, which is the whole reason extensions live there rather than
  * in `src/`.
  *
  * Two things this module is careful about, since it is the one place druk reads
  * something a stranger wrote:
  *
- * - **The registry is a directory, not a list of URLs.** The index carries plugin
- *   ids and nothing else fetchable; a manifest is always `<registry><id>/plugin.json`.
+ * - **The registry is a directory, not a list of URLs.** The index carries extension
+ *   ids and nothing else fetchable; a manifest is always `<registry><id>/extension.json`.
  *   So an index cannot aim a request at another host however it is written.
  * - **A manifest is validated before it is written.** `parseManifest` is the same
  *   check the editor applies at load, so druk never stores a file it would itself
- *   reject — and a plugin that contributes nothing usable is refused at install
- *   rather than sitting silently in the plugins folder.
+ *   reject — and an extension that contributes nothing usable is refused at install
+ *   rather than sitting silently in the extensions folder.
  *
  * Installing still runs nothing (a manifest is data), but a language-server
  * contribution is a command druk will spawn later. Naming that command in the
@@ -26,14 +26,14 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import { join } from 'node:path'
 
-// `../plugins` itself is deliberately not imported: it reads `core/config`, which
-// reads `MARKET_URL` from here for its default — so the plugins folder is passed
+// `../extensions` itself is deliberately not imported: it reads `core/config`, which
+// reads `MARKET_URL` from here for its default — so the extensions folder is passed
 // in by the caller rather than closing that cycle.
-import { parseManifest } from '../plugins/manifest'
-import type { Plugin } from '../plugins/types'
+import { parseManifest } from '../extensions/manifest'
+import type { Extension } from '../extensions/types'
 
-/** druk's own market. `pluginRegistry` points elsewhere for a fork or a test. */
-export const MARKET_URL = 'https://raw.githubusercontent.com/letstri/druk/main/plugins/'
+/** druk's own market. `extensionRegistry` points elsewhere for a fork or a test. */
+export const MARKET_URL = 'https://raw.githubusercontent.com/letstri/druk/main/extensions/'
 
 /** As short as the version check's, and for the same reason: nothing waits on it. */
 const TIMEOUT_MS = 2500
@@ -53,20 +53,20 @@ const ASSET_TIMEOUT_MS = 30_000
 /** How old the cached catalog may be before it is fetched again. */
 export const CATALOG_MAX_AGE_MS = 6 * 60 * 60 * 1000
 
-/** One plugin as the catalog lists it — enough to show and to match, never to run. */
+/** One extension as the catalog lists it — enough to show and to match, never to run. */
 export interface MarketEntry {
   id: string
   name: string
   version: string
   description: string
   provides: {
-    /** Theme ids, so a config naming a theme can be traced to its plugin. */
+    /** Theme ids, so a config naming a theme can be traced to its extension. */
     themes: string[]
     icons: string[]
     /**
-     * Every filetype the plugin covers — the languages it highlights and the
+     * Every filetype the extension covers — the languages it highlights and the
      * ones its servers claim. This is what answers "the file just opened has no
-     * plugin, which one is it?", so a language with no server counts too.
+     * extension, which one is it?", so a language with no server counts too.
      */
     filetypes: string[]
   }
@@ -75,7 +75,7 @@ export interface MarketEntry {
 export interface CachedCatalog {
   /** Epoch milliseconds of the fetch, so staleness is decidable offline. */
   at: number
-  plugins: MarketEntry[]
+  extensions: MarketEntry[]
 }
 
 const CACHE_FILE = join(
@@ -84,20 +84,20 @@ const CACHE_FILE = join(
   'market.json',
 )
 
-/** The catalog row for a parsed manifest — what `scripts/plugins.ts` writes. */
-export function entryFor(plugin: Plugin): MarketEntry {
+/** The catalog row for a parsed manifest — what `scripts/extensions.ts` writes. */
+export function entryFor(extension: Extension): MarketEntry {
   return {
-    id: plugin.id,
-    name: plugin.name,
-    version: plugin.version,
-    description: plugin.description,
+    id: extension.id,
+    name: extension.name,
+    version: extension.version,
+    description: extension.description,
     provides: {
-      themes: plugin.themes.map(entry => entry.id),
-      icons: plugin.icons.map(theme => theme.id),
+      themes: extension.themes.map(entry => entry.id),
+      icons: extension.icons.map(theme => theme.id),
       filetypes: [
         ...new Set([
-          ...plugin.languages.map(language => language.id),
-          ...plugin.servers.flatMap(server => server.filetypes),
+          ...extension.languages.map(language => language.id),
+          ...extension.servers.flatMap(server => server.filetypes),
         ]),
       ],
     },
@@ -133,7 +133,7 @@ function parseEntry(raw: unknown): MarketEntry | null {
 
 /** A fetched index as entries. A malformed row is dropped, never fatal. */
 export function parseCatalog(raw: unknown): MarketEntry[] {
-  const list = isRecord(raw) && Array.isArray(raw.plugins) ? raw.plugins : []
+  const list = isRecord(raw) && Array.isArray(raw.extensions) ? raw.extensions : []
   return list.map(parseEntry).filter(entry => entry !== null)
 }
 
@@ -187,16 +187,16 @@ export function readCachedCatalog(file = CACHE_FILE): CachedCatalog | null {
   try {
     const raw: unknown = JSON.parse(readFileSync(file, 'utf8'))
     if (!isRecord(raw) || typeof raw.at !== 'number') return null
-    return { at: raw.at, plugins: parseCatalog(raw) }
+    return { at: raw.at, extensions: parseCatalog(raw) }
   } catch {
     return null
   }
 }
 
-export function writeCachedCatalog(plugins: MarketEntry[], at: number, file = CACHE_FILE): void {
+export function writeCachedCatalog(extensions: MarketEntry[], at: number, file = CACHE_FILE): void {
   try {
     mkdirSync(join(file, '..'), { recursive: true })
-    writeFileSync(file, JSON.stringify({ at, plugins }))
+    writeFileSync(file, JSON.stringify({ at, extensions }))
   } catch {
     // A cache that cannot be written costs one fetch per launch, not correctness.
   }
@@ -205,26 +205,28 @@ export function writeCachedCatalog(plugins: MarketEntry[], at: number, file = CA
 export const isStale = (cached: CachedCatalog | null, now: number): boolean =>
   !cached || now - cached.at > CATALOG_MAX_AGE_MS
 
-/** Where an installed market plugin lives. One folder, so removing it is a delete. */
-export const pluginDir = (id: string, root: string): string => join(root, id)
+/** Where an installed market extension lives. One folder, so removing it is a delete. */
+export const extensionDir = (id: string, root: string): string => join(root, id)
 
 /** A manifest that has been fetched and validated, but not yet written. */
-export type Fetched = { ok: true; plugin: Plugin; body: string } | { ok: false; error: string }
+export type Fetched =
+  | { ok: true; extension: Extension; body: string }
+  | { ok: false; error: string }
 
 /**
  * Fetch and validate `id`'s manifest without installing it.
  *
  * Split from the write on purpose: the confirm prompt names the commands the
- * plugin would have druk spawn, and those are only knowable from the manifest
+ * extension would have druk spawn, and those are only knowable from the manifest
  * itself. Asking first and fetching after would mean asking about a claim the
  * catalog makes rather than about the file that is going to be installed.
  */
-export async function fetchPlugin(
+export async function fetchExtension(
   id: string,
   options: { registry?: string; fetcher?: Fetcher } = {},
 ): Promise<Fetched> {
   const { registry = MARKET_URL, fetcher = fetch } = options
-  const source = `${dir(registry)}${id}/plugin.json`
+  const source = `${dir(registry)}${id}/extension.json`
   const body = await get(source, fetcher)
   if (body === null) return { ok: false, error: `could not fetch ${source}` }
   let raw: unknown
@@ -234,18 +236,18 @@ export async function fetchPlugin(
     const reason = error instanceof Error ? error.message : String(error)
     return { ok: false, error: `${id} is not valid JSON: ${reason}` }
   }
-  const { plugin, problems } = parseManifest(raw, source)
-  // Stricter than the loader, which lets a plugin keep its good contributions
+  const { extension, problems } = parseManifest(raw, source)
+  // Stricter than the loader, which lets an extension keep its good contributions
   // and reports the rest: a manifest from the market is validated before it is
   // merged, so anything wrong with one arriving here means the registry served
   // something other than what was reviewed.
-  if (!plugin || problems.length > 0) {
-    return { ok: false, error: problems[0]?.reason ?? `${id} is not a plugin druk can use` }
+  if (!extension || problems.length > 0) {
+    return { ok: false, error: problems[0]?.reason ?? `${id} is not an extension druk can use` }
   }
   // The id decides the folder, so a manifest naming itself something else would
   // install where druk could never find it again.
-  if (plugin.id !== id) return { ok: false, error: `${id} declares itself "${plugin.id}"` }
-  return { ok: true, plugin, body }
+  if (extension.id !== id) return { ok: false, error: `${id} declares itself "${extension.id}"` }
+  return { ok: true, extension, body }
 }
 
 /**
@@ -253,20 +255,20 @@ export async function fetchPlugin(
  *
  * Assets come down after the manifest is validated, and the manifest is what
  * says which files exist — `parseManifest` only ever collects paths inside the
- * plugin's own folder, so this cannot be made to write anywhere else. A missing
- * asset fails the install rather than leaving a plugin whose grammar is a path
+ * extension's own folder, so this cannot be made to write anywhere else. A missing
+ * asset fails the install rather than leaving an extension whose grammar is a path
  * to nothing.
  */
-export async function writePlugin(
+export async function writeExtension(
   id: string,
   fetched: Fetched & { ok: true },
   root: string,
   options: { registry?: string; fetcher?: Fetcher } = {},
 ): Promise<string | null> {
   const { registry = MARKET_URL, fetcher = fetch } = options
-  const folder = pluginDir(id, root)
-  const files: [string, string | Uint8Array][] = [['plugin.json', fetched.body]]
-  for (const asset of fetched.plugin.assets) {
+  const folder = extensionDir(id, root)
+  const files: [string, string | Uint8Array][] = [['extension.json', fetched.body]]
+  for (const asset of fetched.extension.assets) {
     // Bytes, not text: the asset that makes this worth having is a grammar
     // wasm, and decoding one as UTF-8 rewrites every byte tree-sitter needs.
     const body = await getBytes(`${dir(registry)}${id}/${asset}`, fetcher)
@@ -285,10 +287,10 @@ export async function writePlugin(
   }
 }
 
-/** Delete an installed plugin's folder. Null when it is gone. */
+/** Delete an installed extension's folder. Null when it is gone. */
 export function removeFromDisk(id: string, root: string): string | null {
   try {
-    rmSync(pluginDir(id, root), { recursive: true, force: true })
+    rmSync(extensionDir(id, root), { recursive: true, force: true })
     return null
   } catch (error) {
     return error instanceof Error ? error.message : String(error)
@@ -296,7 +298,7 @@ export function removeFromDisk(id: string, root: string): string | null {
 }
 
 /**
- * Installed plugins the catalog has a newer version of. Ordered by the catalog,
+ * Installed extensions the catalog has a newer version of. Ordered by the catalog,
  * so the status line and the palette agree about which one is "first".
  */
 export function updatesFor(
@@ -304,7 +306,7 @@ export function updatesFor(
   catalog: MarketEntry[],
   newer: (latest: string, current: string) => boolean,
 ): { entry: MarketEntry; current: string }[] {
-  const have = new Map(installed.map(plugin => [plugin.id, plugin.version]))
+  const have = new Map(installed.map(extension => [extension.id, extension.version]))
   const updates: { entry: MarketEntry; current: string }[] = []
   for (const entry of catalog) {
     const current = have.get(entry.id)

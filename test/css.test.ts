@@ -18,7 +18,7 @@ async function painted(source: string, filetype: string) {
 }
 
 const TAILWIND = `@import 'tailwindcss';
-@plugin 'tailwind-scrollbar';
+@extension 'tailwind-scrollbar';
 @custom-variant dark (&:is(.dark *));
 @theme inline {
   --text-2xs: 0.6875rem;
@@ -59,7 +59,7 @@ describe('css highlighting', () => {
 
     // `@media` and `@import` are anonymous tokens; the rest are (at_keyword).
     expect(directives).toContain('@import')
-    expect(directives).toContain('@plugin')
+    expect(directives).toContain('@extension')
     expect(directives).toContain('@theme')
     expect(directives).toContain('@custom-variant')
   })

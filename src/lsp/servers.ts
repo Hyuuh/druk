@@ -1,8 +1,8 @@
 /**
  * Which language server serves which filetype.
  *
- * druk knows about no server until a plugin names one: the specs live in the
- * market (`plugins/<language>/plugin.json` in this repository), so a server for
+ * druk knows about no server until an extension names one: the specs live in the
+ * market (`extensions/<language>/extension.json` in this repository), so a server for
  * a new language reaches users the moment its pull request merges rather than at
  * the next release. What a spec holds is still only a command looked up on the
  * user's PATH — a missing one means no diagnostics for that language, though
@@ -37,24 +37,24 @@ export interface ServerSpec {
   install?: ServerInstall
 }
 
-/** Contributed by a plugin, and dropped again when plugins reload. */
-let fromPlugins: ServerSpec[] = []
+/** Contributed by an extension, and dropped again when extensions reload. */
+let fromExtensions: ServerSpec[] = []
 
 export function registerServer(spec: ServerSpec): void {
-  fromPlugins = [...fromPlugins.filter(server => server.id !== spec.id), spec]
+  fromExtensions = [...fromExtensions.filter(server => server.id !== spec.id), spec]
 }
 
-export function clearPluginServers(): void {
-  fromPlugins = []
+export function clearExtensionServers(): void {
+  fromExtensions = []
 }
 
 /**
- * Every server on offer — whatever the installed plugins registered, in load
- * order. A later plugin claiming an id replaces the earlier one's spec, which is
- * how a project's own plugin folder overrides a market plugin for that language.
+ * Every server on offer — whatever the installed extensions registered, in load
+ * order. A later extension claiming an id replaces the earlier one's spec, which is
+ * how a project's own extension folder overrides a market extension for that language.
  */
 export function servers(): ServerSpec[] {
-  return fromPlugins
+  return fromExtensions
 }
 
 /** The line that tells a user how to install `spec` themselves. */
