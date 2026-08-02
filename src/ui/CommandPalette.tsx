@@ -147,7 +147,11 @@ export function CommandPalette(props: CommandPaletteProps) {
                         on a low-contrast theme. */}
                   <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
                   <box flexGrow={1}>
+                    {/* A row each: a label can carry a theme name an extension
+                        chose, and one long enough to wrap grows the fixed-height
+                        list past the footer. */}
                     <text
+                      wrapMode="none"
                       fg={active() ? ui.text : ui.dim}
                       bg={bg()}
                       content={`${prefix}${row.command.label}${row.command.children ? ' ›' : ''}`}
@@ -155,7 +159,7 @@ export function CommandPalette(props: CommandPaletteProps) {
                   </box>
                   <Show when={row.command.hint}>
                     {(hint: () => string) => (
-                      <text fg={ui.faint} bg={bg()} content={`${hint()} `} />
+                      <text wrapMode="none" fg={ui.faint} bg={bg()} content={`${hint()} `} />
                     )}
                   </Show>
                 </box>

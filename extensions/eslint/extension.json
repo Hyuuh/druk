@@ -1,0 +1,34 @@
+{
+  "id": "eslint",
+  "name": "ESLint",
+  "version": "1.0.0",
+  "description": "ESLint diagnostics from the project's own eslint, beside whatever language server is already serving the file.",
+  "languageServers": [
+    {
+      "id": "eslint",
+      "command": ["vscode-eslint-language-server", "--stdio"],
+      "filetypes": [
+        "typescript",
+        "typescriptreact",
+        "javascript",
+        "javascriptreact",
+        "vue",
+        "svelte"
+      ],
+      "install": {
+        "kind": "npm",
+        "packages": ["vscode-langservers-extracted"]
+      },
+      "settings": {
+        "validate": "on",
+        "experimental": {},
+        "rulesCustomizations": [],
+        "problems": {},
+        "nodePath": null,
+        "run": "onType",
+        "options": {},
+        "workingDirectory": { "mode": "location" }
+      }
+    }
+  ]
+}

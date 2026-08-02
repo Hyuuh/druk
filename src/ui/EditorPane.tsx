@@ -36,6 +36,7 @@ import type { CompletionReply } from '../lsp/completion'
 import type { CompletionItem, ProblemSeverity } from '../lsp/protocol'
 import { paintedTheme, ui } from '../themes'
 import { CompletionMenu, MENU_ROWS, menuWidth } from './CompletionMenu'
+import { cut } from './text'
 import { useKeys } from './useKeys'
 import { Welcome } from './Welcome'
 
@@ -419,8 +420,7 @@ export function EditorPane(props: EditorPaneProps) {
       const left = el.x - host.x + 1 + (widths[lastRow] ?? 0) + 2
       const room = host.width - left - 2
       if (room < 8) continue
-      const message = problem.message.replaceAll(/\s+/g, ' ')
-      const text = message.length > room ? `${message.slice(0, room - 1)}…` : message
+      const text = cut(problem.message.replaceAll(/\s+/g, ' '), room)
       notes.push({
         top: el.y - host.y + (lastRow - top),
         left,

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { listRows, modalWidth, wrapText } from '../src/ui/modal'
+import { listRows, modalWidth } from '../src/ui/modal'
+import { wrapText } from '../src/ui/text'
 import { fixture, launch, openPalette, press, settle } from './helpers'
 import type { Harness } from './helpers'
 

@@ -24,7 +24,12 @@ const LSP_WAIT = 15_000
 /** A file whose diagnostic doubles as the "server is up" signal. */
 const READY_FILE = { 'a.ts': 'oops\n' }
 
-const lspConfig = { lsp: true, lspServers: { typescript: [process.execPath, FAKE] } }
+const lspConfig = {
+  lsp: true,
+  // The market's eslint extension serves typescript too; these tests are about
+  // the one server they name, so the other is turned off rather than spawned.
+  lspServers: { typescript: [process.execPath, FAKE], eslint: [] },
+}
 
 async function readyEditor(files = READY_FILE) {
   const dir = fixture(files)

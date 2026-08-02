@@ -22,10 +22,21 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     git,
     comparison,
     extensions,
+    editorCovered,
   } = ctx
   const { config } = settings
 
   const togglePeek = () => overlays.setPeek(peeking => !peeking)
+
+  /**
+   * Whether EditorPane's own Ctrl+C handler will run — it needs the focus slot, a
+   * live textarea and nothing drawn over it. Holding the focus slot is not enough:
+   * a page or viewer keeps it while taking no keys, and a tab-less editor has no
+   * buffer to copy from, so deferring on `focus()` alone left Ctrl+C owned by
+   * nobody on the welcome screen and under every page.
+   */
+  const editorOwnsCopy = () =>
+    panes.focus() === 'editor' && workspace.activePath() !== null && !editorCovered()
 
   /**
    * What each bindable command does when its key arrives — see `keymap.ts` for the
@@ -115,7 +126,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     // renderer's own selection covers mouse drags only. Either way it
     // routes through `quit()`, so a dirty buffer still gets its prompt. Not a
     // bindable command: the two meanings are split across two owners.
-    if (key.ctrl && k === 'c' && panes.focus() !== 'editor') return claim(prompts.quit)
+    if (key.ctrl && k === 'c' && !editorOwnsCopy()) return claim(prompts.quit)
 
     // In vim, Ctrl+R is redo and belongs to the editor, whatever the keymap says it
     // runs. Project search keeps its other spelling, Ctrl+Opt+F, so nothing becomes

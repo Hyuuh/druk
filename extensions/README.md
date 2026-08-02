@@ -75,6 +75,37 @@ the file renders plain. `install` is `{"kind": "npm", "packages": [...]}` when d
 can fetch the server itself, `{"kind": "manual", "command": "..."}` for a line to
 print, and absent for a server that arrives with an SDK.
 
+## A server-only extension: a linter
+
+`languageServers` needs no `languages` beside it, and **a filetype may have more
+than one server** — every one of them is spawned and synced, and their diagnostics
+are merged rather than replacing each other. That is what lets a linter report
+alongside the language server already serving the file, the way eslint sits beside
+tsserver in VS Code. See [`eslint/extension.json`](eslint/extension.json).
+
+A server that is configured rather than convention-driven carries `settings`: its
+own configuration object, handed over untouched. druk gives it to the server both
+ways the protocol allows — as the answer to every `workspace/configuration` request
+and as one `didChangeConfiguration` push — because servers differ in which they
+read, and eslint's reports nothing at all until it has been told to validate:
+
+```json
+"languageServers": [
+  {
+    "id": "eslint",
+    "command": ["vscode-eslint-language-server", "--stdio"],
+    "filetypes": ["typescript", "javascript"],
+    "install": { "kind": "npm", "packages": ["vscode-langservers-extracted"] },
+    "settings": { "validate": "on", "problems": {}, "nodePath": null }
+  }
+]
+```
+
+The keys are the server's, not druk's, and are passed through unvalidated — so a
+server option added upstream needs no druk release. Find the minimum set by
+running the server by hand: most refuse to work with a field missing and say
+nothing about which.
+
 ## An appearance extension
 
 `themes` needs every `ui` key `src/themes/types.ts` declares, all `#rrggbb`; copy a

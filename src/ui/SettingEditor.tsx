@@ -2,8 +2,9 @@ import type { KeyEvent } from '@opentui/core'
 import { createSignal, For, Show } from 'solid-js'
 
 import { ui } from '../themes'
-import { modalWidth } from './modal'
+import { modalWidth, PAD } from './modal'
 import { ModalPanel } from './Overlay'
+import { cut } from './text'
 import { TextInput } from './TextInput'
 import { useKeys } from './useKeys'
 
@@ -79,9 +80,10 @@ export function SettingEditor(props: {
               when={at() === focus()}
               fallback={
                 <text
+                  wrapMode="none"
                   fg={values()[at()] ? ui.dim : ui.faint}
                   bg={ui.panelBg}
-                  content={values()[at()] || field.placeholder || ''}
+                  content={cut(values()[at()] || field.placeholder || '', width() - PAD * 2)}
                 />
               }
             >

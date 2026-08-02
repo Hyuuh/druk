@@ -13,7 +13,7 @@ import { downloadServer, installServer, installedCommand } from '../src/lsp/inst
 import { projectCommand, typescriptMajor } from '../src/lsp/project'
 import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
 import { isUnnecessary, severityOf } from '../src/lsp/protocol'
-import { installHint, resolveServer } from '../src/lsp/servers'
+import { installHint, resolveServer, resolveServers } from '../src/lsp/servers'
 import { createDecoder, encodeMessage } from '../src/lsp/transport'
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
@@ -115,9 +115,25 @@ describe('protocol mapping', () => {
     ])
     // The hint names the default's package; an override would send them elsewhere.
     expect(resolveServer('typescript', { typescript: ['deno', 'lsp'] })?.install).toBeUndefined()
-    expect(resolveServer('typescript', { typescript: [] })).toBeNull()
-    expect(resolveServer('brainfuck', {})).toBeNull()
+    // An empty command disables that server, not every server for the language:
+    // eslint serves typescript too, and is left where it was.
+    expect(resolveServers('typescript', { typescript: [] }).map(server => server.id)).toEqual([
+      'eslint',
+    ])
+    expect(resolveServers('brainfuck', {})).toEqual([])
     expect(resolveServer(undefined, {})).toBeNull()
+  })
+
+  test('a language may have several servers, the language server first', () => {
+    // Both are spawned and both report; the order is what decides which one is
+    // asked for a completion first, and a linter must never be that one.
+    expect(resolveServers('typescript', {}).map(server => server.id)).toEqual([
+      'typescript',
+      'eslint',
+    ])
+    // Only the linter carries settings — it does nothing at all without them.
+    const eslint = resolveServers('typescript', {}).find(server => server.id === 'eslint')
+    expect((eslint?.settings as { validate?: string } | undefined)?.validate).toBe('on')
   })
 
   test('typescript is pinned to 5, the last line that ships a tsserver.js', () => {
@@ -292,6 +308,7 @@ describe('client against a live server', () => {
     const path = join(dir, 'a.ts')
     const deliveries = collector<Diagnostic[]>()
     const client = spawnLspClient({
+      id: 'test',
       command: [process.execPath, FAKE],
       rootDir: dir,
       onDiagnostics: (_uri, diagnostics) => deliveries.push(diagnostics),
@@ -320,6 +337,7 @@ describe('client against a live server', () => {
       missing: boolean
     }>()
     const client = spawnLspClient({
+      id: 'test',
       command: ['druk-no-such-language-server'],
       rootDir: tmpdir(),
       onDiagnostics: () => {},
@@ -337,6 +355,7 @@ describe('client against a live server', () => {
 
   test('a starting client is not dead — its documents must not be forgotten', () => {
     const client = spawnLspClient({
+      id: 'test',
       command: [process.execPath, FAKE],
       rootDir: tmpdir(),
       onDiagnostics: () => {},

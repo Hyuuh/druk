@@ -10,6 +10,7 @@ import { ui } from '../themes'
 import { SettingEditor } from './SettingEditor'
 import type { SettingEdit } from './SettingEditor'
 import { SettingPicker } from './SettingPicker'
+import { cut } from './text'
 import { TextInput } from './TextInput'
 import { useKeys } from './useKeys'
 
@@ -204,6 +205,13 @@ export function SettingsView(props: SettingsViewProps) {
   }
 
   /**
+   * Columns a row's value may take. Half the pane: every label is fixed text and
+   * shorter than that, so the split costs nothing readable — and the value is
+   * the half that carries paths and commands somebody typed.
+   */
+  const valueRoom = () => Math.max(8, Math.floor(props.width / 2) - 4)
+
+  /**
    * The file the changes land in, plus what the ◆ rows mean — which is not the
    * same thing in the two scopes: here it is "set in this file", on the user's
    * page it is "and the project overrides it anyway".
@@ -299,16 +307,26 @@ export function SettingsView(props: SettingsViewProps) {
                 }}
               >
                 <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
-                <text fg={active() ? ui.text : ui.dim} bg={bg()} content={row.label} />
+                <text
+                  wrapMode="none"
+                  fg={active() ? ui.text : ui.dim}
+                  bg={bg()}
+                  content={row.label}
+                />
                 <box flexGrow={1} backgroundColor={bg()} />
                 <Show when={row.local}>
                   <text fg={ui.accent} bg={bg()} flexShrink={0} content="◆ " />
                 </Show>
+                {/* The value column cannot shrink, and half of what it shows is
+                    typed by the user — a formatter command, a tsdk path. Left
+                    whole, one of those wraps into a column of single characters
+                    and the page's row window stops matching what is drawn. */}
                 <text
+                  wrapMode="none"
                   fg={active() ? ui.accent : ui.text}
                   bg={bg()}
                   flexShrink={0}
-                  content={row.value}
+                  content={cut(row.value, valueRoom())}
                 />
                 <text fg={bg()} bg={bg()} flexShrink={0} content=" " />
               </box>

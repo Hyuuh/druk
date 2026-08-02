@@ -18,6 +18,8 @@ import type { Workspace } from './workspace'
 /** Every controller, assembled once in App and handed to the wiring that spans them. */
 export interface AppContext {
   rootDir: string
+  /** A page or viewer covers the editor's slot, so its textarea takes no keys. */
+  editorCovered: () => boolean
   status: Status
   settings: Settings
   tree: Tree

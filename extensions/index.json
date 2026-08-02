@@ -152,6 +152,24 @@
       }
     },
     {
+      "id": "eslint",
+      "name": "ESLint",
+      "version": "1.0.0",
+      "description": "ESLint diagnostics from the project's own eslint, beside whatever language server is already serving the file.",
+      "provides": {
+        "themes": [],
+        "icons": [],
+        "filetypes": [
+          "typescript",
+          "typescriptreact",
+          "javascript",
+          "javascriptreact",
+          "vue",
+          "svelte"
+        ]
+      }
+    },
+    {
       "id": "everforest",
       "name": "Everforest",
       "version": "1.0.0",

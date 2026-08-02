@@ -166,8 +166,34 @@ export function App(props: {
     editor,
   })
 
+  /** The active tab when it is an image — a viewer page covers the editor slot. */
+  const activeImage = () => {
+    const path = workspace.activePath()
+    return path && isImagePath(path) ? path : null
+  }
+
+  const activePdf = () => {
+    const path = workspace.activePath()
+    return path && isPdfPath(path) ? path : null
+  }
+
+  /**
+   * A page or a viewer is drawn over the editor's slot, so the textarea is neither
+   * focused nor taking keys. Read in three places that must agree: EditorPane's
+   * `focused` and `blocked`, and the Ctrl+C owner in `keyboard.ts` — where a
+   * disagreement left the key belonging to a textarea that had stopped listening.
+   */
+  const editorCovered = () =>
+    workspace.diff() !== null ||
+    workspace.page() !== null ||
+    comparison.detailOpen() ||
+    activeImage() !== null ||
+    activePdf() !== null ||
+    workspace.renderedPath() !== null
+
   const ctx: AppContext = {
     rootDir,
+    editorCovered,
     status,
     settings,
     tree,
@@ -264,17 +290,6 @@ export function App(props: {
   const serverList = createMemo(() =>
     Object.values(lsp.servers).toSorted((a, b) => a.id.localeCompare(b.id)),
   )
-
-  /** The active tab when it is an image — a viewer page covers the editor slot. */
-  const activeImage = () => {
-    const path = workspace.activePath()
-    return path && isImagePath(path) ? path : null
-  }
-
-  const activePdf = () => {
-    const path = workspace.activePath()
-    return path && isPdfPath(path) ? path : null
-  }
 
   const closeComparisonDetail = () => {
     comparison.closeDetail()
@@ -570,15 +585,7 @@ export function App(props: {
             // terminal's own cursor tracks the focused textarea and is drawn
             // over everything, so a focused editor bleeds a phantom block into
             // whatever page sits on top.
-            focused={
-              panes.focus() === 'editor' &&
-              !workspace.diff() &&
-              !workspace.page() &&
-              !comparison.detailOpen() &&
-              !activeImage() &&
-              !activePdf() &&
-              !workspace.renderedPath()
-            }
+            focused={panes.focus() === 'editor' && !editorCovered()}
             reloadKey={editor.reloadKey()}
             goto={editor.goto()}
             history={editor.history()}
@@ -612,15 +619,7 @@ export function App(props: {
             notice={workspace.notice()}
             // The diff is a page over this pane, not an overlay — but the hidden
             // textarea must still not eat keys meant for it.
-            blocked={
-              overlays.overlay() ||
-              workspace.diff() !== null ||
-              workspace.page() !== null ||
-              comparison.detailOpen() ||
-              activeImage() !== null ||
-              activePdf() !== null ||
-              workspace.renderedPath() !== null
-            }
+            blocked={overlays.overlay() || editorCovered()}
             onChange={workspace.onEditorChange}
             onCursor={editor.setCursor}
             onFocus={() => panes.setFocus('editor')}

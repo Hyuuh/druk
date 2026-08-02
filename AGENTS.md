@@ -56,7 +56,12 @@ nothing requires hand-editing config.json, project-local settings in
 `<project>/.druk/settings.json` that override the user's own key by key (VS Code's
 arrangement: palette → "Settings: this project", or Tab on the page to swap files;
 overridden rows are marked ◆ and Backspace resets one), LSP diagnostics from the user's own
-language servers (gutter marks, dots on a track beside the scrollbar — errors
+language servers — a filetype may have several and every one of them is spawned,
+synced and merged into one list of marks, which is how a linter (`extensions/eslint`,
+`vscode-eslint-language-server`) reports beside the language server already serving
+the file; a feature request goes to each in turn and keeps the first real answer,
+since load order cannot say which of them answers completions —
+(gutter marks, dots on a track beside the scrollbar — errors
 and warnings only, left of the git track and deliberately a different glyph —
 inline message text after the line, status-bar
 counts, a problems list in the palette, spans given a faint severity tint — no
@@ -313,7 +318,7 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | a `languages` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `grammar` is `{"vendored": "<key in src/languages/grammars.ts>"}` for one druk embeds, `{"bundled": true}` for one OpenTUI carries, or `{"wasm": "…", "query": "…"}` for files in the extension folder. `patterns` are `{group, re, flags}` (regex as a string) for a format with no usable grammar; `extensions` / `filenames` / `filenamePattern` claim the names OpenTUI resolves none of. Adding a *vendored* grammar is still a source change: two static imports in `src/languages/grammars.ts` |
-| language server | a `languageServers` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `install` is `{"kind": "npm", "packages": […]}` or `{"kind": "download", "urls": {"<platform>-<arch>": "…"}}` when druk can fetch it itself, and `{"kind": "manual", "command": "…"}` for a line to print — a `download` carries a `command` too, for the machines the release has no build for; users override per-server with the `lspServers` setting, which can only *replace* a command some extension declared. A server whose command depends on what the project installed goes in `projectCommand` (`src/lsp/project.ts`) instead, which every server consults first — that part is code, and stays in `src/` |
+| language server | a `languageServers` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `install` is `{"kind": "npm", "packages": […]}` or `{"kind": "download", "urls": {"<platform>-<arch>": "…"}}` when druk can fetch it itself, and `{"kind": "manual", "command": "…"}` for a line to print — a `download` carries a `command` too, for the machines the release has no build for; `settings` is the server's own configuration object, passed through unvalidated (it is the *server's* shape, not druk's) and given to it both ways the protocol offers — answered to every `workspace/configuration` item and pushed once as `didChangeConfiguration`. Several servers may claim one filetype and all of them are spawned; users override per-server with the `lspServers` setting, which can only *replace* a command some extension declared (an empty one disables that server alone). A server whose command depends on what the project installed goes in `projectCommand` (`src/lsp/project.ts`) instead, which every server consults first — that part is code, and stays in `src/` |
 | PDF viewer | rendering in `src/core/pdf.ts`, UI in `src/ui/PdfView.tsx`, and bufferless routing in `src/app/workspace.ts` |
 | theme | a `themes` entry in a market manifest — `extensions/<family>/extension.json`, one extension per palette family (catppuccin carries its four flavors), then `bun run extensions`. Only `dark` and `light` are built in, in `src/themes/`, because the defaults name them. Chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there and are never listed by a theme |
 | icon theme | an `icons` entry in a market manifest — one codepoint per glyph, since the tree gives it the arrow's single column, and a two-cell glyph is dropped rather than drawn. `unicode` alone is built in (`src/icons/index.ts`), being the set any font already has |
@@ -468,6 +473,17 @@ Some OpenTUI element names are snake_case (`line_number` is the one druk uses).
   with a comment saying why (`afterResize` and `ignoreScrollOutsideBounds` in
   `src/ui/EditorPane.tsx` are the pattern) — never spell casts out mid-expression in
   component or logic code.
+- **Cut anything the user's own words reach to the columns it has.** OpenTUI's `<text>`
+  wraps by word unless told otherwise, so a branch named after an issue title, a path, a
+  commit subject or a server's diagnostic does not overflow quietly — it grows its row to
+  two, five, ninety lines and takes the panel's layout with it, and a fixed-height header
+  loses whatever it pushed past the last row. `cut()` in `src/ui/text.ts` fits a string to
+  a budget (`wrapText` there is for the modals that show a whole message); `wrapMode="none"`
+  on a one-line row is the backstop that makes a missed case a clipped string rather than a
+  broken panel. A column that cannot shrink (`flexShrink={0}`) needs both, and needs to
+  carry its own leading space — at the widths where both sides are cut there is no slack
+  left to space them apart. `test/long-names.test.tsx` draws those surfaces at a hostile
+  length; add to it rather than trusting a type.
 - Prefer the smallest change that fits the surrounding code; match its idiom.
 - Formatting and lint are enforced by oxfmt/oxlint — run them rather than hand-aligning.
 - Keep modules focused; if a file is becoming a grab bag, split it along feature lines.

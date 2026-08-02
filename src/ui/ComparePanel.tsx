@@ -5,6 +5,7 @@ import type { BranchComparison, ComparisonCommit, ComparisonFile } from '../core
 import { ui } from '../themes'
 import { diffMark, diffStatusColor } from './DiffView'
 import { createScrollList, rowBg, scrollbarOptions } from './list'
+import { cut } from './text'
 
 export interface ComparePanelProps {
   state: 'idle' | 'loading' | 'ready' | 'empty' | 'error'
@@ -36,6 +37,9 @@ export function ComparePanel(props: ComparePanelProps) {
   const visibleCommits = createMemo(() =>
     props.mode === 'commits' ? props.commits.slice(list.window().start, list.window().end) : [],
   )
+  /** Columns the header rows have, after the panel's own left padding. */
+  const room = () => Math.max(8, props.width - 2)
+
   const summary = () => {
     const comparison = props.comparison
     if (!comparison) return ''
@@ -54,18 +58,23 @@ export function ComparePanel(props: ComparePanelProps) {
       flexBasis={0}
       onMouseDown={() => props.onFocus()}
     >
+      {/* Five rows and five texts: a branch name allowed to wrap takes the rows
+          under it with it, and the header is a fixed height, so what it pushes
+          past the fifth row is simply gone. */}
       <box height={5} flexDirection="column" backgroundColor={ui.sidebarBg} paddingLeft={2}>
         <text
+          wrapMode="none"
           fg={props.focused ? ui.text : ui.dim}
           bg={ui.sidebarBg}
-          content={props.comparison?.compare.name ?? 'branch comparison'}
+          content={cut(props.comparison?.compare.name ?? 'branch comparison', room())}
           attributes={TextAttributes.BOLD}
         />
         <text fg={ui.faint} bg={ui.sidebarBg} content="compare" />
         <text
+          wrapMode="none"
           fg={ui.dim}
           bg={ui.sidebarBg}
-          content={`base  ${props.comparison?.base.name ?? 'loading…'}`}
+          content={`base  ${cut(props.comparison?.base.name ?? 'loading…', room() - 6)}`}
         />
         <text fg={ui.dim} bg={ui.sidebarBg} content={summary()} />
         <text
@@ -114,11 +123,19 @@ export function ComparePanel(props: ComparePanelProps) {
                       backgroundColor={bg()}
                       onMouseDown={() => props.onActivate(index())}
                     >
-                      <text fg={ui.text} bg={bg()} content={` ${commit.subject}`} flexGrow={1} />
+                      <text
+                        wrapMode="none"
+                        fg={ui.text}
+                        bg={bg()}
+                        content={` ${commit.subject}`}
+                        flexGrow={1}
+                      />
+                      {/* The gap is this column's, not slack in the subject's box:
+                          a subject long enough to fill the row leaves none. */}
                       <text
                         fg={ui.faint}
                         bg={bg()}
-                        content={`${commit.shortOid} `}
+                        content={` ${commit.shortOid} `}
                         flexShrink={0}
                       />
                     </box>
@@ -140,8 +157,14 @@ export function ComparePanel(props: ComparePanelProps) {
                     backgroundColor={bg()}
                     onMouseDown={() => props.onActivate(index())}
                   >
-                    <text fg={ui.text} bg={bg()} content={` ${file.path}`} flexGrow={1} />
-                    <text fg={ui.faint} bg={bg()} content={`${totals()} `} flexShrink={0} />
+                    <text
+                      wrapMode="none"
+                      fg={ui.text}
+                      bg={bg()}
+                      content={` ${file.path}`}
+                      flexGrow={1}
+                    />
+                    <text fg={ui.faint} bg={bg()} content={` ${totals()} `} flexShrink={0} />
                     <text
                       fg={diffStatusColor(file.status)}
                       bg={bg()}

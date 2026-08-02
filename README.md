@@ -236,6 +236,11 @@ Bash and about fifteen more are one install away, each bringing its language ser
 with it.
 Themes beyond the GitHub pair and the Nerd Font icons are there too.
 
+A language may have more than one server, and druk runs all of them — so the
+**ESLint** extension reports beside whichever language server is already serving the
+file, the way eslint sits beside tsserver in VS Code. It uses the project's own
+`node_modules` copy when there is one.
+
 `Ctrl+Opt+X` opens the extensions panel — the sidebar's third view, beside Files and
 Git. `INSTALLED` lists what you have: `Enter` turns one off and back on, `Backspace`
 uninstalls one.

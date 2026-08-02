@@ -134,7 +134,10 @@ export function LspStatusView(props: LspStatusViewProps) {
                   flexShrink={0}
                   content={`${server.id} · ${stateLabel(server)}`}
                 />
+                {/* A row each: a server command is a path somebody configured,
+                    and wrapping one pushes the log below it down the page. */}
                 <text
+                  wrapMode="none"
                   fg={ui.dim}
                   content={` · ${server.docs.length} open · ${server.command.join(' ')}`}
                 />

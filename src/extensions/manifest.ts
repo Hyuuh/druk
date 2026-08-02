@@ -204,7 +204,18 @@ function parseServer(raw: unknown, fail: (reason: string) => void): ServerSpec |
     return null
   }
   const install = parseInstall(raw.install)
-  return install ? { id, command, filetypes, install } : { id, command, filetypes }
+  // Any object, unvalidated on purpose: this is the *server's* settings shape,
+  // not druk's, and the manifest is the only thing that knows it. Rejecting a
+  // key druk has never heard of would mean a druk release for every server
+  // option — the opposite of what a data extension is for.
+  const settings = isRecord(raw.settings) ? raw.settings : undefined
+  return {
+    id,
+    command,
+    filetypes,
+    ...(install ? { install } : null),
+    ...(settings ? { settings } : null),
+  }
 }
 
 /** A relative path inside the extension's own folder — never an escape from it. */

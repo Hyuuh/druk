@@ -3,8 +3,9 @@ import { useTerminalDimensions } from '@opentui/solid'
 import { createSignal, For } from 'solid-js'
 
 import { ui } from '../themes'
-import { modalWidth, PAD, wrapText } from './modal'
+import { modalWidth, PAD } from './modal'
 import { ModalPanel } from './Overlay'
+import { cut, wrapText } from './text'
 import { useKeys } from './useKeys'
 
 export interface Choice {
@@ -56,7 +57,15 @@ export function ChoiceModal(props: ChoiceModalProps) {
             <box flexDirection="row" backgroundColor={bg()}>
               <text fg={ui.dirty} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
               <box flexGrow={1} backgroundColor={bg()}>
-                <text fg={active() ? ui.text : ui.dim} bg={bg()} content={choice.label} />
+                {/* One row each, whatever the label says. The problems list puts a
+                    server's own diagnostic text here, and fifty of those wrapped
+                    to three lines apiece is a modal several screens tall. */}
+                <text
+                  wrapMode="none"
+                  fg={active() ? ui.text : ui.dim}
+                  bg={bg()}
+                  content={cut(choice.label, width() - PAD * 2 - 2)}
+                />
               </box>
             </box>
           )
