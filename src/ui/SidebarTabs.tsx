@@ -3,22 +3,29 @@ import { For } from 'solid-js'
 
 import { ui } from '../themes'
 
-export type SidebarView = 'files' | 'git'
+export type SidebarView = 'files' | 'git' | 'extensions'
 
 export interface SidebarTabsProps {
   view: SidebarView
   /** The sidebar holds the keyboard: the pressed button fills brighter with it. */
   focused: boolean
+  /** Columns the strip has. Narrower than the names need, it falls to initials. */
+  width: number
   onSelect: (view: SidebarView) => void
 }
 
-const TABS: { id: SidebarView; label: string }[] = [
-  { id: 'files', label: 'Files' },
-  { id: 'git', label: 'Git' },
+const TABS: { id: SidebarView; label: string; short: string }[] = [
+  { id: 'files', label: 'Files', short: 'F' },
+  { id: 'git', label: 'Git', short: 'G' },
+  { id: 'extensions', label: 'Ext', short: 'E' },
 ]
 
+/** A button costs its label plus a column of padding either side and one of gutter. */
+const stripWidth = (labels: string[]) =>
+  1 + labels.reduce((sum, label) => sum + label.length + 3, 0)
+
 /**
- * The sidebar's two views as a row of buttons: the one on screen is the pressed
+ * The sidebar's views as a row of buttons: the one on screen is the pressed
  * one, filled the way the status bar fills — `statusBg`/`statusFg` is the only
  * pair in the palette guaranteed to be legible together in every theme, which an
  * accent-on-panel guess is not.
@@ -29,6 +36,9 @@ const TABS: { id: SidebarView; label: string }[] = [
  * changes mid-way would move the divider the resize code and its tests look for.
  */
 export function SidebarTabs(props: SidebarTabsProps) {
+  // Initials beside a narrow sidebar, as the settings page's hints do it: the
+  // strip cannot wrap, and overflowing it paints the buttons over the editor.
+  const long = () => stripWidth(TABS.map(tab => tab.label)) <= props.width
   return (
     <box height={1} flexDirection="row" flexShrink={0} backgroundColor={ui.barBg}>
       <box width={1} flexShrink={0} backgroundColor={ui.barBg} />
@@ -53,7 +63,7 @@ export function SidebarTabs(props: SidebarTabsProps) {
                 <text
                   fg={fg()}
                   bg={bg()}
-                  content={tab.label}
+                  content={long() ? tab.label : tab.short}
                   attributes={active() ? TextAttributes.BOLD : undefined}
                 />
               </box>

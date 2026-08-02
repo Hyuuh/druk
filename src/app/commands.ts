@@ -96,6 +96,8 @@ export interface CommandActions {
   gitDeleteBranch: () => void
   gitDeleteBranchForce: () => void
   openExtensions: () => void
+  reloadExtensions: () => void
+  updateExtensions: () => void
   checkExtensionUpdates: () => void
   showHelp: () => void
   quit: () => void
@@ -353,14 +355,30 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         },
       ],
     },
-    // A page rather than a submenu: installing, disabling, uninstalling and
-    // updating are all one list of the same things, and a palette that walks in
-    // and out of itself between them reads as four unrelated commands.
-    { id: 'extensions', label: 'Extensions', run: actions.openExtensions },
     {
-      id: 'extensions.check',
-      label: 'Check for extension updates',
-      run: actions.checkExtensionUpdates,
+      id: 'extensions',
+      label: 'Extensions',
+      children: [
+        // A sidebar view rather than a submenu of its own: installing, disabling
+        // and uninstalling are one list of the same things, and a palette that
+        // walks in and out of itself between them reads as three unrelated
+        // commands. What is left here is what has no row in that list.
+        {
+          id: 'extensions.panel',
+          label: 'Extensions panel',
+          hint: `Ctrl+${ALT}+X`,
+          run: actions.openExtensions,
+        },
+        {
+          id: 'extensions.check',
+          label: 'Check for extension updates',
+          run: actions.checkExtensionUpdates,
+        },
+        { id: 'extensions.update', label: 'Update extensions', run: actions.updateExtensions },
+        // Manifests are read once, at startup — this is how a theme being
+        // written is seen without restarting the editor.
+        { id: 'extensions.reload', label: 'Reload extensions', run: actions.reloadExtensions },
+      ],
     },
     // Vim, tab size, trim, auto-save and the rest live on the settings page —
     // the palette carries features, not configuration. Themes stay above for

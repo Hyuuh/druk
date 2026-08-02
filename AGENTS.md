@@ -119,20 +119,20 @@ and is data rather than code, so installing one runs nothing and the compiled
 binary needs no loader; `disabledExtensions` shelves one without deleting it,
 and a malformed manifest costs its extension that one contribution and is
 reported on startup),
-an extensions page (palette → Extensions) built the way the settings page is —
-a full-slot page of sections, `/` to filter the rows: **Installed** lists every
-manifest with what it contributes, Enter enabling or disabling one and Backspace
-uninstalling one that is not built in; **Available** is the market minus what is
-already there, behind one `Browse the market` row that opens a filterable list of
-its own (the page's `/` is the *page's* filter — dozens of catalog entries as page
-rows would bury what is installed, and one key doing both jobs reads as a bug), a
-pick raising the install confirm; **Market** holds the update check, the
-startup-check switch and the registry URL. Nothing about extensions is on the
-settings page,
+an extensions panel — the sidebar's third view beside Files and Git
+(`Ctrl+Opt+X`, palette → Extensions → Extensions panel, or the `Ext` tab; Shift+Tab
+cycles the three, and the strip falls to initials where the names do not fit):
+`INSTALLED` lists every manifest, Enter turning one on or off and Backspace
+uninstalling one that is not built in, `AVAILABLE` is the market minus what is
+already there and starts *folded* — the catalog is dozens of entries above what
+you have — with → or Enter to open it and `/` to search both sections at once, a
+search landing the cursor on its first hit so the Enter after it installs;
+`u` updates everything and `r` re-reads the manifests. Only the two that are
+settings — the startup check and the registry URL — are on the settings page,
 an extension market — `extensions/` **in this repository**, one folder per extension, served
 raw from `main`, so a merged pull request is installable without a druk release;
-the extensions page's Available section installs one after a confirm that names
-the commands it would have druk spawn, an installed extension with a newer version in the
+the panel's `AVAILABLE` section installs one after a confirm that names the
+commands it would have druk spawn, an installed extension with a newer version in the
 catalog is reported in the status bar at startup, a file whose language no
 installed extension serves offers the extension that does, and a config naming a theme
 nothing registers is offered its extension back (`extensionUpdates` turns the whole of
@@ -321,7 +321,8 @@ dependency rule, and recipes for the extension points:
 | keybinding | a row in `BINDABLE` (`src/app/keymap.ts`) plus a handler under the same id in `src/app/keyboard.ts` — or, for an editor-only key, `src/ui/EditorPane.tsx` — advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Ctrl+K peek and the welcome screen), with the row's `ids` naming the commands it spells out |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
 | market extension | a folder under `extensions/` holding `extension.json`, then `bun run extensions` to regenerate `extensions/index.json` — `test/extensions-repo.test.ts` fails when the committed index is stale, and bumping the manifest `version` is what makes installed copies see an update |
-| row on the extensions page | one of the three section builders in `src/app/extensionsPage.ts`; `src/ui/ExtensionsView.tsx` draws whatever they return and owns nothing but the selection. A row that needs free text hands an edit back from `activate`, the way a setting's `select` does |
+| row in the extensions panel | `src/app/extensionsPanel.ts` (the row model, the cursor, the fold state and what Enter does); `src/ui/ExtensionsPanel.tsx` draws whatever `rows()` returns and reports clicks, and the keys live in `src/app/keyboard.ts` beside the tree's and the git panel's |
+| sidebar view | `SidebarView` in `src/ui/SidebarTabs.tsx` (add a `short` initial — the strip falls back to those in a narrow sidebar), a branch in `App.tsx`'s sidebar, one in `keyboard.ts`'s pane switch, a `KeyScope` in `src/ui/keys.ts` with a `SCOPE_LABELS` entry in `KeyPeek.tsx`, and a `toggle…View` on `src/app/panes.ts` |
 | branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
 
 Key handlers subscribe through `useKeys` (`src/ui/useKeys.ts`), never OpenTUI's

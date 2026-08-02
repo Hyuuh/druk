@@ -38,10 +38,10 @@ scripts/
     branches.ts      branch picker state + the switch/create/merge/rename/delete runs
     comparison.ts    branch-comparison state and its OID-keyed caches
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
-    panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
+    panes.ts         focus, sidebar visibility, which view it shows (files/git/extensions)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
     market.ts        the market as the editor sees it: updates, offers, installs
-    extensionsPage.ts  the extensions page's rows: installed, available, market
+    extensionsPanel.ts the sidebar's extensions view: rows, cursor, fold state
     lsp.ts           language servers: spawn per language, sync buffers, diagnostics,
                      completion requests (flushing the didChange debounce first)
     settings.ts      the two config layers (user / project) resolved into one store,
@@ -108,7 +108,7 @@ scripts/
     EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
     SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
     SearchPanel, DiffView, ImageView, PdfView, SettingsView, SettingEditor,
-    SettingPicker, ExtensionsView, LspStatusView, UpdateBanner,
+    SettingPicker, ExtensionsPanel, LspStatusView, UpdateBanner,
     Overlay, TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
     modal.ts         modal geometry: width, list rows, text wrapping
     list.ts          list behaviour: windowing, panel scroll, picker keys, row colour

@@ -105,7 +105,7 @@ the market's copy of one replaces the built-in, which is how it gets an update.
 ## Testing yours before it is merged
 
 Drop the folder straight into `$XDG_CONFIG_HOME/druk/extensions/` (usually
-`~/.config/druk/extensions/`) and press the extensions page's `Reload from disk` row.
+`~/.config/druk/extensions/`) and press `r` in the extensions panel.
 That path needs no registry at all, which is why `extensionRegistry` is only worth
 changing when you are serving a whole fork.
 

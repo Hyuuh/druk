@@ -317,39 +317,43 @@ test('an extension theme is in the palette and the settings page', async () => {
   expect(t.captureCharFrame()).toContain('Neon')
 })
 
-test('the extensions page lists what is installed and turns one off', async () => {
+test('the sidebar panel lists what is installed and turns one off', async () => {
   install(MANIFEST)
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   loadExtensions(dir)
-  const t = await launch(dir, {}, { height: 60 })
+  const t = await launch(dir, {}, { height: 40 })
 
-  await runCommand(t, 'Extensions')
+  await runCommand(t, 'Extensions panel')
   await settle(t)
   expect(t.captureCharFrame()).toContain('Test Pack')
-  expect(t.captureCharFrame()).toContain('✓ 2.1.0')
+  expect(t.captureCharFrame()).toContain('✓ Test Pack')
 
-  // The filter is how a test reaches one row without counting the preinstalled
-  // ones, which adding a shipped extension would silently change.
+  // The search is how a test reaches one row without counting the preinstalled
+  // ones, which adding a shipped extension would silently change — and it lands
+  // the cursor on the hit, so the Enter after it is the toggle.
   await press(t, input => void input.typeText('/'))
   await press(t, input => void input.typeText('Test Pack'))
   await press(t, input => input.pressEnter())
   await settle(t)
-  expect(t.captureCharFrame()).toContain('✗ 2.1.0')
+  expect(t.captureCharFrame()).toContain('✗ Test Pack')
 })
 
-test('the extensions page offers the market what it has not installed', async () => {
+test("the panel is the sidebar's third view, beside files and git", async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
-  const t = await launch(dir, {}, { height: 60 })
+  const t = await launch(dir, {}, { height: 40 })
 
-  await runCommand(t, 'Extensions')
+  const tabs = t.captureCharFrame()
+  expect(tabs).toContain('Files')
+  expect(tabs).toContain('Git')
+  expect(tabs).toContain('Ext')
+
+  await runCommand(t, 'Extensions panel')
   await settle(t)
-  const frame = t.captureCharFrame()
-  expect(frame).toContain('Installed')
-  expect(frame).toContain('Available')
-  expect(frame).toContain('Market')
-  // Nothing has been fetched in a test, so the market section says so rather
-  // than looking like an empty catalog.
-  expect(frame).toContain('Nothing fetched yet')
+  const panel = t.captureCharFrame()
+  expect(panel).toContain('extensions')
+  expect(panel).toContain('INSTALLED')
+  // The market has not been read in a test, so there is nothing to offer.
+  expect(panel).toContain('AVAILABLE')
 })
 
 test('every icon glyph druk ships is one cell wide', () => {

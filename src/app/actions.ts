@@ -386,13 +386,10 @@ export function createCommands(ctx: AppContext) {
     gitRenameBranch: () => ctx.branches.open('rename'),
     gitDeleteBranch: () => ctx.branches.open('delete'),
     gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
-    openExtensions: () => {
-      // One page at a time: the slot under this one is the editor's.
-      ctx.workspace.setDiff(null)
-      ctx.workspace.setPage('extensions')
-      panes.setFocus('editor')
-    },
-    checkExtensionUpdates: () => void ctx.market.checkNow(),
+    openExtensions: panes.toggleExtensionsView,
+    reloadExtensions: ctx.extensions.reload,
+    updateExtensions: ctx.extensions.updateAll,
+    checkExtensionUpdates: ctx.extensions.checkNow,
     showHelp: () => ctx.overlays.setHelp(true),
     quit: ctx.prompts.quit,
   }

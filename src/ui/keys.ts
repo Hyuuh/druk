@@ -18,9 +18,10 @@ import { createSignal } from 'solid-js'
 
 type Pane = 'tree' | 'editor'
 
-/** The panes plus the sidebar's other view: the source-control panel replaces the
- * tree's keys while it shows, so the peek strip has to tell the two apart. */
-export type KeyScope = Pane | 'git'
+/** The panes plus the sidebar's other views: the source-control and extensions
+ * panels replace the tree's keys while they show, so the peek strip has to tell
+ * them apart. */
+export type KeyScope = Pane | 'git' | 'extensions'
 
 /** What the key next to the space bar is called on this machine's keyboard. */
 export const ALT = process.platform === 'darwin' ? 'Opt' : 'Alt'
@@ -240,11 +241,35 @@ export const KEYS: KeyInfo[] = [
   // `test/help-scroll.test.tsx` measures exactly that.
   {
     key: 'Tab / Shift+Tab',
-    label: 'Tree → editor · Files ↔ Git',
+    label: 'Tree → editor · walk views',
     section: 'View',
     where: 'all',
   },
   { key: 'Esc', label: 'Editor → tree', section: 'View', where: 'editor' },
+
+  // Last, so the sections above keep the rows they had: the help table only just
+  // fits a 60-row terminal and its tests measure the window from the top.
+  {
+    key: `Ctrl+${ALT}+X`,
+    label: 'Extensions panel',
+    section: 'Extensions',
+    where: 'all',
+    ids: ['view.extensions'],
+  },
+  // Short labels on purpose, as the source-control rows are: the help table only
+  // just fits a 60-row terminal, and a wrapped label costs it a second row.
+  {
+    key: 'Enter · →←',
+    label: 'On/off or install · fold',
+    section: 'Extensions',
+    where: 'extensions',
+  },
+  {
+    key: '/ · Bksp · u',
+    label: 'Find · uninstall · update',
+    section: 'Extensions',
+    where: 'extensions',
+  },
 ]
 
 /** One bindable command's effective key, as `src/app/keymap.ts` resolved it. */

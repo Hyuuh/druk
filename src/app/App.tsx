@@ -22,7 +22,7 @@ import { ComparisonView } from '../ui/ComparisonView'
 import { DiffView } from '../ui/DiffView'
 import type { DiffFile } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
-import { ExtensionsView } from '../ui/ExtensionsView'
+import { ExtensionsPanel } from '../ui/ExtensionsPanel'
 import { FileTree } from '../ui/FileTree'
 import { GitPanel } from '../ui/GitPanel'
 import { ImageView } from '../ui/ImageView'
@@ -38,7 +38,7 @@ import { createBranches } from './branches'
 import { createComparison } from './comparison'
 import type { AppContext } from './context'
 import { createEditorBridge } from './editor'
-import { createExtensionsPage } from './extensionsPage'
+import { createExtensionsPanel } from './extensionsPanel'
 import { createFileOps } from './fileOps'
 import { createGit, createGitOp, wireGitEffects } from './git'
 import { installKeyboard } from './keyboard'
@@ -118,7 +118,7 @@ export function App(props: {
   const promptState = createPromptState()
   const lsp = createLsp({ rootDir, settings, status, prompts: promptState })
   const market = createMarket({ rootDir, settings, status, prompts: promptState })
-  const extensionsPage = createExtensionsPage({ settings, market, status })
+  const extensionsPanel = createExtensionsPanel({ settings, market, status })
   // A file whose language no installed extension serves is the market's cue.
   lsp.onMissingServer(market.suggestForFiletype)
   // Also on the quit path: the renderer tears the root down before exiting, and
@@ -177,6 +177,7 @@ export function App(props: {
     gitOp,
     lsp,
     market,
+    extensions: extensionsPanel,
     branches,
     comparison,
     workspace,
@@ -438,36 +439,48 @@ export function App(props: {
             <SidebarTabs
               view={panes.view()}
               focused={panes.focus() === 'tree'}
+              width={settings.treeWidth()}
               onSelect={view => panes.showView(view)}
             />
-            <Show
-              when={panes.view() === 'git'}
-              fallback={
-                <FileTree
-                  rootName={basename(rootDir) || rootDir}
-                  nodes={tree.nodes()}
-                  selectedPath={tree.selectedPath()}
-                  expanded={tree.expanded()}
-                  focused={panes.focus() === 'tree'}
-                  width={settings.treeWidth()}
-                  gitStatus={git.gitStatus()}
-                  gitIgnored={git.gitIgnored()}
-                  cutPaths={fileOps.cut()}
-                  markedPaths={tree.marked()}
-                  iconTheme={config.iconTheme}
-                  onActivate={node => {
-                    // Landing in a file is how a page closes — the tree stays
-                    // interactive while one is up, like any other editor page.
-                    workspace.setDiff(null)
-                    workspace.setPage(null)
-                    workspace.activateNode(node)
-                  }}
-                  onPin={node => workspace.pinTab(node.path)}
-                  onFocus={() => panes.setFocus('tree')}
-                  onCollapseAll={tree.collapseAll}
-                />
-              }
-            >
+            <Show when={panes.view() === 'extensions'}>
+              <ExtensionsPanel
+                rows={extensionsPanel.rows()}
+                cursor={extensionsPanel.cursor()}
+                installedCount={extensionsPanel.installedCount()}
+                query={extensionsPanel.query()}
+                focused={panes.focus() === 'tree'}
+                width={settings.treeWidth()}
+                onFocus={() => panes.setFocus('tree')}
+                onSearch={extensionsPanel.search}
+                onActivate={extensionsPanel.activate}
+              />
+            </Show>
+            <Show when={panes.view() === 'files'}>
+              <FileTree
+                rootName={basename(rootDir) || rootDir}
+                nodes={tree.nodes()}
+                selectedPath={tree.selectedPath()}
+                expanded={tree.expanded()}
+                focused={panes.focus() === 'tree'}
+                width={settings.treeWidth()}
+                gitStatus={git.gitStatus()}
+                gitIgnored={git.gitIgnored()}
+                cutPaths={fileOps.cut()}
+                markedPaths={tree.marked()}
+                iconTheme={config.iconTheme}
+                onActivate={node => {
+                  // Landing in a file is how a page closes — the tree stays
+                  // interactive while one is up, like any other editor page.
+                  workspace.setDiff(null)
+                  workspace.setPage(null)
+                  workspace.activateNode(node)
+                }}
+                onPin={node => workspace.pinTab(node.path)}
+                onFocus={() => panes.setFocus('tree')}
+                onCollapseAll={tree.collapseAll}
+              />
+            </Show>
+            <Show when={panes.view() === 'git'}>
               <Show
                 when={comparison.active()}
                 fallback={
@@ -663,18 +676,6 @@ export function App(props: {
                 scope={settings.scope()}
                 onToggleScope={settings.toggleScope}
                 configFile={settings.configFile()}
-                width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
-                focused={panes.focus() === 'editor'}
-                blocked={overlays.overlay()}
-                onFocus={() => panes.setFocus('editor')}
-                onClose={() => workspace.setPage(null)}
-              />
-            </box>
-          </Show>
-          <Show when={workspace.page() === 'extensions'}>
-            <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={60}>
-              <ExtensionsView
-                rows={extensionsPage.rows()}
                 width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
                 focused={panes.focus() === 'editor'}
                 blocked={overlays.overlay()}

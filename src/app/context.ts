@@ -1,6 +1,7 @@
 import type { Branches } from './branches'
 import type { Comparison } from './comparison'
 import type { EditorBridge } from './editor'
+import type { ExtensionsPanel } from './extensionsPanel'
 import type { FileOps } from './fileOps'
 import type { Git, GitOp } from './git'
 import type { Lsp } from './lsp'
@@ -26,6 +27,7 @@ export interface AppContext {
   gitOp: GitOp
   lsp: Lsp
   market: Market
+  extensions: ExtensionsPanel
   branches: Branches
   comparison: Comparison
   workspace: Workspace
