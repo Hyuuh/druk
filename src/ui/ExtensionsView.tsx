@@ -18,9 +18,17 @@ export interface ExtensionRow {
   /** Drawn right-aligned: a version, a state, a setting's value. */
   value: string
   /** Enter. A row may hand back a free-text edit, the way a setting's does. */
-  activate: () => void | SettingEdit
+  activate?: () => void | SettingEdit
   /** Backspace — offered only where there is something to delete. */
   remove?: () => void
+  /**
+   * Drawn only once the filter holds text. The market is dozens of entries the
+   * user did not ask for, and listing them buries what is installed — so it is
+   * reached by searching for it, not by scrolling past it.
+   */
+  searchOnly?: boolean
+  /** Drawn only while the filter is empty, and Enter opens the filter. */
+  startSearch?: boolean
 }
 
 export interface ExtensionsViewProps {
@@ -53,16 +61,23 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   /** Rows the filter leaves, in page order — sorting by score would scramble the sections. */
   const rows = createMemo(() => {
     const q = query().trim()
-    if (!q) return props.rows
+    if (!q) return props.rows.filter(row => !row.searchOnly)
     return props.rows.filter(
-      row => fuzzyScore(`${row.section} ${row.label} ${row.detail ?? ''}`, q) !== null,
+      row =>
+        !row.startSearch &&
+        fuzzyScore(`${row.section} ${row.label} ${row.detail ?? ''}`, q) !== null,
     )
   })
 
   const selected = () => Math.min(index(), Math.max(0, rows().length - 1))
 
   const activate = (row: ExtensionRow) => {
-    const edit = row.activate()
+    if (row.startSearch) {
+      setSearching(true)
+      setIndex(0)
+      return
+    }
+    const edit = row.activate?.()
     if (edit) setEditing(edit)
   }
 

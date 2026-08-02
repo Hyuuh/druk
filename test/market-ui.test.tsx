@@ -17,7 +17,6 @@ import {
   openFile,
   press,
   pressEscape,
-  pressTimes,
   runCommand,
   settle,
   until,
@@ -158,16 +157,16 @@ test('the market is not touched when the setting is off', async () => {
 })
 
 /**
- * Open the extensions page and press the `at`-th row of its Available section.
- * The installed rows come first and there are as many of them as manifests are
- * loaded — counted rather than written out, so preinstalling one more extension
- * does not silently point this at the wrong row.
+ * Open the extensions page and install `name` from its Available section. The
+ * market is behind the filter — a standing list of every entry would bury what
+ * is installed — so searching for it is the only way to reach one, here as for
+ * a user.
  */
-async function openMarketRow(t: Harness, dir: string, at = 0) {
+async function openMarketRow(t: Harness, name: string) {
   await runCommand(t, 'Extensions')
   await settle(t)
-  const installed = loadExtensions(dir).extensions.length
-  await pressTimes(t, installed + at, input => input.pressArrow('down'))
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText(name))
   await press(t, input => input.pressEnter())
 }
 
@@ -178,11 +177,31 @@ test('the extensions page lists the market and installs from it', async () => {
   await runCommand(t, 'Check for extension updates')
   await untilFrame(t, 'Extension market: 2 extensions')
 
-  await openMarketRow(t, dir)
+  await openMarketRow(t, 'gopls')
   await untilFrame(t, 'Extension available')
   await settle(t)
   t.mockInput.pressEnter()
   await untilFrame(t, 'Installed Go 1.1.0')
+})
+
+test('the market is behind the filter, not a standing list', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const t = await launch(dir, { extensionUpdates: true }, { height: 40 })
+
+  await runCommand(t, 'Check for extension updates')
+  await untilFrame(t, 'Extension market: 2 extensions')
+
+  await runCommand(t, 'Extensions')
+  await settle(t)
+  const idle = t.captureCharFrame()
+  expect(idle).toContain('Search the market')
+  expect(idle).not.toContain('gopls')
+
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('gopls'))
+  const searched = t.captureCharFrame()
+  expect(searched).toContain('gopls')
+  expect(searched).not.toContain('Search the market')
 })
 
 test('installing a language extension teaches druk the language, extension and all', async () => {
@@ -195,7 +214,7 @@ test('installing a language extension teaches druk the language, extension and a
 
   await runCommand(t, 'Check for extension updates')
   await untilFrame(t, 'Extension market')
-  await openMarketRow(t, dir, 1)
+  await openMarketRow(t, 'Nim')
   await untilFrame(t, 'Extension available')
   await settle(t)
   t.mockInput.pressEnter()

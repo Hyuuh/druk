@@ -45,6 +45,11 @@ export function createExtensionsPage(deps: { settings: Settings; market: Market;
       }
     })
 
+  /**
+   * The market, minus what is already installed — behind the filter. Every entry
+   * as a standing list would be dozens of rows nobody asked for above the three
+   * that manage what they have, so the section is one row until it is searched.
+   */
   const availableRows = (): ExtensionRow[] => {
     const catalog = market.catalog()
     if (catalog.length === 0) {
@@ -59,25 +64,34 @@ export function createExtensionsPage(deps: { settings: Settings; market: Market;
       ]
     }
     const held = new Set(extensions().map(extension => extension.id))
-    const rows = catalog
-      .filter(entry => !held.has(entry.id))
-      .map(entry => ({
+    const offered = catalog.filter(entry => !held.has(entry.id))
+    if (offered.length === 0) {
+      return [
+        {
+          section: 'Available',
+          label: 'Everything in the market is installed',
+          value: '',
+          activate: () => void market.checkNow(),
+        },
+      ]
+    }
+    return [
+      {
+        section: 'Available',
+        label: 'Search the market',
+        detail: 'by name or by what it adds',
+        value: `${offered.length}`,
+        startSearch: true,
+      },
+      ...offered.map(entry => ({
         section: 'Available',
         label: entry.name,
         detail: entry.description,
         value: entry.version,
         activate: () => market.install(entry.id),
-      }))
-    return rows.length > 0
-      ? rows
-      : [
-          {
-            section: 'Available',
-            label: 'Everything in the market is installed',
-            value: '',
-            activate: () => void market.checkNow(),
-          },
-        ]
+        searchOnly: true,
+      })),
+    ]
   }
 
   const reload = (): void => {
