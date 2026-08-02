@@ -6,6 +6,7 @@ import { fuzzyScore } from '../core/search'
 import { ui } from '../themes'
 import { SettingEditor } from './SettingEditor'
 import type { SettingEdit } from './SettingEditor'
+import { SettingPicker } from './SettingPicker'
 import { TextInput } from './TextInput'
 import { useKeys } from './useKeys'
 
@@ -19,16 +20,18 @@ export interface ExtensionRow {
   value: string
   /** Enter. A row may hand back a free-text edit, the way a setting's does. */
   activate?: () => void | SettingEdit
+  /**
+   * When set, Enter opens a filterable list of its own instead of activating —
+   * the market, which is dozens of entries and has no business as page rows.
+   * The page's `/` filters the page; this searches what the row holds.
+   */
+  select?: {
+    title: string
+    options: string[]
+    pick: (index: number) => void
+  }
   /** Backspace — offered only where there is something to delete. */
   remove?: () => void
-  /**
-   * Drawn only once the filter holds text. The market is dozens of entries the
-   * user did not ask for, and listing them buries what is installed — so it is
-   * reached by searching for it, not by scrolling past it.
-   */
-  searchOnly?: boolean
-  /** Drawn only while the filter is empty, and Enter opens the filter. */
-  startSearch?: boolean
 }
 
 export interface ExtensionsViewProps {
@@ -52,6 +55,8 @@ export interface ExtensionsViewProps {
 export function ExtensionsView(props: ExtensionsViewProps) {
   const dimensions = useTerminalDimensions()
   const [index, setIndex] = createSignal(0)
+  /** The list floating over the page, for the selected row's `select`. */
+  const [picking, setPicking] = createSignal(false)
   /** The text field floating over the page, for a row whose activate edits text. */
   const [editing, setEditing] = createSignal<SettingEdit | null>(null)
   /** The filter field above the rows; absent until `/` opens it. */
@@ -61,30 +66,26 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   /** Rows the filter leaves, in page order — sorting by score would scramble the sections. */
   const rows = createMemo(() => {
     const q = query().trim()
-    if (!q) return props.rows.filter(row => !row.searchOnly)
+    if (!q) return props.rows
     return props.rows.filter(
-      row =>
-        !row.startSearch &&
-        fuzzyScore(`${row.section} ${row.label} ${row.detail ?? ''}`, q) !== null,
+      row => fuzzyScore(`${row.section} ${row.label} ${row.detail ?? ''}`, q) !== null,
     )
   })
 
   const selected = () => Math.min(index(), Math.max(0, rows().length - 1))
+  const selectedRow = () => rows()[selected()]
 
   const activate = (row: ExtensionRow) => {
-    if (row.startSearch) {
-      setSearching(true)
-      setIndex(0)
-      return
-    }
+    if (row.select) return setPicking(true)
     const edit = row.activate?.()
     if (edit) setEditing(edit)
   }
 
   useKeys((key: KeyEvent) => {
     // A page, not a modal: keys count only when this pane holds the focus, and
-    // a chord the global keymap already claimed is not ours to reuse.
-    if (props.blocked || !props.focused || key.defaultPrevented || editing()) return
+    // a chord the global keymap already claimed is not ours to reuse. The value
+    // list owns the keyboard while open — j/k must type into its filter.
+    if (props.blocked || !props.focused || key.defaultPrevented || picking() || editing()) return
     const k = key.name
     const count = Math.max(1, rows().length)
     // While the filter field is up every printable key belongs to it — only the
@@ -280,6 +281,29 @@ export function ExtensionsView(props: ExtensionsViewProps) {
       </For>
 
       <box flexGrow={1} backgroundColor={ui.solidBg} />
+
+      <Show when={picking()}>
+        {(() => {
+          const row = selectedRow()
+          return (
+            <SettingPicker
+              title={row?.select?.title ?? ''}
+              options={row?.select?.options ?? []}
+              // Nothing here is "the value in force" — the list is a catalog to
+              // pick from, not a setting's current answer.
+              activeIndex={-1}
+              paneWidth={props.width}
+              onPick={at => {
+                // Close first: picking rebuilds the rows, and a keyed accessor
+                // read after that tears the popup down mid-handler.
+                setPicking(false)
+                row?.select?.pick(at)
+              }}
+              onClose={() => setPicking(false)}
+            />
+          )
+        })()}
+      </Show>
 
       <Show when={editing()} keyed>
         {(edit: SettingEdit) => (

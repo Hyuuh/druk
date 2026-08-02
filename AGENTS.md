@@ -123,15 +123,16 @@ an extensions page (palette → Extensions) built the way the settings page is �
 a full-slot page of sections, `/` to filter the rows: **Installed** lists every
 manifest with what it contributes, Enter enabling or disabling one and Backspace
 uninstalling one that is not built in; **Available** is the market minus what is
-already there, behind the filter — one `Search the market` row until something is
-typed, since a standing list of every entry would bury what is installed — and
-Enter on a result raises the install confirm; **Market** holds the update check,
-the startup-check switch and the registry URL. Nothing about extensions is on the
+already there, behind one `Browse the market` row that opens a filterable list of
+its own (the page's `/` is the *page's* filter — dozens of catalog entries as page
+rows would bury what is installed, and one key doing both jobs reads as a bug), a
+pick raising the install confirm; **Market** holds the update check, the
+startup-check switch and the registry URL. Nothing about extensions is on the
 settings page,
 an extension market — `extensions/` **in this repository**, one folder per extension, served
 raw from `main`, so a merged pull request is installable without a druk release;
-the extensions page's Available section installs one, once searched for, after a
-confirm that names the commands it would have druk spawn, an installed extension with a newer version in the
+the extensions page's Available section installs one after a confirm that names
+the commands it would have druk spawn, an installed extension with a newer version in the
 catalog is reported in the status bar at startup, a file whose language no
 installed extension serves offers the extension that does, and a config naming a theme
 nothing registers is offered its extension back (`extensionUpdates` turns the whole of

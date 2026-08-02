@@ -239,9 +239,10 @@ Themes beyond the GitHub pair and the Nerd Font icons are there too.
 `F1` → `Extensions` opens a page of its own, the way `Settings` does. **Installed**
 lists every extension with what it contributes — `Enter` turns one off and back on,
 `Backspace` uninstalls one. **Available** is the market minus what you already have —
-`/` searches it, and `Enter` on a result installs one after showing what it adds and,
-for a language server, the command druk would run. It is behind the filter on purpose:
-a standing list of every extension would bury the ones you have. **Market** holds the
+`Enter` on `Browse the market` opens a filterable list of it, and picking one installs
+it after showing what it adds and, for a language server, the command druk would run.
+It is a list of its own on purpose: the page's `/` filters the page, and dozens of
+catalog entries as page rows would bury the extensions you have. **Market** holds the
 update check, the startup-check switch and the registry URL.
 
 druk also offers on its own: open a Go file with no Go extension and it says so, and a

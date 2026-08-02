@@ -158,14 +158,16 @@ test('the market is not touched when the setting is off', async () => {
 
 /**
  * Open the extensions page and install `name` from its Available section. The
- * market is behind the filter — a standing list of every entry would bury what
- * is installed — so searching for it is the only way to reach one, here as for
- * a user.
+ * market is a list of its own behind the `Browse the market` row — the page's
+ * `/` filters the page — so a test walks to that row and filters inside it,
+ * exactly as a user would.
  */
 async function openMarketRow(t: Harness, name: string) {
   await runCommand(t, 'Extensions')
   await settle(t)
   await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('Browse'))
+  await press(t, input => input.pressEnter())
   await press(t, input => void input.typeText(name))
   await press(t, input => input.pressEnter())
 }
@@ -184,7 +186,7 @@ test('the extensions page lists the market and installs from it', async () => {
   await untilFrame(t, 'Installed Go 1.1.0')
 })
 
-test('the market is behind the filter, not a standing list', async () => {
+test('the market is a list of its own, not rows on the page', async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   const t = await launch(dir, { extensionUpdates: true }, { height: 40 })
 
@@ -193,15 +195,23 @@ test('the market is behind the filter, not a standing list', async () => {
 
   await runCommand(t, 'Extensions')
   await settle(t)
-  const idle = t.captureCharFrame()
-  expect(idle).toContain('Search the market')
-  expect(idle).not.toContain('gopls')
+  const page = t.captureCharFrame()
+  expect(page).toContain('Browse the market')
+  expect(page).not.toContain('gopls')
 
+  // The page's own filter is the page's: it finds page rows, never the catalog.
   await press(t, input => void input.typeText('/'))
   await press(t, input => void input.typeText('gopls'))
-  const searched = t.captureCharFrame()
-  expect(searched).toContain('gopls')
-  expect(searched).not.toContain('Search the market')
+  expect(t.captureCharFrame()).toContain('No matching extensions')
+
+  // Esc backs out of the filter before it closes the page, so the market is
+  // still one row away.
+  await pressEscape(t)
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('Browse'))
+  await press(t, input => input.pressEnter())
+  await settle(t)
+  expect(t.captureCharFrame()).toContain('gopls')
 })
 
 test('installing a language extension teaches druk the language, extension and all', async () => {

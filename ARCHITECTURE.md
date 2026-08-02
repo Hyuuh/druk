@@ -108,7 +108,7 @@ scripts/
     EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
     SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
     SearchPanel, DiffView, ImageView, PdfView, SettingsView, SettingEditor,
-    ExtensionsView, LspStatusView, UpdateBanner,
+    SettingPicker, ExtensionsView, LspStatusView, UpdateBanner,
     Overlay, TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
     modal.ts         modal geometry: width, list rows, text wrapping
     list.ts          list behaviour: windowing, panel scroll, picker keys, row colour

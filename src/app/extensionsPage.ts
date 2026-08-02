@@ -46,9 +46,10 @@ export function createExtensionsPage(deps: { settings: Settings; market: Market;
     })
 
   /**
-   * The market, minus what is already installed — behind the filter. Every entry
-   * as a standing list would be dozens of rows nobody asked for above the three
-   * that manage what they have, so the section is one row until it is searched.
+   * The market, minus what is already installed, behind one row that opens a
+   * list of its own. Every entry as page rows would be dozens of them above the
+   * handful that manage what is installed — and the page's `/` is the *page's*
+   * filter, so making it double as a market search would be two jobs on one key.
    */
   const availableRows = (): ExtensionRow[] => {
     const catalog = market.catalog()
@@ -78,19 +79,20 @@ export function createExtensionsPage(deps: { settings: Settings; market: Market;
     return [
       {
         section: 'Available',
-        label: 'Search the market',
-        detail: 'by name or by what it adds',
+        label: 'Browse the market',
+        detail: 'Enter opens the list',
         value: `${offered.length}`,
-        startSearch: true,
+        select: {
+          title: 'Market',
+          // The blurb is in the option because the list filters on options —
+          // typing "gopls" has to find the Go extension, whose name never says it.
+          options: offered.map(
+            entry =>
+              `${entry.name} ${entry.version}${entry.description ? ` — ${entry.description}` : ''}`,
+          ),
+          pick: at => market.install(offered[at]!.id),
+        },
       },
-      ...offered.map(entry => ({
-        section: 'Available',
-        label: entry.name,
-        detail: entry.description,
-        value: entry.version,
-        activate: () => market.install(entry.id),
-        searchOnly: true,
-      })),
     ]
   }
 
