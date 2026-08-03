@@ -46,7 +46,6 @@ export type PromptState = ReturnType<typeof createPromptState>
 
 /** Answering prompts: what each one asks, and what saying yes actually does. */
 export function createPromptHandlers(deps: {
-  rootDir: string
   renderer: { destroy: () => void }
   state: PromptState
   status: Status
@@ -60,7 +59,7 @@ export function createPromptHandlers(deps: {
   lsp: Lsp
   market: Market
 }) {
-  const { rootDir, renderer, state, status, tree, panes, editor, workspace } = deps
+  const { renderer, state, status, tree, panes, editor, workspace } = deps
   const { fileOps, gitOp, branches, lsp, market } = deps
   const { prompt, setPrompt } = state
   const { say } = status
@@ -108,12 +107,25 @@ export function createPromptHandlers(deps: {
       if (err) return say(err, 'error')
       say(`Renamed to ${name}`)
     } else if (p.kind === 'commit') {
-      gitOp('Committing', () => commitPaths(rootDir, name, p.paths))
+      gitOp('Committing', repo => commitPaths(repo, name, p.paths))
     } else if (p.kind === 'newBranch') {
       branches.create(name, p.from)
     } else if (p.kind === 'renameBranch') {
       branches.rename(p.from, name)
     }
+  }
+
+  /**
+   * Install a missing server with the manager picked from the choice modal.
+   * Takes the id as the string the modal deals in and narrows it here, so the
+   * row a `ChoiceModal` hands back needs no cast on the way through.
+   */
+  const chooseInstallServer = (manager: string) => {
+    const p = prompt()
+    setPrompt(null)
+    if (p?.kind !== 'installServer') return
+    const chosen = p.managers.find(candidate => candidate === manager)
+    if (chosen) void lsp.install(p.id, p.name, p.install, chosen)
   }
 
   /** Carry out whatever the open confirm prompt was asking about. */
@@ -130,7 +142,7 @@ export function createPromptHandlers(deps: {
       case 'quitDirty':
         return quit(true)
       case 'undoCommit':
-        return gitOp('Undoing commit', () => undoLastCommit(rootDir), {
+        return gitOp('Undoing commit', repo => undoLastCommit(repo), {
           done: () => `Undid "${p.subject}" — its changes are staged`,
         })
       case 'deleteBranch':
@@ -139,14 +151,16 @@ export function createPromptHandlers(deps: {
         return branches.merge(p.name)
       case 'pullPush':
         // touchesTree: the pull half rewrites files under open buffers.
-        return gitOp('Pulling and pushing', () => pullAndPush(rootDir, p.branch, p.hasUpstream), {
+        return gitOp('Pulling and pushing', repo => pullAndPush(repo, p.branch, p.hasUpstream), {
           touchesTree: true,
           done: () => `Pulled and pushed ${p.branch}`,
         })
       case 'replaceProject':
         return workspace.applyProjectReplace(p.paths, p.query, p.replacement, p.options)
+      // An npm server is answered by the manager choice instead, and never
+      // reaches this modal — `confirmation` returns null for it.
       case 'installServer':
-        return void lsp.install(p.id, p.name, p.install)
+        return p.install.kind === 'download' ? void lsp.install(p.id, p.name, p.install) : undefined
       case 'uninstallServer':
         return void lsp.uninstall(p.id)
       case 'installExtension':
@@ -156,6 +170,8 @@ export function createPromptHandlers(deps: {
         // and `lsp.uninstall` reads the spec it is about out of that registry —
         // after the reload there is nothing left to tell it what to delete.
         return void (async () => {
+          // One at a time: the servers share one prefix, and two runs of a
+          // package manager writing that tree at once is one neither can read.
           for (const server of p.servers) await lsp.uninstall(server.id)
           market.remove(p.id)
         })()
@@ -287,16 +303,12 @@ export function createPromptHandlers(deps: {
               : `Delete ${p.name}? Its folder in the extensions directory goes with it.`,
         }
       case 'installServer':
+        if (p.install.kind !== 'download') return null
         return {
           title: 'Language server missing',
-          verb: 'install it',
+          verb: 'download it',
           danger: false,
-          // Where it lands is the part worth showing: nothing global is touched,
-          // and deleting that one directory undoes the whole thing.
-          message:
-            p.install.kind === 'npm'
-              ? `${p.name} is not installed. Fetch it with npm into ${SERVER_ROOT}?`
-              : `${p.name} is not installed. Download it into ${SERVER_ROOT}?`,
+          message: `${p.name} is not installed. Download it into ${SERVER_ROOT}?`,
         }
       case 'installExtension':
         return {
@@ -323,6 +335,7 @@ export function createPromptHandlers(deps: {
     quit,
     submitPrompt,
     confirmPrompt,
+    chooseInstallServer,
     cancelPrompt,
     promptTitle,
     promptValue,

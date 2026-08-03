@@ -29,8 +29,10 @@ import type { EditorBridge } from './editor'
 import type { Git } from './git'
 import type { Panes } from './panes'
 import type { PromptState } from './prompts'
-import type { Confirmation, Conflict } from './types'
+import type { Confirmation, Conflict, Prompt } from './types'
 import type { Workspace } from './workspace'
+
+type InstallServerPrompt = Extract<Prompt, { kind: 'installServer' }>
 
 /** The active search toggles, named in the confirm so what runs is what was agreed to. */
 const searchFlags = (options: SearchOptions) => {
@@ -176,6 +178,13 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
     if (overlays.problemsOpen() && problemRows().length === 0) overlays.setProblemsOpen(false)
   })
 
+  // A download answers the confirm modal below; only an npm install has a
+  // manager to pick, so the narrowing happens once and `Show` keys the child on it.
+  const managerChoice = createMemo<InstallServerPrompt | null>(() => {
+    const ask = prompts.prompt()
+    return ask?.kind === 'installServer' && ask.install.kind === 'npm' ? ask : null
+  })
+
   return (
     <>
       <Show when={prompts.promptTitle()}>
@@ -185,6 +194,17 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             initialValue={prompts.promptValue()}
             onSubmit={prompts.submitPrompt}
             onCancel={() => prompts.setPrompt(null)}
+          />
+        )}
+      </Show>
+      <Show when={managerChoice()}>
+        {(ask: () => InstallServerPrompt) => (
+          <ChoiceModal
+            title="Language server missing"
+            message={`${ask().name} is not installed. Choose a package manager:`}
+            choices={ask().managers.map(manager => ({ id: manager, label: manager }))}
+            onPick={prompts.chooseInstallServer}
+            onCancel={prompts.cancelPrompt}
           />
         )}
       </Show>

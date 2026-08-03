@@ -94,11 +94,16 @@ function parseTheme(
 
 /**
  * Codepoints a terminal draws two cells wide — CJK, the fullwidth forms, and
- * everything from the emoji planes up. Not exhaustive and does not need to be:
- * it covers what someone reaches for when writing an icon theme, and the rest
- * of the BMP is one cell.
+ * the emoji planes. Not exhaustive and does not need to be: it covers what
+ * someone reaches for when writing an icon theme, and the rest of the BMP is
+ * one cell.
+ *
+ * The range stops short of the two private-use planes on purpose. Nerd Fonts
+ * moved its largest set — Material Design Icons — to U+F0001 and up once the
+ * BMP private area filled, and it draws those one cell wide like the rest; a
+ * range running to U+10FFFF would refuse most of a Nerd Font icon theme.
  */
-const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹯＀-｠￠-￦]|[\u{1F000}-\u{10FFFF}]/u
+const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹯＀-｠￠-￦]|[\u{1F000}-\u{EFFFF}]/u
 
 /**
  * One glyph, or a glyph with a color. Held to a single *cell*: the tree gives
@@ -113,15 +118,58 @@ function parseIcon(raw: unknown): IconEntry | null {
   return color ? { glyph, color } : { glyph }
 }
 
-function parseIconMap(raw: unknown): Record<string, IconEntry> {
-  const map: Record<string, IconEntry> = {}
+/**
+ * A named icon a theme's maps point at, so a set that gives four thousand names
+ * an icon spells each one out once. `open` is the form a folder takes while it
+ * is expanded, and is read off whichever definition the `folders` map names.
+ */
+interface IconDefinition {
+  icon: IconEntry
+  open?: IconEntry
+}
+
+function parseDefinitions(raw: unknown): Record<string, IconDefinition> {
+  const map: Record<string, IconDefinition> = {}
   if (!isRecord(raw)) return map
-  for (const [key, value] of Object.entries(raw)) {
+  for (const [name, value] of Object.entries(raw)) {
     const icon = parseIcon(value)
-    if (icon) map[key.toLowerCase().replace(/^\./, '')] = icon
+    if (!icon) continue
+    const open = isRecord(value) ? parseIcon({ ...value, glyph: value.open }) : null
+    map[name] = open ? { icon, open } : { icon }
   }
   return map
 }
+
+/**
+ * A map's value is a glyph, an icon object, or the name of a definition. The
+ * three never collide: a glyph is one character and a definition name is not,
+ * which is the rule a theme with definitions has to keep.
+ */
+const resolveIcon = (
+  value: unknown,
+  definitions: Record<string, IconDefinition>,
+): IconEntry | null =>
+  parseIcon(value) ?? (typeof value === 'string' ? (definitions[value]?.icon ?? null) : null)
+
+function parseIconMap(
+  raw: unknown,
+  definitions: Record<string, IconDefinition>,
+  key: (name: string) => string,
+): Record<string, IconEntry> {
+  const map: Record<string, IconEntry> = {}
+  if (!isRecord(raw)) return map
+  for (const [name, value] of Object.entries(raw)) {
+    const icon = resolveIcon(value, definitions)
+    if (icon) map[key(name)] = icon
+  }
+  return map
+}
+
+/** Names and folders are matched whole, `.gitignore` dot and all. */
+const wholeName = (name: string): string => name.toLowerCase()
+
+/** An extension is written either way — `.ts` and `ts` are one key. */
+const extensionName = (name: string): string => name.toLowerCase().replace(/^\./, '')
 
 const FALLBACK: Record<'file' | 'folder' | 'folderOpen', IconEntry> = {
   file: { glyph: '·' },
@@ -139,17 +187,34 @@ function parseIconTheme(raw: unknown, fail: (reason: string) => void): IconTheme
     fail(`icon theme id ${JSON.stringify(raw.id)} is not a name`)
     return null
   }
+  const definitions = parseDefinitions(raw.definitions)
+  const folders = parseIconMap(raw.folders, definitions, wholeName)
+  const foldersOpen = parseIconMap(raw.foldersOpen, definitions, wholeName)
+  // A folder's open form comes from the definition it names, so a theme that
+  // gives a thousand folders an icon lists each name once and not twice.
+  if (isRecord(raw.folders)) {
+    for (const [name, value] of Object.entries(raw.folders)) {
+      const open = typeof value === 'string' ? definitions[value]?.open : undefined
+      const key = wholeName(name)
+      if (open && !(key in foldersOpen)) foldersOpen[key] = open
+    }
+  }
   return {
     id,
     name: text(raw.name) ?? id,
+    patchedFont: raw.patchedFont === true,
     // The three defaults are what a theme that only maps extensions falls back
     // to; without them such a theme would draw nothing on most rows.
-    file: parseIcon(raw.file) ?? FALLBACK.file,
-    folder: parseIcon(raw.folder) ?? FALLBACK.folder,
-    folderOpen: parseIcon(raw.folderOpen) ?? parseIcon(raw.folder) ?? FALLBACK.folderOpen,
-    names: parseIconMap(raw.names),
-    extensions: parseIconMap(raw.extensions),
-    folders: parseIconMap(raw.folders),
+    file: resolveIcon(raw.file, definitions) ?? FALLBACK.file,
+    folder: resolveIcon(raw.folder, definitions) ?? FALLBACK.folder,
+    folderOpen:
+      resolveIcon(raw.folderOpen, definitions) ??
+      resolveIcon(raw.folder, definitions) ??
+      FALLBACK.folderOpen,
+    names: parseIconMap(raw.names, definitions, wholeName),
+    extensions: parseIconMap(raw.extensions, definitions, extensionName),
+    folders,
+    foldersOpen,
   }
 }
 

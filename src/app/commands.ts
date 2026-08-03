@@ -9,6 +9,7 @@
  * To add a command: add an action to `CommandActions`, then an entry below. Set
  * `hint` when a keybinding also triggers it (keybindings live in App).
  */
+import { iconThemeLabel, iconThemeNames, iconThemeNeedsFont } from '../icons'
 import { themeLabel, themeNames } from '../themes'
 import type { ThemeName } from '../themes'
 import { ALT } from '../ui/keys'
@@ -65,6 +66,9 @@ export interface CommandActions {
   setTheme: (name: ThemeName) => void
   previewTheme: (name: ThemeName) => void
   restoreTheme: () => void
+  setIconTheme: (id: string) => void
+  previewIcons: (id: string) => void
+  restoreIcons: () => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
   triggerCompletion: () => void
   openSettings: () => void
@@ -110,6 +114,7 @@ export interface CommandActions {
 
 export interface CommandContext {
   activeTheme: ThemeName
+  activeIconTheme: string
 }
 
 /** Marks the entry matching the current setting, so submenus show state. */
@@ -327,6 +332,22 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         preview: () => actions.previewTheme(name),
         restore: () => actions.restoreTheme(),
         run: () => actions.setTheme(name),
+      })),
+    },
+    {
+      id: 'icons',
+      label: 'File icons',
+      // Beside Themes and for the same reason: the arrow-through preview is the
+      // whole of choosing one, and a set that wants a patched font says so here
+      // rather than after it has been picked and the tree has gone to tofu.
+      children: iconThemeNames().map(id => ({
+        id: `icons.${id}`,
+        label: `${check(ctx.activeIconTheme === id)}${iconThemeLabel(id)}${
+          iconThemeNeedsFont(id) ? ' — needs a patched font' : ''
+        }`,
+        preview: () => actions.previewIcons(id),
+        restore: () => actions.restoreIcons(),
+        run: () => actions.setIconTheme(id),
       })),
     },
     {

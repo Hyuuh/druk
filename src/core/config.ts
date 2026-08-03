@@ -22,6 +22,7 @@ import { isIconThemeName, NO_ICONS } from '../icons'
 import { isThemeName } from '../themes'
 import type { ThemeName } from '../themes'
 import { MARKET_URL } from './market'
+import { DEFAULT_SCAN_DEPTH } from './repos'
 
 export const CONFIG_FILE = join(
   process.env.XDG_CONFIG_HOME ?? join(os.homedir(), '.config'),
@@ -137,6 +138,14 @@ export interface Config {
   /** Source-control panel: changed files nested under folders, or one flat list
    * of paths. */
   gitPanelView: 'tree' | 'list'
+  /**
+   * Levels below the opened folder to look for repositories in, when the folder
+   * itself is not one — a parent of checkouts (`~/code`, a folder of worktrees)
+   * otherwise shows no marks at all. Every repository found costs a `git status`
+   * per refresh, so 0 turns the search off and keeps druk to the single
+   * repository it used to assume.
+   */
+  gitScanDepth: number
   /** Whether the tree lists dotfiles. The default tells the filesystem's truth. */
   showDotfiles: boolean
   /** Hide git-ignored files from the tree. Off by default for the same reason. */
@@ -216,6 +225,7 @@ export const DEFAULTS: Config = {
   autoSaveOnBlur: true,
   diffView: 'inline',
   gitPanelView: 'tree',
+  gitScanDepth: DEFAULT_SCAN_DEPTH,
   showDotfiles: true,
   respectGitignore: false,
   lsp: true,
@@ -296,6 +306,8 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   autoSaveOnBlur: bool,
   diffView: among('inline', 'split'),
   gitPanelView: among('tree', 'list'),
+  gitScanDepth: raw =>
+    typeof raw === 'number' && raw >= 0 && raw <= 5 ? Math.floor(raw) : undefined,
   showDotfiles: bool,
   respectGitignore: bool,
   lsp: bool,

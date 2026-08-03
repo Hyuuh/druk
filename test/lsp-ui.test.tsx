@@ -93,6 +93,7 @@ test('a missing server with an npm package offers to install it', async () => {
 
   await untilFrame(t, 'Language server missing', LSP_WAIT)
   expect(t.captureCharFrame()).toContain('intelephense is not installed')
+  expect(t.captureCharFrame()).toContain('npm')
 
   // Declining leaves the install line behind, and does not ask again.
   await pressEscape(t)

@@ -20,7 +20,7 @@ import { bindingProblem, formatChord, parseChord } from '../core/keybindings'
 import { MARKET_URL } from '../core/market'
 import { loadExtensions } from '../extensions'
 import type { ExtensionLoad } from '../extensions'
-import { iconThemeLabel, iconThemeNames, NO_ICONS } from '../icons'
+import { iconThemeLabel, iconThemeNames, iconThemeNeedsFont, NO_ICONS } from '../icons'
 import { invalidateSyntaxStyle } from '../languages/highlight'
 import { servers } from '../lsp/servers'
 import { paintedTheme, setTheme, setTransparency, themeLabel, themeNames } from '../themes'
@@ -36,6 +36,11 @@ import type { Status } from './status'
 const EDITOR_MIN = 20
 
 const TAB_SIZES = [2, 4, 8]
+
+/** Levels the repository scan may look down; 0 is "the opened folder only". */
+const SCAN_DEPTHS = [0, 1, 2, 3, 4, 5]
+const depthLabel = (depth: number) =>
+  depth === 0 ? 'off' : `${depth} level${depth === 1 ? '' : 's'}`
 
 // Functions, not constants: extensions register themes and icon themes at startup,
 // which happens after this module is evaluated.
@@ -88,6 +93,17 @@ export function createSettings(deps: {
    * rows as much as for `theme` itself.
    */
   const restoreTheme = () => paintTheme(config.theme)
+
+  /**
+   * The icon set on screen, which is the config's except while a list is being
+   * arrowed through. Themes get this for free — the theme store is already
+   * separate from the config — but icons are read straight off `iconTheme`, so
+   * previewing one without writing it to disk needs a layer of its own.
+   */
+  const [iconPreview, setIconPreview] = createSignal<string | null>(null)
+  const activeIconTheme = () => iconPreview() ?? config.iconTheme
+  const previewIcons = (id: string) => setIconPreview(id)
+  const restoreIcons = () => setIconPreview(null)
 
   /**
    * Write `patch` into one layer, persist that file, and re-resolve.
@@ -202,11 +218,14 @@ export function createSettings(deps: {
   }
 
   const applyIconTheme = (id: string) => {
+    // Before the write, not after: the preview is what the tree is reading, and
+    // leaving it up would keep showing the arrowed-past set over the saved one.
+    restoreIcons()
     patchConfig({ iconTheme: id })
     status.say(
       config.iconTheme === NO_ICONS
         ? 'File icons off'
-        : `File icons: ${iconThemeLabel(config.iconTheme)}${id === 'nerd' ? ' — needs a patched font' : ''}`,
+        : `File icons: ${iconThemeLabel(config.iconTheme)}${iconThemeNeedsFont(id) ? ' — needs a patched font' : ''}`,
     )
   }
 
@@ -256,6 +275,15 @@ export function createSettings(deps: {
   const applyTabSize = (size: number) => {
     patchConfig({ tabSize: size })
     status.say(`Tab size: ${size}`)
+  }
+
+  const applyScanDepth = (depth: number) => {
+    patchConfig({ gitScanDepth: depth })
+    status.say(
+      depth === 0
+        ? 'Repositories below the folder: not looked for'
+        : `Repositories below the folder: ${depthLabel(depth)} deep`,
+    )
   }
 
   const applyCursorStyle = (style: Config['cursorStyle']) => {
@@ -769,6 +797,17 @@ export function createSettings(deps: {
       cycle: toggleGitPanelView,
     },
     {
+      section: 'Git',
+      key: 'gitScanDepth',
+      label: 'Scan for repositories below the folder',
+      value: depthLabel(view().gitScanDepth),
+      cycle: dir => applyScanDepth(step(SCAN_DEPTHS, view().gitScanDepth, dir)),
+      select: {
+        options: SCAN_DEPTHS.map(depthLabel),
+        pick: at => applyScanDepth(SCAN_DEPTHS[at]!),
+      },
+    },
+    {
       section: 'Language servers',
       key: 'lsp',
       label: 'LSP diagnostics',
@@ -939,6 +978,9 @@ export function createSettings(deps: {
     toggleLspCompletion,
     toggleServer,
     applyIconTheme,
+    activeIconTheme,
+    previewIcons,
+    restoreIcons,
     reloadExtensions,
     toggleExtension,
     toggleMarket,

@@ -27,6 +27,13 @@ export interface TabsProps {
   onForward: () => void
   /** Clicking an overflow counter asks for the full list of open tabs. */
   onOverflow: () => void
+  /**
+   * The rendered-markdown switch for the active tab, or null when it is not a
+   * markdown file. The command exists either way — this is the half of it people
+   * find, since nothing else in the editor says the view is there.
+   */
+  markdown: { rendered: boolean } | null
+  onToggleMarkdown: () => void
 }
 
 const MAX_LABEL = 18
@@ -34,6 +41,11 @@ const MAX_LABEL = 18
 const CHROME = 5
 /** Columns the history arrows take off the row: two boxes and their padding. */
 const NAV = 5
+const PREVIEW_LABEL = '¶ preview'
+const SOURCE_LABEL = '¶ source'
+/** Widest of the two labels plus its padding — the button must not reflow the
+ * strip as it is toggled, so both states cost the row the same columns. */
+const PREVIEW_WIDTH = PREVIEW_LABEL.length + 2
 
 const shorten = (name: string) =>
   name.length <= MAX_LABEL ? name : `${name.slice(0, MAX_LABEL - 1)}…`
@@ -50,7 +62,7 @@ export function Tabs(props: TabsProps) {
     // the sidebar's width off the budget made tabs reflow on every resize. The
     // arrows are drawn whether or not they are live, so their columns are gone
     // from the budget either way.
-    const budget = dimensions().width - NAV
+    const budget = dimensions().width - NAV - (props.markdown ? PREVIEW_WIDTH : 0)
     const width = (tab: TabInfo) => shorten(tab.name).length + CHROME
 
     const active = Math.max(
@@ -167,6 +179,24 @@ export function Tabs(props: TabsProps) {
           </Show>
         </Show>
         <box flexGrow={1} backgroundColor={ui.barBg} />
+        <Show when={props.markdown}>
+          {(markdown: () => { rendered: boolean }) => (
+            <box
+              width={PREVIEW_WIDTH}
+              flexShrink={0}
+              paddingLeft={1}
+              paddingRight={1}
+              backgroundColor={ui.barBg}
+              onMouseDown={() => props.onToggleMarkdown()}
+            >
+              <text
+                fg={markdown().rendered ? ui.accent : ui.dim}
+                bg={ui.barBg}
+                content={markdown().rendered ? SOURCE_LABEL : PREVIEW_LABEL}
+              />
+            </box>
+          )}
+        </Show>
       </box>
     </box>
   )

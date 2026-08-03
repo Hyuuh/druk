@@ -101,23 +101,44 @@ export function watchTree(root: string, onChange: (changed: Changed) => void): (
     return DEPENDENCIES.test(name) ? ['tree', 'deps'] : ['tree']
   })
 
-  /*
-   * Two more watchers, because the recursive one above cannot cover this. A commit
-   * or a checkout made in another terminal changes no working-tree file at all, so
-   * without these the tree marks, the changed count and the branch sit stale — and
-   * the recursive watch is no help: macOS coalesces everything under `.git` down to
-   * `.git/index.lock`, which is precisely the file a plain `git status` rewrites, so
-   * reacting to it would feed the watcher its own tail forever.
-   *
-   * Watching HEAD and the refs directly reports a commit, a checkout, a reset and a
-   * pack-refs — and, verified, nothing that reading status does.
-   */
-  const gitDir = join(root, '.git')
-  watch(join(gitDir, 'HEAD'), {}, () => ['git'])
-  watch(join(gitDir, 'refs'), { recursive: true }, () => ['git'])
+  const stopGit = watchGitRefs(root, () => schedule('git'))
 
   return () => {
     if (timer) clearTimeout(timer)
+    stopGit()
+    for (const watcher of watchers) watcher.close()
+  }
+}
+
+/**
+ * Report a commit, checkout, reset or pack-refs in `repo`. Returns a stop
+ * function; best-effort, so a directory that is not a repository simply goes
+ * unwatched.
+ *
+ * Its own watchers, because a recursive watch on the working tree cannot cover
+ * this. A commit or a checkout made in another terminal changes no working-tree
+ * file at all, so without these the tree marks, the changed count and the branch
+ * sit stale — and the recursive watch is no help: macOS coalesces everything
+ * under `.git` down to `.git/index.lock`, which is precisely the file a plain
+ * `git status` rewrites, so reacting to it would feed the watcher its own tail
+ * forever.
+ *
+ * Watching HEAD and the refs directly reports all four — and, verified, nothing
+ * that reading status does.
+ */
+export function watchGitRefs(repo: string, onChange: () => void): () => void {
+  const watchers: fs.FSWatcher[] = []
+  const watch = (path: string, options: fs.WatchOptions) => {
+    try {
+      watchers.push(fs.watch(path, options, () => onChange()))
+    } catch {
+      // best-effort: this path just goes unwatched
+    }
+  }
+  const gitDir = join(repo, '.git')
+  watch(join(gitDir, 'HEAD'), {})
+  watch(join(gitDir, 'refs'), { recursive: true })
+  return () => {
     for (const watcher of watchers) watcher.close()
   }
 }
