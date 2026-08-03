@@ -1,6 +1,6 @@
 import type { TextEncoding } from '../core/fs'
-import type { PackageManager } from '../lsp/install'
 import type { SearchOptions } from '../core/search'
+import type { PackageManager } from '../lsp/install'
 import type { FetchableInstall } from '../lsp/servers'
 
 /** Which pane owns the keyboard when no overlay is open. */
