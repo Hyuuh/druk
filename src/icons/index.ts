@@ -5,8 +5,8 @@
  * One ships with druk: `unicode`, whose glyphs are geometric shapes every font
  * has. It is not the default — `iconTheme: 'none'` is, because a terminal cannot
  * be asked what its font holds and a row of tofu is worse than no icons at all,
- * and a set that needs a patched font (`nerd-icons`) is a market plugin for that
- * same reason.
+ * and a set that needs a patched font (`material-icons`, `nerd-icons`) is a
+ * market plugin for that same reason.
  *
  * A theme replaces the arrow rather than sitting beside it: the folder glyph
  * has an open and a closed form, so expansion is still readable and the row
@@ -24,6 +24,12 @@ export interface IconEntry {
 export interface IconTheme {
   id: string
   name: string
+  /**
+   * The glyphs are in a font's private-use area, so only a patched font has
+   * them. Nothing can ask a terminal what its font holds, which is why this is
+   * declared and then said out loud when the theme is picked.
+   */
+  patchedFont?: boolean
   /** Fallback for a file no rule matched. */
   file: IconEntry
   folder: IconEntry
@@ -37,6 +43,12 @@ export interface IconTheme {
   extensions: Record<string, IconEntry>
   /** Folder names, lowercase — `src`, `node_modules`. */
   folders: Record<string, IconEntry>
+  /**
+   * The open form of a named folder. A theme that names folders needs it or
+   * expansion stops being readable: the icon took the arrow's column, so
+   * `src` would look the same shut as open.
+   */
+  foldersOpen: Record<string, IconEntry>
 }
 
 /** The value of `iconTheme` that draws nothing at all. */
@@ -106,6 +118,7 @@ const unicode: IconTheme = {
     lock: entry('▪'),
   },
   folders: {},
+  foldersOpen: {},
 }
 
 export const BUILTIN_ICON_THEMES: IconTheme[] = [unicode]
@@ -146,8 +159,19 @@ export const iconThemeNames = (): string[] => [NO_ICONS, ...names()]
 export const iconThemeLabel = (id: string): string =>
   id === NO_ICONS ? 'none' : (registry[id]?.name ?? id)
 
+export const iconThemeNeedsFont = (id: string): boolean => registry[id]?.patchedFont === true
+
 export const isIconThemeName = (value: unknown): value is string =>
   typeof value === 'string' && (value === NO_ICONS || value in registry)
+
+/**
+ * A folder's name with the decoration projects put around it stripped:
+ * `.github`, `_test` and `__tests__` are the folder a theme spells `github` and
+ * `test`. Listing all five spellings is what an icon theme would otherwise have
+ * to do — the upstream Material set generates exactly these variants — and it
+ * multiplies a large folder map by five for nothing.
+ */
+const folderKey = (name: string): string => name.replace(/^__(.+)__$/, '$1').replace(/^[._-]+/, '')
 
 /**
  * The glyph for one tree row, or null when icons are off or the theme is gone —
@@ -162,7 +186,16 @@ export function iconFor(
   if (!theme) return null
   const name = node.name.toLowerCase()
   if (node.isDir) {
-    return theme.folders[name] ?? (node.expanded ? theme.folderOpen : theme.folder)
+    const key = folderKey(name)
+    // A named folder with no open form falls back to its shut one rather than to
+    // the generic open folder: the name is what the glyph is there to say.
+    const named = node.expanded
+      ? (theme.foldersOpen[name] ??
+        theme.foldersOpen[key] ??
+        theme.folders[name] ??
+        theme.folders[key])
+      : (theme.folders[name] ?? theme.folders[key])
+    return named ?? (node.expanded ? theme.folderOpen : theme.folder)
   }
   const byName = theme.names[name]
   if (byName) return byName

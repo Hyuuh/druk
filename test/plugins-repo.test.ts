@@ -122,18 +122,57 @@ test('every market icon glyph survives parsing and is one cell wide', () => {
   for (const plugin of market) {
     for (const icons of plugin.icons) {
       const raw = JSON.parse(readFileSync(plugin.source, 'utf8')) as {
-        icons: { extensions: Record<string, unknown>; names: Record<string, unknown> }[]
+        icons: Record<'extensions' | 'names' | 'folders', Record<string, unknown> | undefined>[]
       }
       const declared = raw.icons[0]!
       // A two-cell glyph is dropped by the parser rather than drawn, so a count
       // that fell is a manifest quietly missing icons — the one failure mode
-      // that looks like the theme simply not covering that file type.
-      expect(Object.keys(icons.extensions)).toHaveLength(Object.keys(declared.extensions).length)
-      expect(Object.keys(icons.names)).toHaveLength(Object.keys(declared.names).length)
-      for (const entry of [icons.file, icons.folder, icons.folderOpen]) {
+      // that looks like the theme simply not covering that file type. A map
+      // pointing at a definition that does not exist fails the same way.
+      for (const map of ['extensions', 'names', 'folders'] as const) {
+        expect(`${icons.id}/${map}:${Object.keys(icons[map]).length}`).toBe(
+          `${icons.id}/${map}:${Object.keys(declared[map] ?? {}).length}`,
+        )
+      }
+      for (const entry of [
+        icons.file,
+        icons.folder,
+        icons.folderOpen,
+        ...Object.values(icons.extensions),
+        ...Object.values(icons.names),
+        ...Object.values(icons.folders),
+        ...Object.values(icons.foldersOpen),
+      ]) {
         expect([...entry.glyph]).toHaveLength(1)
       }
     }
+  }
+})
+
+test('the material set has an icon for the files a project is made of', () => {
+  const icons = market.find(plugin => plugin.id === 'material-icons')!.icons[0]!
+  // Every one of these resolves to something in the manifest rather than to the
+  // theme's fallback file glyph — that fallback is what a port with the
+  // associations dropped would show for the whole tree.
+  for (const [name, color] of [
+    ['a.ts', '#0288d1'],
+    ['a.tsx', '#0288d1'],
+    ['a.rs', '#ff7043'],
+    ['a.go', '#00acc1'],
+    ['a.py', '#0288d1'],
+    ['package.json', '#8bc34a'],
+    ['.gitignore', '#e64a19'],
+    ['dockerfile', '#0288d1'],
+  ] as const) {
+    const entry = name.includes('.')
+      ? (icons.names[name] ?? icons.extensions[name.split('.').pop()!])
+      : icons.names[name]
+    expect(`${name}:${entry?.color}`).toBe(`${name}:${color}`)
+  }
+  for (const folder of ['src', 'test', 'dist', 'node_modules', 'github']) {
+    expect(`${folder}:${folder in icons.folders && folder in icons.foldersOpen}`).toBe(
+      `${folder}:true`,
+    )
   }
 })
 

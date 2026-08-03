@@ -271,6 +271,62 @@ function outsideProse(
   return overlay.filter(([start, end]) => prose.subarray(start, end).every(c => c === 0))
 }
 
+/** A capture group naming the filetype the span it covers is really written in. */
+const INJECTION = 'injection.'
+
+type RawCapture = readonly [number, number, string, ...unknown[]]
+
+/**
+ * Reparse the spans a grammar marked `injection.<filetype>` with that filetype's
+ * grammar, and drop the markers themselves.
+ *
+ * A single-file component is why this exists: the vue grammar reads everything
+ * between `<script>` and `</script>` as one `raw_text` token, so without a
+ * second parse the whole body of every Vue file renders unpainted.
+ *
+ * One level deep, deliberately — an injected parse's own injection captures are
+ * discarded rather than followed, which is what stops a grammar that injects
+ * itself from recursing.
+ */
+async function resolveInjections(
+  client: TreeSitterClient,
+  content: string,
+  captures: ReadonlyArray<RawCapture>,
+): Promise<RawCapture[]> {
+  const kept: RawCapture[] = []
+  const spans: { start: number; end: number; filetype: string }[] = []
+  for (const capture of captures) {
+    const [start, end, group] = capture
+    if (!group.startsWith(INJECTION)) {
+      kept.push(capture)
+      continue
+    }
+    const filetype = group.slice(INJECTION.length)
+    // Only a language with a grammar registered: asking the worker for one it
+    // has never been told about is what `computeHighlights` already refuses to
+    // do, and the plugin contributing the injected language may not be installed.
+    const lang = languageFor(filetype)
+    if (lang && (lang.bundled || (lang.wasm && lang.query))) spans.push({ start, end, filetype })
+  }
+  if (spans.length === 0) return kept
+  const injected = await Promise.all(
+    spans.map(async span => {
+      try {
+        const res = await client.highlightOnce(content.slice(span.start, span.end), span.filetype)
+        return (res.highlights ?? [])
+          .filter(h => !h[2].startsWith(INJECTION))
+          .map(h => [h[0] + span.start, h[1] + span.start, h[2]] as RawCapture)
+      } catch {
+        return [] // best-effort: that block just stays unhighlighted
+      }
+    }),
+  )
+  // After the outer captures, so an injected capture of equal specificity wins
+  // the characters they share — `(interpolation) @embedded` spans the whole of
+  // `{{ msg }}`, and the expression inside it is the more useful colour.
+  return [...kept, ...injected.flat()]
+}
+
 /** Answered instead of segments when `isStale` says the text moved on. */
 export const STALE = Symbol('stale')
 
@@ -413,7 +469,8 @@ export async function computeHighlights(
   try {
     const res = await client.highlightOnce(content, filetype!)
     if (isStale?.()) return STALE
-    const hl = res.highlights ?? []
+    const hl = await resolveInjections(client, content, res.highlights ?? [])
+    if (isStale?.()) return STALE
     const parsed = prepare(content, [...hl, ...outsideProse(content, overlay, hl), ...guides])
     storeParse(content, filetype, tabSize, parsed)
     return parsed

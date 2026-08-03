@@ -18,7 +18,7 @@ import type { Config, ConfigScope } from '../core/config'
 import { FILE_TOKEN } from '../core/format'
 import { bindingProblem, formatChord, parseChord } from '../core/keybindings'
 import { MARKET_URL } from '../core/market'
-import { iconThemeLabel, iconThemeNames, NO_ICONS } from '../icons'
+import { iconThemeLabel, iconThemeNames, iconThemeNeedsFont, NO_ICONS } from '../icons'
 import { invalidateSyntaxStyle } from '../languages/highlight'
 import { servers } from '../lsp/servers'
 import { contributionSummary, loadPlugins, plugins, PLUGINS_DIR } from '../plugins'
@@ -206,7 +206,7 @@ export function createSettings(deps: {
     status.say(
       config.iconTheme === NO_ICONS
         ? 'File icons off'
-        : `File icons: ${iconThemeLabel(config.iconTheme)}${id === 'nerd' ? ' — needs a patched font' : ''}`,
+        : `File icons: ${iconThemeLabel(config.iconTheme)}${iconThemeNeedsFont(id) ? ' — needs a patched font' : ''}`,
     )
   }
 

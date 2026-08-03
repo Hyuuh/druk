@@ -81,6 +81,33 @@ print, and absent for a server that arrives with an SDK.
 published palette verbatim and cite it in `description`, as the shipped ones do.
 `icons` maps names, extensions and folders to a **single-cell** glyph — a two-cell
 one is dropped rather than drawn, since the tree gives an icon the arrow's column.
+A Nerd Font glyph counts as one cell wherever it sits, including the Material
+Design Icons range above U+F0000; set `"patchedFont": true` on a theme that uses
+one, which is what makes druk say so when the theme is picked.
+
+A map's value is a glyph, `{ "glyph": "…", "color": "#rrggbb" }`, or the name of
+an entry in `definitions` — which is how a set that gives four thousand names an
+icon spells each icon out once:
+
+```json
+"icons": [{
+  "id": "material",
+  "patchedFont": true,
+  "definitions": {
+    "typescript": { "glyph": "󰛦", "color": "#0288d1" },
+    "folder-src": { "glyph": "󰅩", "color": "#4caf50", "open": "󰝰" }
+  },
+  "extensions": { "ts": "typescript" },
+  "folders": { "src": "folder-src" }
+}]
+```
+
+`open` is the form a folder takes while it is expanded — a named folder needs one
+or expansion stops being readable, the icon having taken the arrow's column.
+`names` and `folders` are matched whole, `.gitignore` dot and all, while an
+extension is written either way (`ts` and `.ts` are one key). A folder is looked
+up under the plain name too, so `github` covers `.github`, `_github` and
+`__github__` and a manifest lists it once.
 
 ## Adding one
 

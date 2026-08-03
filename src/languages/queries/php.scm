@@ -8,3 +8,8 @@
 (primitive_type) @type
 ["{" "}" "(" ")" "[" "]"] @punctuation.bracket
 ["," ";" ":" "."] @punctuation.delimiter
+
+; Everything outside `<?php … ?>` is one `text` token. Injections go one level
+; deep, so the markup is painted but a `<script>` block inside it is not — see
+; `resolveInjections` in ../highlight.ts.
+(text) @injection.html
