@@ -73,7 +73,7 @@ test('the help table advertises the custom key, not the one it replaced', async 
       if (row) return row
       await press(t, input => input.pressArrow('down'))
     }
-    return ''
+    throw new Error(`No row for ${text} in the help table`)
   }
   expect(await rowFor('Show / hide sidebar')).toContain(`Ctrl+${ALT}+B`)
   // A command the table has no row of its own for still gets one, or its new key

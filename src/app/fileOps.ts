@@ -1,4 +1,4 @@
-import { basename, dirname, join, relative } from 'node:path'
+import { basename, dirname, join, relative, sep } from 'node:path'
 
 import { createSignal } from 'solid-js'
 
@@ -190,7 +190,9 @@ export function createFileOps(deps: {
    */
   const copyPath = (path: string, kind: 'absolute' | 'relative') => {
     const rel = relative(rootDir, path)
-    const outside = rel.startsWith('..')
+    // The separator matters: a file the project really holds may be named `..rc`,
+    // and a bare `startsWith('..')` would call it outside and copy it absolute.
+    const outside = rel === '..' || rel.startsWith(`..${sep}`)
     const text = kind === 'relative' && !outside ? rel : path
 
     copyToClipboard(text)

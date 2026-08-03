@@ -58,6 +58,40 @@ describe('copying a file path', () => {
     expect(t.captureCharFrame()).toContain(`Copied ${dir}/a.ts`)
   })
 
+  test('falls back to the absolute path for a file the project does not hold', async () => {
+    // Where go to definition lands when it leaves the root: the open file has no
+    // relative form worth pasting, so the relative command copies absolute.
+    const outside = fixture({ 'far.ts': 'export const far = 1\n' })
+    const t = await launch(
+      fixture({ 'a.ts': 'const a = 1\n' }),
+      {},
+      { width: 200 },
+      {
+        openFile: `${outside}/far.ts`,
+      },
+    )
+
+    await runCommand(t, 'Copy relative path')
+
+    const frame = t.captureCharFrame()
+    expect(frame).toContain(`Copied ${outside}/far.ts`)
+    expect(frame).toContain('outside the project')
+  })
+
+  test('keeps a dotted name inside the project rather than reading it as an escape', async () => {
+    // `..rc` starts with the two dots that mark a path leaving the root, and is
+    // a file the project holds — the relative form has to survive it.
+    const dir = fixture({ '..rc': 'x = 1\n' })
+    const t = await launch(dir, {}, { width: 200 })
+    await press(t, input => input.pressArrow('down'))
+
+    await runCommand(t, 'Copy relative path')
+
+    const frame = t.captureCharFrame()
+    expect(frame).toContain('Copied ..rc')
+    expect(frame).not.toContain('outside the project')
+  })
+
   test('says so rather than copying nothing when no file is in hand', async () => {
     const dir = fixture({ 'a.ts': 'const a = 1\n' })
     // Nothing opened and the tree cursor never moved: a fresh project starts with
