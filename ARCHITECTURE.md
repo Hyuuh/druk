@@ -57,7 +57,12 @@ scripts/
     search.ts        in-file/project search, fuzzy matching, replace
     image.ts         PNG/JPEG decode + scaling onto half-block cells, for the viewer
     pdf.ts           embedded PDFium WASM, serialized document/page rendering, fit and pan geometry
+    mermaid/         mermaid fences drawn into terminal cells: parse.ts reads the
+                     dialects, graph.ts lays out anything that is boxes and edges,
+                     sequence.ts and pie.ts render their own, canvas.ts is the cell grid
     git.ts           queries, mutations, and async branch-comparison metadata/blob reads
+    repos.ts         which repositories the opened folder holds, and which one a path
+                     is in — filesystem-only, so the tree may ask per row
     diff.ts          Myers line diff between two texts, emitted as a unified patch
     imports.ts       the path token under the cursor, and where it resolves —
                      relative, project-root, or through tsconfig/jsconfig aliases
@@ -553,6 +558,16 @@ is just a diff against the empty tree.
   passes `null` while another kind of tab is active. The component hides its render tree,
   but that one open/close drain remains alive, so PDF → non-PDF → PDF cannot queue a new
   open from a second instance before the first instance's late document close.
+- **The opened folder may hold many repositories, or be one, or be neither.**
+  `core/repos.ts` answers which — filesystem-only (a `.git` entry, no subprocess), since
+  the tree asks per visible row. A folder inside a checkout is the single-repository case
+  and answers with itself; otherwise its children are scanned `gitScanDepth` levels down
+  and a directory that is a repository is not descended into. Everything downstream is
+  per repository: `wireGitEffects` merges one `statusMapAsync` per repository into the one
+  status map, the tree's ignore filter and the project search pick up a repository's
+  rules as they walk into it, and `git.activeRepo()` — panel cursor, then open file, then
+  the only one — is the cwd every command runs in. That last one is why `gitOp` hands the
+  repository to its callback instead of letting callers look it up again.
 - **git queries are synchronous, mutations are not.** `core/git.ts` runs `diff`,
   `status` and `rev-parse`/`rev-list` with `spawnSync` — they sit behind the gutter and
   tree marks and finish in milliseconds. Everything that writes (commit, push, stash,
@@ -579,6 +594,13 @@ is just a diff against the empty tree.
   reports ENOBUFS, which every caller in `core/git.ts` reads as "no output" — `status` in a
   repository with thousands of changed files would silently become "nothing changed" and
   the tree would show no marks. The helper raises `maxBuffer`.
+- **The multi-repository status refresh is the exception to that.** `statusMapAsync`
+  exists because the refresh runs one status query *per repository*: a folder of twenty
+  checkouts is forty subprocesses, and synchronously that is a visible freeze on every
+  save and every filesystem event. They run at once and a generation counter drops an
+  earlier pass that answers late. The synchronous `statusMap` stays for the commit
+  picker, which asks about one repository on demand; both share their parsers, because a
+  file the two disagreed about would be a row that cannot be committed.
 - **git waits for the first frame.** Every query is a synchronous subprocess, and
   effects run inside the initial render pass, so `wireGitEffects` sits behind one
   deferred tick and `branch` starts null — `statusMap` alone can take hundreds of

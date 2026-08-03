@@ -276,6 +276,7 @@ export function createMarket(deps: {
     catalog,
     updates,
     refresh,
+    ready,
     check,
     checkNow,
     install,

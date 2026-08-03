@@ -7,7 +7,6 @@ import { readFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import {
   fetchRemote,
-  inRepository,
   lastCommitSubject,
   pull,
   push,
@@ -24,6 +23,7 @@ import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
 import type { AppContext } from './context'
+import { noRepository } from './git'
 import { problemFrom } from './lsp'
 
 /** Wire the palette's command tree to the controllers that carry the actions out. */
@@ -57,9 +57,15 @@ export function createCommands(ctx: AppContext) {
    * for a file that cannot be read (binary), which the callers skip.
    */
   const diffFileFor = (path: string, fileStatus: FileStatus): DiffFile | null => {
+    // Two spellings of the same path: the repository's, which is what git can be
+    // asked about, and the opened folder's, which is what a row says — and with
+    // several repositories open those are not the same string.
+    const repo = git.repoFor(path)
     const rel = relative(rootDir, path)
     const oldText =
-      fileStatus === 'untracked' ? '' : (refText(rootDir, rel, git.diffBase() ?? 'HEAD') ?? '')
+      fileStatus === 'untracked' || repo === null
+        ? ''
+        : (refText(repo, relative(repo, path), git.diffBase() ?? 'HEAD') ?? '')
     let newText = ''
     if (fileStatus !== 'deleted') {
       const open = workspace.buffers[path]
@@ -245,6 +251,9 @@ export function createCommands(ctx: AppContext) {
     setTheme: settings.applyTheme,
     previewTheme: settings.previewTheme,
     restoreTheme: settings.restoreTheme,
+    setIconTheme: settings.applyIconTheme,
+    previewIcons: settings.previewIcons,
+    restoreIcons: settings.restoreIcons,
     toggleWrap: settings.toggleWrap,
     lineOp: editor.requestLineOp,
     triggerCompletion: editor.requestCompletion,
@@ -307,7 +316,7 @@ export function createCommands(ctx: AppContext) {
      * arrows carry on from there like any other diff.
      */
     gitDiffFile: () => {
-      if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
+      if (!git.inRepo()) return say('Not a git repository', 'warn')
       const path = workspace.activePath()
       if (!path) return say('No file open', 'warn')
       const change = git.changes().find(entry => entry.path === path)
@@ -344,21 +353,25 @@ export function createCommands(ctx: AppContext) {
      */
     gitDiffBase: () => ctx.branches.open('diffBase'),
     gitDiffBaseReset: () => {
-      if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
+      if (!git.inRepo()) return say('Not a git repository', 'warn')
       if (git.diffBase() === null) return say('Already comparing against HEAD')
       git.setDiffBase(null)
       say('Comparing against HEAD')
     },
     gitCommit: () => {
-      if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
+      const repo = git.activeRepo()
+      if (repo === null) return say(noRepository(git), 'warn')
       // A hand-built index is a selection already made, so the picker mirrors
       // it: staged files start checked, the rest unchecked. With nothing
       // staged there is no selection to respect and everything starts checked.
-      const staged = stagedPaths(rootDir)
+      const staged = stagedPaths(repo)
+      // One repository's changes: a commit is one repository's, and offering
+      // another's files would stage nothing and fail on the path.
+      //
       // Deliberately not `git.diffBase()`: the index is built against HEAD no
       // matter which branch is being reviewed, so offering the files that differ
       // from some other branch would stage work that is already committed.
-      const changes = [...statusMap(rootDir)]
+      const changes = [...statusMap(repo)]
         .map(([path, fileStatus]) => ({
           path,
           rel: relative(rootDir, path),
@@ -370,17 +383,19 @@ export function createCommands(ctx: AppContext) {
       git.setCommitPick(changes)
     },
     gitUndoCommit: () => {
-      if (!inRepository(rootDir)) return say('Not a git repository', 'warn')
-      const subject = lastCommitSubject(rootDir)
+      const repo = git.activeRepo()
+      if (repo === null) return say(noRepository(git), 'warn')
+      const subject = lastCommitSubject(repo)
       if (!subject) return say('No commit to undo', 'warn')
       ctx.prompts.setPrompt({ kind: 'undoCommit', subject })
     },
     gitPush: () => {
+      if (git.activeRepo() === null) return say(noRepository(git), 'warn')
       const name = git.branch()
       // Detached HEAD and an unborn branch both land here; neither is pushable.
       if (!name) return say('No branch to push', 'warn')
       const hasUpstream = git.upstream()?.name != null
-      gitOp('Pushing', () => push(rootDir, name, hasUpstream), {
+      gitOp('Pushing', repo => push(repo, name, hasUpstream), {
         done: () =>
           hasUpstream ? `Pushed ${name}` : `Pushed ${name} — upstream set to origin/${name}`,
         // Rejected because origin moved on: the fix is the same two commands
@@ -392,10 +407,10 @@ export function createCommands(ctx: AppContext) {
         },
       })
     },
-    gitFetch: () => gitOp('Fetching', () => fetchRemote(rootDir), { done: () => 'Fetched' }),
-    gitPull: () => gitOp('Pulling', () => pull(rootDir), { touchesTree: true }),
-    gitStash: () => gitOp('Stashing', () => stashPush(rootDir), { touchesTree: true }),
-    gitStashPop: () => gitOp('Popping stash', () => stashPop(rootDir), { touchesTree: true }),
+    gitFetch: () => gitOp('Fetching', repo => fetchRemote(repo), { done: () => 'Fetched' }),
+    gitPull: () => gitOp('Pulling', repo => pull(repo), { touchesTree: true }),
+    gitStash: () => gitOp('Stashing', repo => stashPush(repo), { touchesTree: true }),
+    gitStashPop: () => gitOp('Popping stash', repo => stashPop(repo), { touchesTree: true }),
     gitSwitchBranch: () => ctx.branches.open('switch'),
     gitNewBranch: ctx.branches.newBranch,
     gitNewBranchFrom: () => ctx.branches.open('from'),
@@ -412,7 +427,7 @@ export function createCommands(ctx: AppContext) {
   }
 
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, { activeTheme: config.theme }),
+    buildCommands(actions, { activeTheme: config.theme, activeIconTheme: config.iconTheme }),
   )
 
   return { commands, actions }

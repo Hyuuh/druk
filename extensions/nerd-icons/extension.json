@@ -1,12 +1,13 @@
 {
   "id": "nerd-icons",
   "name": "Nerd Font icons",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "File and folder glyphs from the Devicons and Font Awesome ranges. Needs a patched Nerd Font.",
   "icons": [
     {
       "id": "nerd",
       "name": "Nerd Font",
+      "patchedFont": true,
       "file": {
         "glyph": "\uF15B"
       },

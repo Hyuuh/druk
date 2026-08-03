@@ -6,22 +6,46 @@ import type { Config } from '../core/config'
 import { flattenVisible } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import { ignoredPaths } from '../core/git'
+import { enclosingRepo } from '../core/repos'
 
 /**
  * The tree's row filter for the current settings, or null when nothing is hidden.
  * Reads the config store, so a memo calling this recomputes when either setting
- * flips. The ignored set is re-read from git on every call — the callers' memo
+ * flips. The ignored sets are re-read from git on every call — the callers' memo
  * already re-runs on each tree refresh, which is the same cadence `statusMap`
  * runs on, and a stale set would hide files whose ignore rules are gone.
+ *
+ * One set per repository, filled as a row inside that repository is tested: with
+ * a folder of repositories open there is no single set to ask for, and asking
+ * eagerly would spend an `ls-files` on every repository whose folder is shut.
  */
 export function hiddenNodes(
   rootDir: string,
   config: Pick<Config, 'showDotfiles' | 'respectGitignore'>,
 ): ((node: TreeNode) => boolean) | null {
   const hideDots = !config.showDotfiles
-  const ignored = config.respectGitignore ? ignoredPaths(rootDir) : null
-  if (!hideDots && ignored === null) return null
-  return node => (hideDots && node.name.startsWith('.')) || (ignored?.has(node.path) ?? false)
+  if (!hideDots && !config.respectGitignore) return null
+
+  const repos = new Map<string, string | null>()
+  const ignored = new Map<string, Set<string>>()
+  const isIgnored = (path: string) => {
+    if (!config.respectGitignore) return false
+    // The repository of the row's *parent*: a repository's own root is never
+    // ignored by itself, and asking would fill its set for a folder still shut.
+    const repo = enclosingRepo(dirname(path), repos)
+    if (repo === null) return false
+    // Asked from the opened folder when that sits inside the repository, for the
+    // reason `ignoredPaths` documents: from the repository root it would list —
+    // and walk — every ignored entry outside the folder on screen as well.
+    const cwd = repo.startsWith(rootDir) ? repo : rootDir
+    let paths = ignored.get(cwd)
+    if (!paths) {
+      paths = ignoredPaths(cwd)
+      ignored.set(cwd, paths)
+    }
+    return paths.has(path)
+  }
+  return node => (hideDots && node.name.startsWith('.')) || isIgnored(node.path)
 }
 
 /** File-tree state: which folders are open, where the cursor is, what is marked. */

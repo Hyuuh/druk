@@ -62,6 +62,20 @@ test('the rendered view shows unsaved edits, not the file on disk', async () => 
   await until(t, () => frame(t).includes('Typed'))
 })
 
+test('the tab strip carries the rendered view as a button, on markdown tabs only', async () => {
+  const t = await launch(fixture({ 'doc.md': DOC, 'a.ts': 'const a = 1\n' }))
+  await openFile(t, 'doc.md')
+  await until(t, () => frame(t).includes('¶ preview'))
+
+  await runCommand(t, 'Markdown: rendered')
+  await until(t, () => frame(t).includes('¶ source'))
+
+  await openFile(t, 'a.ts')
+  await until(t, () => frame(t).includes('const a = 1'))
+  expect(frame(t)).not.toContain('¶ preview')
+  expect(frame(t)).not.toContain('¶ source')
+})
+
 test('a file that is not markdown says so instead of rendering', async () => {
   const t = await launch(fixture({ 'a.ts': 'const a = 1\n' }))
   await openFile(t, 'a.ts')

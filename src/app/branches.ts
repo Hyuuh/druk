@@ -3,7 +3,6 @@ import { createSignal } from 'solid-js'
 import {
   createBranch,
   deleteBranch,
-  inRepository,
   listBranches,
   localBranchName,
   mergeBranch,
@@ -11,6 +10,7 @@ import {
   switchBranch,
 } from '../core/git'
 import type { Branch } from '../core/git'
+import { noRepository } from './git'
 import type { Git, GitOp } from './git'
 import type { PromptState } from './prompts'
 import type { Status } from './status'
@@ -78,13 +78,12 @@ const PICKERS: Record<BranchMode, PickerSpec> = {
  * one and `prompts.ts` calls back into the runners below once it is answered.
  */
 export function createBranches(deps: {
-  rootDir: string
   status: Status
   git: Git
   gitOp: GitOp
   prompts: PromptState
 }) {
-  const { rootDir, status, git, gitOp, prompts } = deps
+  const { status, git, gitOp, prompts } = deps
 
   /** The open branch picker: what it lists and what picking will mean. */
   const [pick, setPick] = createSignal<{ mode: BranchMode; branches: Branch[] } | null>(null)
@@ -95,22 +94,23 @@ export function createBranches(deps: {
   }
 
   const open = (mode: BranchMode) => {
-    if (!inRepository(rootDir)) return status.say('Not a git repository', 'warn')
+    const repo = git.activeRepo()
+    if (repo === null) return status.say(noRepository(git), 'warn')
     const spec = PICKERS[mode]
-    const branches = listBranches(rootDir).filter(spec.keep)
+    const branches = listBranches(repo).filter(spec.keep)
     if (branches.length === 0) return status.say(spec.empty)
     setPick({ mode, branches })
   }
 
   const create = (name: string, from: string | null) =>
-    gitOp('Creating branch', () => createBranch(rootDir, name, from), {
+    gitOp('Creating branch', repo => createBranch(repo, name, from), {
       touchesTree: true,
       done: () => `On ${name}`,
     })
 
   /** New branch off HEAD — the one branch command with nothing to pick first. */
   const newBranch = () => {
-    if (!inRepository(rootDir)) return status.say('Not a git repository', 'warn')
+    if (git.activeRepo() === null) return status.say(noRepository(git), 'warn')
     prompts.setPrompt({ kind: 'newBranch', from: null })
   }
 
@@ -119,7 +119,7 @@ export function createBranches(deps: {
     setPick(null)
     switch (mode) {
       case 'switch':
-        return gitOp('Switching branch', () => switchBranch(rootDir, branch.name, branch.remote), {
+        return gitOp('Switching branch', repo => switchBranch(repo, branch.name, branch.remote), {
           touchesTree: true,
           done: () => `On ${localBranchName(branch.name)}`,
         })
@@ -145,17 +145,17 @@ export function createBranches(deps: {
   }
 
   const rename = (from: string, to: string) =>
-    gitOp('Renaming branch', () => renameBranch(rootDir, from, to), {
+    gitOp('Renaming branch', repo => renameBranch(repo, from, to), {
       done: () => `Renamed ${from} to ${to}`,
     })
 
   const remove = (name: string, force: boolean) =>
-    gitOp('Deleting branch', () => deleteBranch(rootDir, name, force), {
+    gitOp('Deleting branch', repo => deleteBranch(repo, name, force), {
       done: () => `Deleted ${name}`,
     })
 
   const merge = (name: string) =>
-    gitOp('Merging', () => mergeBranch(rootDir, name), {
+    gitOp('Merging', repo => mergeBranch(repo, name), {
       touchesTree: true,
       // git's own summary ("Fast-forward", "Merge made by the 'ort' strategy")
       // says more about what happened than any sentence here could.

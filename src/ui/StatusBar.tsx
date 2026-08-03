@@ -17,6 +17,8 @@ export interface StatusBarProps {
   cursor?: { line: number; col: number }
   dirty: boolean
   vimMode: VimMode | null
+  /** Repository the branch belongs to, when the folder holds more than one. */
+  repo: string | null
   branch: string | null
   /** Commits the branch is ahead of / behind its upstream. */
   ahead: number
@@ -75,8 +77,13 @@ export function StatusBar(props: StatusBarProps) {
    * its own and pushed the message, the hints and the cursor off the right edge.
    * A quarter of the row, so a wide terminal still shows most names whole.
    */
-  const branchText = () =>
-    props.branch ? cut(props.branch, Math.max(12, Math.round(dimensions().width * 0.25))) : ''
+  const branchText = () => {
+    if (!props.branch) return ''
+    // `repo/branch` where several are open: "main" on its own would be whichever
+    // of them the editor happens to be in, with nothing saying which.
+    const label = `${props.repo ? `${props.repo}/` : ''}${props.branch}`
+    return cut(label, Math.max(12, Math.round(dimensions().width * 0.25)))
+  }
 
   const gitText = () => {
     if (!props.branch) return ''

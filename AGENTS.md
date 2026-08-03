@@ -34,7 +34,13 @@ off, a long line's tail is reached by moving the cursor into it, since OpenTUI
 scrolls sideways only with the caret),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
-→ / ←, or all of them from the header's `▴`) and palette commands for commit/undo/stash/push/fetch/pull — a push origin
+→ / ←, or all of them from the header's `▴`), for however many repositories the
+opened folder holds: a folder that only *contains* checkouts (`~/code`, a folder of
+worktrees) is scanned `gitScanDepth` levels down and every repository found is queried
+in its own root, with the status bar and the panel header naming it (`beta/main`)
+and each command acting on the *active* one — the repository of the change under the
+panel's cursor, else of the open file, else the only one there is;
+and palette commands for commit/undo/stash/push/fetch/pull — a push origin
 rejects offers to merge origin in and push again, VS Code's prompt, rather than
 naming the two commands and stopping — and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
@@ -48,12 +54,23 @@ repository's default branch or any selected base (palette → Git → Compare br
 an image viewer (PNG/JPEG as half-block cells), a PDF viewer (page, zoom and pan controls
 rendered into terminal cells), a rendered view for markdown files (`Ctrl+Opt+M`, palette → View — OpenTUI's
 `<markdown>` renderable over the editor slot, per path so each tab keeps the view it
-was left in, rendering the buffer rather than the file so unsaved edits show), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
+was left in, rendering the buffer rather than the file so unsaved edits show, and reached
+from a `¶ preview` / `¶ source` button at the right of the tab strip that is drawn only
+while a markdown tab is up — the command alone is one nobody finds), mermaid fences drawn
+as diagrams in that view rather than printed as source (flowcharts, state, class and ER
+through one layered graph engine; sequence diagrams and pie charts of their own; anything
+else — gantt, mindmap, timeline — falls back to the fenced source), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
 `themeLight` / `themeDark` picked separately and defaulting to the GitHub pair —
 polled, since no OS offers a portable subscription; `DRUK_OS_APPEARANCE=dark|light`
 forces the answer on a desktop none of the probes can read), themes previewed live
 while the selection sits on one — in the palette's Themes submenu and in the settings
-page's three theme lists — and put back when the list is left without confirming, an unpainted
+page's three theme lists — and put back when the list is left without confirming;
+icon sets pick and preview the same way (palette → File icons, which names the sets
+wanting a patched font *before* one is chosen and the tree has gone to tofu) — a
+theme previews through the theme store, which is already separate from the config,
+while `iconTheme` is read straight off it, so previewing one without writing it to
+disk needs `activeIconTheme`, the layer in `settings.ts` the tree reads instead,
+an unpainted
 background for a translucent terminal (`transparent` — editor, tab strip and
 sidebar only; floating panels stay painted or the editor reads through them),
 a settings page
@@ -133,7 +150,10 @@ row lists every bindable command with the key it answers to, refuses a chord ano
 custom binding holds and names whatever default a rebind takes the key from, while a
 clash or a value that is not a chord is reported on startup),
 file icons in the tree (`iconTheme` — `unicode` shapes any font has, or a theme a
-extension contributes, `nerd-icons` in the market for a patched font; the glyph takes the expansion
+extension contributes: `material-icons` in the market is the Material Icon Theme's
+associations and colours drawn with Material Design Icons, `nerd-icons` a smaller
+Devicons set, both wanting a patched font, which they declare with `patchedFont`
+so the editor can say so; the glyph takes the expansion
 arrow's column, since a folder icon has an open and a closed form, and the
 default is `none` because nothing can ask a terminal what its font holds),
 an extension system (JSON manifests in `$XDG_CONFIG_HOME/druk/extensions/<id>/extension.json`
@@ -148,20 +168,24 @@ an extensions panel — the sidebar's third view beside Files and Git
 cycles the three, and the strip falls to initials where the names do not fit):
 `INSTALLED` lists every manifest, Enter turning one on or off and Backspace
 uninstalling one that is not built in after a confirm that names the language
-servers druk fetched for it, since those go with it and those are the megabytes; the market is **not on screen at all**
-until it is searched for — not even as a folded heading, since a registry may
-carry a thousand entries and none of them is what the panel is for — and a search
-box drawn under the header at all times (`/`, or a click, starts typing into it)
-is what raises the `AVAILABLE` section, over both sections at once, landing the
-cursor on its first hit so the Enter after it installs; every extension has
+servers druk fetched for it, since those go with it and those are the megabytes;
+`AVAILABLE` lists the whole registry minus what is already installed, so what can
+be had is on screen without having to guess a name first — opening the view is
+what fetches the catalog (`market.ready()`, the shared first fetch, from an effect
+in `App.tsx`; deliberately not gated on `extensionUpdates`, which silences druk's
+*own* offers, where opening this panel is the user asking) — and both headings
+fold, since that list is long by default; a search box drawn under the header at
+all times (`/`, or a click, starts typing into it) narrows both sections at once,
+landing the cursor on its first hit so the Enter after it installs; every extension has
 *categories* — `language`, `lsp`, `theme`, `icons`, derived from what it
 contributes and never declared, since a manifest carrying `themes` is a theme
 extension and a field saying otherwise could only be wrong (`categoriesOf` in
 `src/extensions/manifest.ts` is the one place that decides, and the catalog
 carries them per row) — which the search matches beside the name and every id
 and filetype a manifest registers, and which the row draws dim beside the name
-wherever the sidebar has columns going spare; matches are capped at
-fifty with a `+N more matches` row saying what was left out; `u` updates
+wherever the sidebar has columns going spare; the market list is capped at
+fifty with a row saying what was left out — druk's own registry is well under
+that, so the cap is for a fork's; `u` updates
 everything and `r` re-reads the manifests. Only the two that are
 settings — the startup check and the registry URL — are on the settings page,
 an extension market — `extensions/` **in this repository**, one folder per extension, served
@@ -344,11 +368,12 @@ dependency rule, and recipes for the extension points:
 
 | Want to add a… | Edit |
 | --- | --- |
-| language | a `languages` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `grammar` is `{"vendored": "<key in src/languages/grammars.ts>"}` for one druk embeds, `{"bundled": true}` for one OpenTUI carries, or `{"wasm": "…", "query": "…"}` for files in the extension folder. `patterns` are `{group, re, flags}` (regex as a string) for a format with no usable grammar; `extensions` / `filenames` / `filenamePattern` claim the names OpenTUI resolves none of. Adding a *vendored* grammar is still a source change: two static imports in `src/languages/grammars.ts` |
+| language | a `languages` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `grammar` is `{"vendored": "<key in src/languages/grammars.ts>"}` for one druk embeds, `{"bundled": true}` for one OpenTUI carries, or `{"wasm": "…", "query": "…"}` for files in the extension folder. `patterns` are `{group, re, flags}` (regex as a string) for a format with no usable grammar; `extensions` / `filenames` / `filenamePattern` claim the names OpenTUI resolves none of. Adding a *vendored* grammar is still a source change: two static imports in `src/languages/grammars.ts`. A grammar that leaves another language's code as one opaque token (vue's `<script>` body is a single `raw_text`) captures that span as `@injection.<filetype>` in its query, and `resolveInjections` (`src/languages/highlight.ts`) reparses it with that filetype's grammar — one level deep, and skipped when no registered language carries that grammar |
 | language server | a `languageServers` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `install` is `{"kind": "npm", "packages": […]}` or `{"kind": "download", "urls": {"<platform>-<arch>": "…"}}` when druk can fetch it itself, and `{"kind": "manual", "command": "…"}` for a line to print — a `download` carries a `command` too, for the machines the release has no build for; `settings` is the server's own configuration object, passed through unvalidated (it is the *server's* shape, not druk's) and given to it both ways the protocol offers — answered to every `workspace/configuration` item and pushed once as `didChangeConfiguration`. Several servers may claim one filetype and all of them are spawned; users override per-server with the `lspServers` setting, which can only *replace* a command some extension declared (an empty one disables that server alone). A server whose command depends on what the project installed goes in `projectCommand` (`src/lsp/project.ts`) instead, which every server consults first — that part is code, and stays in `src/` |
 | PDF viewer | rendering in `src/core/pdf.ts`, UI in `src/ui/PdfView.tsx`, and bufferless routing in `src/app/workspace.ts` |
+| mermaid diagram type | a parser in `src/core/mermaid/parse.ts` answering one of the models in `model.ts`, and a renderer for it in `index.ts`. A type that is a graph of boxes needs no renderer — map it onto `GraphDiagram` and `graph.ts` lays it out. Lines are drawn as the directions they leave a cell in (`canvas.ts`), never as characters, so corners and crossings resolve themselves; `set`/`text` are for glyphs that must win over a line. A type nothing draws must parse to `unsupported`, which is what makes the fence fall back to its source |
 | theme | a `themes` entry in a market manifest — `extensions/<family>/extension.json`, one extension per palette family (catppuccin carries its four flavors), then `bun run extensions`. Only `dark` and `light` are built in, in `src/themes/`, because the defaults name them. Chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there and are never listed by a theme |
-| icon theme | an `icons` entry in a market manifest — one codepoint per glyph, since the tree gives it the arrow's single column, and a two-cell glyph is dropped rather than drawn. `unicode` alone is built in (`src/icons/index.ts`), being the set any font already has |
+| icon theme | an `icons` entry in a market manifest — one codepoint per glyph, since the tree gives it the arrow's single column, and a two-cell glyph is dropped rather than drawn (a Nerd Font one is not two-cell, wherever in the private-use planes it sits). A map's value may name an entry in `definitions`, whose `open` is the expanded form of a folder, so a set of thousands lists each icon once. `unicode` alone is built in (`src/icons/index.ts`), being the set any font already has |
 | extension contribution kind | a list on the manifest (`src/extensions/manifest.ts`) parsed into `Extension` (`src/extensions/types.ts`), registered in `loadExtensions` (`src/extensions/index.ts`), and a `register…`/`clearExtension…` pair on whichever registry owns it — the registry has to be read through a function everywhere, since extensions load after the modules that list its contents are evaluated |
 | previewable value | `preview` + `restore` on the palette `Command` (`src/app/commands.ts`) or on a row's `select` (`src/ui/SettingsView.tsx`) — `preview` paints while the selection sits on the value, `restore` runs when the list is torn down, so it must put back what the config says rather than remember what it replaced |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `VALIDATORS` — one validator per key, since the project file is read key by key) + a row in `src/app/settings.ts` (`specs`, with the `key` it edits) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it |
@@ -359,6 +384,7 @@ dependency rule, and recipes for the extension points:
 | row in the extensions panel | `src/app/extensionsPanel.ts` (the row model, the cursor, the fold state and what Enter does); `src/ui/ExtensionsPanel.tsx` draws whatever `rows()` returns and reports clicks, and the keys live in `src/app/keyboard.ts` beside the tree's and the git panel's |
 | sidebar view | `SidebarView` in `src/ui/SidebarTabs.tsx` (add a `short` initial — the strip falls back to those in a narrow sidebar), a branch in `App.tsx`'s sidebar, one in `keyboard.ts`'s pane switch, a `KeyScope` in `src/ui/keys.ts` with a `SCOPE_LABELS` entry in `KeyPeek.tsx`, and a `toggle…View` on `src/app/panes.ts` |
 | branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
+| git command | run it in `git.activeRepo()`, never in `rootDir` — the opened folder may hold several repositories and be none itself. A mutation goes through `gitOp`, which refuses when no repository is picked and *hands the chosen one to the callback*; a query asks `git.repoFor(path)` for the repository of the path it is about. Which repositories exist is `discoverRepos` (`src/core/repos.ts`), refreshed in `wireGitEffects` |
 
 Key handlers subscribe through `useKeys` (`src/ui/useKeys.ts`), never OpenTUI's
 `useKeyboard` directly: it renames a Ctrl chord to the US key the character sits on, so

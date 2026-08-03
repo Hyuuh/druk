@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { MARKET_DIR } from '../scripts/extensions'
 import {
   CONFIG_FILE,
   DEFAULTS,
@@ -241,6 +242,74 @@ test('an extension may register over a shipped id, and dropping it puts that bac
   expect(iconFor('unicode', { name: 'a.ts', isDir: false })?.glyph).toBe('◆')
 })
 
+test('an icon map points at definitions, and a folder gets its open form', () => {
+  const { extension, problems } = parseManifest(
+    {
+      id: 'defs',
+      icons: [
+        {
+          id: 'named',
+          definitions: {
+            'typescript': { glyph: '◆', color: '#3178c6' },
+            'folder-src': { glyph: '◈', color: '#4caf50', open: '◇' },
+          },
+          extensions: { 'ts': 'typescript', '.tsx': 'typescript' },
+          names: { '.gitignore': 'typescript' },
+          folders: { src: 'folder-src' },
+        },
+      ],
+    },
+    '/extensions/defs/extension.json',
+  )
+  expect(problems).toEqual([])
+  const icons = extension!.icons[0]!
+  expect(icons.extensions).toEqual({
+    ts: { glyph: '◆', color: '#3178c6' },
+    tsx: { glyph: '◆', color: '#3178c6' },
+  })
+  // Kept whole, dot and all: `.gitignore` is the file's name, and stripping the
+  // dot here would leave a key `iconFor` can never look up.
+  expect(icons.names['.gitignore']?.glyph).toBe('◆')
+  expect(icons.folders.src?.glyph).toBe('◈')
+  expect(icons.foldersOpen.src).toEqual({ glyph: '◇', color: '#4caf50' })
+})
+
+test('a named folder is found however the project spelled it', () => {
+  install({
+    id: 'dirs',
+    icons: [
+      {
+        id: 'dirs',
+        folder: '□',
+        folderOpen: '▽',
+        definitions: { 'folder-github': { glyph: '◉', open: '◎' } },
+        folders: { github: 'folder-github' },
+      },
+    ],
+  })
+  loadExtensions(fixture({}))
+  for (const name of ['github', '.github', '_github', '__github__']) {
+    expect(`${name}:${iconFor('dirs', { name, isDir: true })?.glyph}`).toBe(`${name}:◉`)
+  }
+  expect(iconFor('dirs', { name: '.github', isDir: true, expanded: true })?.glyph).toBe('◎')
+  // A folder the theme never named still says whether it is open.
+  expect(iconFor('dirs', { name: 'whatever', isDir: true, expanded: true })?.glyph).toBe('▽')
+})
+
+test('a Nerd Font glyph above the BMP is one cell, and still not an emoji', () => {
+  const { extension } = parseManifest(
+    {
+      id: 'nerd',
+      // U+F07D3 is Nerd Fonts' Material Design Icons range, which a patched font
+      // draws one cell wide; U+1F600 is an emoji and is two.
+      icons: [{ id: 'nerd', file: '\u{F07D3}', extensions: { ts: '\u{1F600}' } }],
+    },
+    '/extensions/nerd/extension.json',
+  )
+  expect(extension?.icons[0]?.file.glyph).toBe('\u{F07D3}')
+  expect(extension?.icons[0]?.extensions).toEqual({})
+})
+
 test('a bad contribution is reported and costs the extension only that entry', () => {
   const { extension, problems } = parseManifest(
     {
@@ -330,6 +399,29 @@ test('an extension icon theme is a value of the setting', async () => {
   expect(t.captureCharFrame()).toContain('▲ a.ts')
 })
 
+test('the material set draws the tree it is installed for', async () => {
+  install(
+    JSON.parse(readFileSync(join(MARKET_DIR, 'material-icons', 'extension.json'), 'utf8')),
+    'material-icons',
+  )
+  const dir = fixture({ 'a.ts': 'const a = 1\n', 'src/b.rs': 'fn main() {}\n' })
+  loadExtensions(dir)
+  const t = await launch(dir, { iconTheme: 'material' })
+
+  const glyph = (name: string, isDir: boolean) =>
+    iconFor('material', { name, isDir, expanded: false })!.glyph
+  const frame = t.captureCharFrame()
+  expect(frame).toContain(`${glyph('a.ts', false)} a.ts`)
+  expect(frame).toContain(`${glyph('src', true)} src`)
+  // Every row is still the same number of cells: a Nerd Font glyph above the
+  // BMP takes one, and the tree would drift a column if it were counted as two.
+  const widths = frame
+    .split('\n')
+    .filter(Boolean)
+    .map(line => [...line].length)
+  expect(new Set(widths).size).toBe(1)
+})
+
 test('an extension theme is in the palette and the settings page', async () => {
   install(MANIFEST)
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
@@ -413,8 +505,6 @@ test("the panel is the sidebar's third view, beside files and git", async () => 
   const panel = t.captureCharFrame()
   expect(panel).toContain('extensions')
   expect(panel).toContain('INSTALLED')
-  // The market is not a heading either: it arrives only once something is typed.
-  expect(panel).not.toContain('AVAILABLE')
 })
 
 test('every icon glyph druk ships is one cell wide', () => {
@@ -431,4 +521,20 @@ test('every icon glyph druk ships is one cell wide', () => {
 test('the default config draws no icons at all', () => {
   expect(DEFAULTS.iconTheme).toBe('none')
   expect(iconFor('none', { name: 'a.ts', isDir: false })).toBeNull()
+})
+
+test('the palette picks an icon set, as it picks a theme', async () => {
+  install(MANIFEST)
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  loadExtensions(dir)
+  const t = await launch(dir, {}, { height: 40 })
+
+  await openPalette(t)
+  await press(t, input => void input.typeText('File icons'))
+  expect(t.captureCharFrame()).toContain('File icons')
+  await pressEscape(t)
+
+  await runCommand(t, 'Blocks')
+  await settle(t)
+  expect(t.captureCharFrame()).toContain('▲ a.ts')
 })

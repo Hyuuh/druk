@@ -7,8 +7,9 @@ import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } 
 import { watchAppearance } from '../core/appearance'
 import { loadProjectConfig, resolveConfig } from '../core/config'
 import type { Config } from '../core/config'
-import { watchTree } from '../core/fs'
+import { watchGitRefs, watchTree } from '../core/fs'
 import { isImagePath } from '../core/image'
+import { isMarkdownPath } from '../core/markdown'
 import { isPdfPath } from '../core/pdf'
 import { checkForUpdate, currentVersion } from '../core/update'
 import { extensionProblems } from '../extensions'
@@ -113,7 +114,13 @@ export function App(props: {
     () => hiddenNodes(rootDir, settings.config),
   )
   const panes = createPanes(tree, restored.sidebar)
-  const git = createGit(rootDir, () => settings.config.gitPanelView)
+  const git = createGit(
+    rootDir,
+    () => settings.config.gitPanelView,
+    // Null unless the source-control panel is the sidebar's view: the tree's own
+    // cursor must not decide which repository a command acts on.
+    () => (panes.view() === 'git' ? panes.gitCursor() : null),
+  )
   const comparison = createComparison({ rootDir, git, status })
   const promptState = createPromptState()
   const lsp = createLsp({ rootDir, settings, status, prompts: promptState })
@@ -151,10 +158,9 @@ export function App(props: {
   })
   const navigation = createNavigation({ workspace, editor, panes, status })
   const fileOps = createFileOps({ rootDir, status, tree, workspace })
-  const gitOp = createGitOp({ rootDir, git, status, workspace })
-  const branches = createBranches({ rootDir, status, git, gitOp, prompts: promptState })
+  const gitOp = createGitOp({ git, status, workspace })
+  const branches = createBranches({ status, git, gitOp, prompts: promptState })
   const promptHandlers = createPromptHandlers({
-    rootDir,
     renderer,
     state: promptState,
     status,
@@ -225,6 +231,15 @@ export function App(props: {
     prompts: { ...promptState, ...promptHandlers },
     overlays,
   }
+
+  /**
+   * Which repository the branch and the panel header are about — named only when
+   * there is more than one, where "main" alone says nothing about whose main it is.
+   */
+  const repoName = createMemo(() => {
+    const active = git.activeRepo()
+    return git.repos().length > 1 && active ? basename(active) : null
+  })
 
   wireGitEffects({ rootDir, git, tree, editor, workspace, config: settings.config })
   wireLspEffects({ lsp, settings, workspace })
@@ -304,6 +319,15 @@ export function App(props: {
     Object.values(lsp.servers).toSorted((a, b) => a.id.localeCompare(b.id)),
   )
 
+  /** The state of the strip's rendered-markdown button, or null when it has none.
+   * Keyed on the view rather than the path: the diff tab of a .md file is a diff,
+   * and its own page has nothing to render. */
+  const markdownTab = () => {
+    const view = workspace.activeView()
+    if (!view || workspace.isDiffView(view) || !isMarkdownPath(view)) return null
+    return { rendered: view === workspace.renderedPath() }
+  }
+
   const closeComparisonDetail = () => {
     comparison.closeDetail()
     panes.focusTree()
@@ -373,6 +397,20 @@ export function App(props: {
     void market.check()
   })
 
+  // `AVAILABLE` lists the registry rather than waiting to be searched, so opening
+  // the panel is what has to guarantee there is a catalog to list. `ready` is the
+  // shared first fetch, so this costs nothing when the startup check already ran,
+  // and it is deliberately not gated on `extensionUpdates`: that setting silences
+  // druk's own offers, and opening this panel is the user asking.
+  createEffect(
+    on(
+      () => panes.sidebar() && panes.view() === 'extensions',
+      showing => {
+        if (showing) void market.ready()
+      },
+    ),
+  )
+
   // Focus reporting (DECSET 1004): the terminal sends CSI I / CSI O as the window
   // gains / loses focus. OpenTUI's key parser recognises both and swallows them,
   // so the raw stdin stream is the only place left to see the blur. The mode is
@@ -392,6 +430,21 @@ export function App(props: {
       if (process.stdout.isTTY) process.stdout.write('\x1B[?1004l')
     })
   })
+
+  // A repository under the opened folder needs the same HEAD/refs watch the root
+  // gets, or a commit or checkout made in it elsewhere leaves its branch and marks
+  // stale. Re-subscribed as the list changes: a repository can be cloned into the
+  // folder while druk is open.
+  createEffect(
+    on(git.repos, repos => {
+      const stops = repos
+        .filter(repo => repo !== rootDir)
+        .map(repo => watchGitRefs(repo, () => git.bump()))
+      onCleanup(() => {
+        for (const stop of stops) stop()
+      })
+    }),
+  )
 
   // The watcher has no follow-up message of its own, so unlike the git callers it
   // reports the clash itself — and clears it again once the files agree, since
@@ -444,6 +497,8 @@ export function App(props: {
         onBack={navigation.back}
         onForward={navigation.forward}
         onOverflow={() => overlays.setPicker('tabs')}
+        markdown={markdownTab()}
+        onToggleMarkdown={workspace.toggleRendered}
       />
       {/* Drag capture lives on the row, not the divider: the pointer leaves a
           one-column target immediately, and each drag event is delivered to
@@ -496,7 +551,7 @@ export function App(props: {
                 gitIgnored={git.gitIgnored()}
                 cutPaths={fileOps.cut()}
                 markedPaths={tree.marked()}
-                iconTheme={config.iconTheme}
+                iconTheme={settings.activeIconTheme()}
                 onActivate={node => {
                   // Landing in a file is how a page closes — the tree stays
                   // interactive while one is up, like any other editor page.
@@ -514,6 +569,7 @@ export function App(props: {
                 when={comparison.active()}
                 fallback={
                   <GitPanel
+                    repo={repoName()}
                     branch={git.branch()}
                     ahead={git.upstream()?.ahead ?? 0}
                     behind={git.upstream()?.behind ?? 0}
@@ -775,6 +831,7 @@ export function App(props: {
         }
         dirty={workspace.activeBuffer()?.dirty ?? false}
         vimMode={workspace.activePath() && !activeImage() && !activePdf() ? editor.vimMode() : null}
+        repo={repoName()}
         branch={git.branch()}
         ahead={git.upstream()?.ahead ?? 0}
         behind={git.upstream()?.behind ?? 0}

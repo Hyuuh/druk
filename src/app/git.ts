@@ -1,4 +1,4 @@
-import { relative } from 'node:path'
+import { join, relative } from 'node:path'
 
 import { createEffect, createMemo, createSignal, on, onCleanup } from 'solid-js'
 
@@ -9,10 +9,11 @@ import {
   diffLines,
   ignoredAmong,
   inRepository,
-  statusMap,
+  statusMapAsync,
   upstreamOf,
 } from '../core/git'
 import type { FileStatus, GitResult, LineChange, Upstream } from '../core/git'
+import { discoverRepos, groupByRepo, repoOf } from '../core/repos'
 import type { CommitFile } from '../ui/CommitModal'
 import type { EditorBridge } from './editor'
 import type { Status } from './status'
@@ -20,11 +21,23 @@ import type { Tree } from './tree'
 import type { Workspace } from './workspace'
 
 /**
- * Everything the UI shows about the repository, refreshed by `wireGitEffects`.
+ * Everything the UI shows about the repositories, refreshed by `wireGitEffects`.
+ *
+ * There may be more than one: a folder that only *holds* checkouts is as ordinary
+ * a thing to open as a checkout itself, and every query runs in the repository
+ * the path it is about belongs to. One of them is the *active* one — whose branch
+ * the status bar shows and which the commands act on — and `panelCursor` is what
+ * makes it follow the source-control panel: acting on a repository other than the
+ * one whose change is under the cursor is never what was meant.
+ *
  * `panelView` is read on every render of the panel's rows, so it is the live
  * config accessor rather than a value — flipping the setting must rebuild them.
  */
-export function createGit(rootDir: string, panelView: () => 'tree' | 'list') {
+export function createGit(
+  rootDir: string,
+  panelView: () => 'tree' | 'list',
+  panelCursor: () => number | null = () => null,
+) {
   const [gitLines, setGitLines] = createSignal<Map<number, LineChange>>(new Map())
   /** Bumped when something may have changed what git would report. */
   const [revision, setRevision] = createSignal(0)
@@ -34,10 +47,20 @@ export function createGit(rootDir: string, panelView: () => 'tree' | 'list') {
   // Starts null and is filled by `wireGitEffects` after the first frame: reading
   // the branch here is a synchronous subprocess on the render thread's clock.
   const [branch, setBranch] = createSignal<string | null>(null)
-  /** Whether `rootDir` is in a repository at all. A signal because `inRepository`
-   * spawns git: the source-control panel reads this on every render, and a
-   * subprocess there would run once per frame. */
-  const [inRepo, setInRepo] = createSignal(inRepository(rootDir))
+  /**
+   * Every repository under the opened folder — itself, when that is one. A signal
+   * because finding them reads the filesystem: the panel and the tree ask on
+   * every render, and a scan there would run once per frame.
+   */
+  const [repos, setRepos] = createSignal<string[]>(inRepository(rootDir) ? [rootDir] : [], {
+    // Compared by content: a scan builds a fresh array every refresh, and the
+    // effect that scans also depends on `activeRepo` — which reads this. A new
+    // identity for an unchanged list is a loop that never settles.
+    equals: (before, after) =>
+      before.length === after.length && before.every((repo, at) => repo === after[at]),
+  })
+  /** Repository of whatever the editor is on, kept by `wireGitEffects`. */
+  const [editorRepo, setEditorRepo] = createSignal<string | null>(null)
   const [upstream, setUpstream] = createSignal<Upstream | null>(null)
   /** A git mutation in flight — one at a time, they share a repository. */
   const [gitBusy, setGitBusy] = createSignal(false)
@@ -69,6 +92,29 @@ export function createGit(rootDir: string, panelView: () => 'tree' | 'list') {
    * because in tree mode most rows are not files.
    */
   const rows = createMemo(() => changeRows(changes(), panelView(), collapsed()))
+
+  /** Which repository a path belongs to — the innermost, so a nested one wins. */
+  const repoFor = (path: string) => repoOf(path, repos())
+
+  /** The repository the source-control panel's cursor is in, when it is showing. */
+  const cursorRepo = createMemo(() => {
+    const at = panelCursor()
+    if (at === null) return null
+    const row = rows()[Math.max(0, Math.min(at, rows().length - 1))]
+    if (!row) return null
+    return repoFor(row.kind === 'file' ? row.change.path : join(rootDir, row.rel))
+  })
+
+  /**
+   * The repository every command acts on and the status bar reports. The panel's
+   * cursor wins while it is up — it is what the diff on screen belongs to — then
+   * the open file, and a single repository answers whatever either of them says.
+   */
+  const activeRepo = createMemo(
+    () => cursorRepo() ?? editorRepo() ?? (repos().length === 1 ? repos()[0]! : null),
+  )
+
+  const inRepo = () => repos().length > 0
 
   const toggleCollapsed = (rel: string) =>
     setCollapsed(previous => {
@@ -110,8 +156,13 @@ export function createGit(rootDir: string, panelView: () => 'tree' | 'list') {
     setGitIgnored,
     branch,
     setBranch,
+    repos,
+    setRepos,
+    repoFor,
+    editorRepo,
+    setEditorRepo,
+    activeRepo,
     inRepo,
-    setInRepo,
     upstream,
     setUpstream,
     gitBusy,
@@ -132,21 +183,31 @@ export function createGit(rootDir: string, panelView: () => 'tree' | 'list') {
 export type Git = ReturnType<typeof createGit>
 
 /**
+ * Why a git command will not run. With repositories open but none of them
+ * picked, "not a git repository" would be a lie about a folder full of them —
+ * what is missing is which one the command is meant for.
+ */
+export function noRepository(git: Git): string {
+  return git.repos().length > 0
+    ? 'Which repository? Open a file in one, or put the panel cursor on its change'
+    : 'Not a git repository'
+}
+
+/**
  * Run one git mutation: refuse outside a repository, keep them serial, report
  * what git said. `touchesTree` pulls the working tree back into open buffers —
  * a stash or pull rewrites files under the editor, and waiting for the watcher
  * would leave stale buffers on screen for its debounce interval.
+ *
+ * `run` is handed the repository to work in rather than reading one itself: with
+ * several open, the one this refused to run without is the one the command has
+ * to use, and a caller that looked it up again could pick another.
  */
-export function createGitOp(deps: {
-  rootDir: string
-  git: Git
-  status: Status
-  workspace: Workspace
-}) {
-  const { rootDir, git, status, workspace } = deps
+export function createGitOp(deps: { git: Git; status: Status; workspace: Workspace }) {
+  const { git, status, workspace } = deps
   return (
     verb: string,
-    run: () => Promise<GitResult>,
+    run: (repo: string) => Promise<GitResult>,
     options: {
       touchesTree?: boolean
       done?: (result: GitResult) => string
@@ -158,11 +219,12 @@ export function createGitOp(deps: {
       handleFailure?: (result: GitResult) => boolean
     } = {},
   ) => {
-    if (!inRepository(rootDir)) return status.say('Not a git repository', 'warn')
+    const repo = git.activeRepo()
+    if (repo === null) return status.say(noRepository(git), 'warn')
     if (git.gitBusy()) return status.say('A git command is already running — let it finish', 'warn')
     git.setGitBusy(true)
     status.say(`${verb}…`)
-    void run().then(result => {
+    void run(repo).then(result => {
       git.setGitBusy(false)
       git.bump()
       if (!result.ok) {
@@ -179,6 +241,18 @@ export function createGitOp(deps: {
 }
 
 export type GitOp = ReturnType<typeof createGitOp>
+
+/** How long a repository scan stands before the next refresh redoes it. */
+const SCAN_INTERVAL = 5000
+
+/** `ignoredAmong` per repository the visible rows fall in. */
+function ignoredIn(repos: string[], paths: string[]): Set<string> {
+  const ignored = new Set<string>()
+  for (const [repo, group] of groupByRepo(paths, repos)) {
+    for (const path of ignoredAmong(repo, group)) ignored.add(path)
+  }
+  return ignored
+}
 
 /** Keep the git signals current, each on the cheapest cadence that stays correct. */
 export function wireGitEffects(deps: {
@@ -231,28 +305,76 @@ export function wireGitEffects(deps: {
     ),
   )
 
-  const refreshUpstream = deferred(() => git.setUpstream(upstreamOf(rootDir)))
+  const refreshUpstream = deferred(() => {
+    const repo = git.activeRepo()
+    git.setUpstream(repo ? upstreamOf(repo) : null)
+  })
 
   // Ahead/behind only moves when history does, so it is deliberately not tied to
-  // the tree refresh, which fires on every filesystem event.
-  createEffect(on(() => [git.branch(), git.revision()] as const, refreshUpstream))
+  // the tree refresh, which fires on every filesystem event. The active
+  // repository is one of the inputs: with several open, moving to another one is
+  // as much of a change as its history moving.
+  createEffect(on(() => [git.branch(), git.revision(), git.activeRepo()] as const, refreshUpstream))
+
+  /**
+   * Which query answered last wins, and an earlier one that comes back after it
+   * must be dropped: the status queries are asynchronous, and a burst can put a
+   * slow repository's answer behind a newer pass over all of them.
+   */
+  let generation = 0
+
+  /**
+   * The repositories, rescanned at most every `SCAN_INTERVAL`.
+   *
+   * `git init` in another terminal writes .git, and a repository can be cloned
+   * into the folder while druk is open, so this cannot be answered once — but it
+   * rides the tree refresh, which fires on every filesystem event, and reading a
+   * folder tree three levels deep on each keystroke's save is not what any of
+   * those events is asking about. A repository that appears shows up a few
+   * seconds later; nothing else waits on it.
+   */
+  let scanned: string[] = []
+  let scannedAt = 0
+  let scannedDepth = -1
+  const currentRepos = (depth: number) => {
+    const now = Date.now()
+    if (depth === scannedDepth && now - scannedAt < SCAN_INTERVAL) return scanned
+    scannedDepth = depth
+    scannedAt = now
+    const found = discoverRepos(rootDir, depth)
+    // The fallback covers what the filesystem cannot see — a checkout whose git
+    // directory is elsewhere (`GIT_DIR`, `--separate-git-dir`), which only git
+    // itself can answer for.
+    scanned = found.length > 0 ? found : inRepository(rootDir) ? [rootDir] : []
+    return scanned
+  }
 
   const refreshStatus = deferred(() => {
-    git.setGitStatus(statusMap(rootDir, git.diffBase()))
+    git.setRepos(currentRepos(config.gitScanDepth))
+
+    const run = ++generation
+    const base = git.diffBase()
+    void Promise.all(git.repos().map(repo => statusMapAsync(repo, base))).then(maps => {
+      if (run !== generation) return
+      const merged = new Map<string, FileStatus>()
+      for (const map of maps) {
+        for (const [path, status] of map) merged.set(path, status)
+      }
+      git.setGitStatus(merged)
+    })
+
     // With the rows hidden outright there is nothing left to dim, and the
     // subprocess would answer "none of these" on every filesystem event.
     git.setGitIgnored(
       config.respectGitignore
         ? new Set<string>()
-        : ignoredAmong(
-            rootDir,
+        : ignoredIn(
+            git.repos(),
             tree.nodes().map(n => n.path),
           ),
     )
-    git.setBranch(currentBranch(rootDir))
-    // `git init` in another terminal writes .git, so the watcher brings us
-    // here — the only place the panel would ever learn it has a repository.
-    git.setInRepo(inRepository(rootDir))
+    const active = git.activeRepo()
+    git.setBranch(active ? currentBranch(active) : null)
   })
 
   // Tree marks follow the same cadence, plus any filesystem change. The branch
@@ -269,9 +391,25 @@ export function wireGitEffects(deps: {
           // Not merely read in the body: flipping the setting is the one thing
           // that changes the answer without touching the tree or the repository.
           config.respectGitignore,
+          config.gitScanDepth,
           git.diffBase(),
+          // The branch is this repository's, so moving between them re-reads it.
+          git.activeRepo(),
         ] as const,
       refreshStatus,
+    ),
+  )
+
+  // Which repository the editor is in. The tree's selection stands in while no
+  // file is open — browsing a repository is enough to mean it, and without it a
+  // folder of checkouts would show no branch until something was opened.
+  createEffect(
+    on(
+      () => [workspace.activePath(), tree.selectedPath(), git.repos()] as const,
+      ([path, selected]) =>
+        git.setEditorRepo(
+          (path ? git.repoFor(path) : null) ?? (selected ? git.repoFor(selected) : null),
+        ),
     ),
   )
 }

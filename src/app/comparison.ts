@@ -17,6 +17,7 @@ import type {
   ComparisonFile,
 } from '../core/git'
 import { fuzzyScore } from '../core/search'
+import { noRepository } from './git'
 import type { Git } from './git'
 import type { Status } from './status'
 
@@ -49,6 +50,13 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
   const [selectedCommit, setSelectedCommit] = createSignal<ComparisonCommitDetail | null>(null)
   const [selectedContent, setSelectedContent] = createSignal<ComparisonContent | null>(null)
   const [detailFileCursor, setDetailFileCursor] = createSignal(0)
+
+  /**
+   * Repository the open comparison is of, pinned when it opens: the active one
+   * can move under it — a click in the source-control panel is enough — and every
+   * oid, path and cached blob here belongs to the repository it was resolved in.
+   */
+  let repoDir = rootDir
 
   const comparisons = new Map<string, BranchComparison>()
   const commits = new Map<string, ComparisonCommitDetail>()
@@ -98,8 +106,8 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     setState('loading')
     setError('')
     setResult(null)
-    const compare = git.branch() ?? currentBranch(rootDir) ?? undefined
-    const identity = await resolveComparison(rootDir, base, compare)
+    const compare = git.branch() ?? currentBranch(repoDir) ?? undefined
+    const identity = await resolveComparison(repoDir, base, compare)
     if (generation !== requestGeneration) return
     if (!identity.ok) return fail(identity.detail)
 
@@ -110,7 +118,7 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
       return
     }
 
-    const loaded = await loadResolvedComparison(rootDir, identity.value)
+    const loaded = await loadResolvedComparison(repoDir, identity.value)
     if (generation !== requestGeneration) return
     if (!loaded.ok) return fail(loaded.detail)
     remember(comparisons, key, loaded.value, 8)
@@ -118,8 +126,8 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
   }
 
   const branchesForBase = () => {
-    const current = git.branch() ?? currentBranch(rootDir)
-    return listBranches(rootDir).filter(branch => !branch.current && branch.name !== current)
+    const current = git.branch() ?? currentBranch(repoDir)
+    return listBranches(repoDir).filter(branch => !branch.current && branch.name !== current)
   }
 
   const open = () => {
@@ -128,9 +136,12 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     setFilterValue('')
     setFilterOpen(false)
     closeDetail()
+    const repo = git.activeRepo()
+    if (repo === null) return fail(noRepository(git))
+    repoDir = repo
     // The editor-wide comparison base, when one is set, is the branch the user
     // has already said they are working against.
-    const base = chosenBase() ?? git.diffBase() ?? defaultBranch(rootDir)
+    const base = chosenBase() ?? git.diffBase() ?? defaultBranch(repoDir)
     if (base) {
       void load(base)
       return
@@ -191,7 +202,7 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
       if (generation === detailGeneration) setSelectedContent(cached)
       return
     }
-    const loaded = await comparisonFileContent(rootDir, file)
+    const loaded = await comparisonFileContent(repoDir, file)
     if (generation !== detailGeneration) return
     if (!loaded.ok) return fail(loaded.detail)
     remember(contents, key, loaded.value, 64)
@@ -217,7 +228,7 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     const cached = commits.get(commit.oid)
     const loadCommit = cached
       ? Promise.resolve({ ok: true as const, value: cached })
-      : comparisonCommitDetail(rootDir, commit.oid)
+      : comparisonCommitDetail(repoDir, commit.oid)
     void (async () => {
       const loaded = await loadCommit
       if (generation !== detailGeneration) return
@@ -260,7 +271,7 @@ export function createComparison(deps: { rootDir: string; git: Git; status: Stat
     if (!comparison) return
     const generation = requestGeneration
     void (async () => {
-      const identity = await resolveComparison(rootDir, comparison.base.name)
+      const identity = await resolveComparison(repoDir, comparison.base.name)
       if (!active() || generation !== requestGeneration) return
       if (!identity.ok) return fail(identity.detail)
       if (
