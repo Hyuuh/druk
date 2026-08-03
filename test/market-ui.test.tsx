@@ -187,7 +187,7 @@ test('the extensions page lists the market and installs from it', async () => {
   await untilFrame(t, 'Installed Go 1.1.0')
 })
 
-test('the market is not in the panel until it is searched for', async () => {
+test('the panel lists the whole market, not only what was searched for', async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   const t = await launch(dir, { extensionUpdates: true }, { height: 40 })
 
@@ -198,11 +198,11 @@ test('the market is not in the panel until it is searched for', async () => {
   await settle(t)
   const idle = t.captureCharFrame()
   expect(idle).toContain('INSTALLED')
-  // Not even a folded heading: a registry may carry a thousand entries, and
-  // none of them is what the panel is for.
-  expect(idle).not.toContain('AVAILABLE')
-  expect(idle).not.toContain('Go')
+  // On screen without having to guess a name first.
+  expect(idle).toContain('AVAILABLE')
+  expect(idle).toContain('Go')
 
+  // The search still narrows it rather than raising it.
   await press(t, input => void input.typeText('/'))
   await press(t, input => void input.typeText('gopls'))
   const searched = t.captureCharFrame()
@@ -210,9 +210,8 @@ test('the market is not in the panel until it is searched for', async () => {
   expect(searched).toContain('Go')
 
   await pressEscape(t)
-  expect(t.captureCharFrame()).not.toContain('AVAILABLE')
+  expect(t.captureCharFrame()).toContain('AVAILABLE')
 })
-
 test('a search that matches most of a big market says what it left out', async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   const t = await launch(dir, { extensionUpdates: true }, { height: 40 })

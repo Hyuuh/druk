@@ -59,7 +59,13 @@ else — gantt, mindmap, timeline — falls back to the fenced source), themes t
 polled, since no OS offers a portable subscription; `DRUK_OS_APPEARANCE=dark|light`
 forces the answer on a desktop none of the probes can read), themes previewed live
 while the selection sits on one — in the palette's Themes submenu and in the settings
-page's three theme lists — and put back when the list is left without confirming, an unpainted
+page's three theme lists — and put back when the list is left without confirming;
+icon sets pick and preview the same way (palette → File icons, which names the sets
+wanting a patched font *before* one is chosen and the tree has gone to tofu) — a
+theme previews through the theme store, which is already separate from the config,
+while `iconTheme` is read straight off it, so previewing one without writing it to
+disk needs `activeIconTheme`, the layer in `settings.ts` the tree reads instead,
+an unpainted
 background for a translucent terminal (`transparent` — editor, tab strip and
 sidebar only; floating panels stay painted or the editor reads through them),
 a settings page
@@ -149,20 +155,24 @@ an extensions panel — the sidebar's third view beside Files and Git
 cycles the three, and the strip falls to initials where the names do not fit):
 `INSTALLED` lists every manifest, Enter turning one on or off and Backspace
 uninstalling one that is not built in after a confirm that names the language
-servers druk fetched for it, since those go with it and those are the megabytes; the market is **not on screen at all**
-until it is searched for — not even as a folded heading, since a registry may
-carry a thousand entries and none of them is what the panel is for — and a search
-box drawn under the header at all times (`/`, or a click, starts typing into it)
-is what raises the `AVAILABLE` section, over both sections at once, landing the
-cursor on its first hit so the Enter after it installs; every extension has
+servers druk fetched for it, since those go with it and those are the megabytes;
+`AVAILABLE` lists the whole registry minus what is already installed, so what can
+be had is on screen without having to guess a name first — opening the view is
+what fetches the catalog (`market.ready()`, the shared first fetch, from an effect
+in `App.tsx`; deliberately not gated on `extensionUpdates`, which silences druk's
+*own* offers, where opening this panel is the user asking) — and both headings
+fold, since that list is long by default; a search box drawn under the header at
+all times (`/`, or a click, starts typing into it) narrows both sections at once,
+landing the cursor on its first hit so the Enter after it installs; every extension has
 *categories* — `language`, `lsp`, `theme`, `icons`, derived from what it
 contributes and never declared, since a manifest carrying `themes` is a theme
 extension and a field saying otherwise could only be wrong (`categoriesOf` in
 `src/extensions/manifest.ts` is the one place that decides, and the catalog
 carries them per row) — which the search matches beside the name and every id
 and filetype a manifest registers, and which the row draws dim beside the name
-wherever the sidebar has columns going spare; matches are capped at
-fifty with a `+N more matches` row saying what was left out; `u` updates
+wherever the sidebar has columns going spare; the market list is capped at
+fifty with a row saying what was left out — druk's own registry is well under
+that, so the cap is for a fork's; `u` updates
 everything and `r` re-reads the manifests. Only the two that are
 settings — the startup check and the registry URL — are on the settings page,
 an extension market — `extensions/` **in this repository**, one folder per extension, served

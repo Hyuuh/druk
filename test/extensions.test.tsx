@@ -505,8 +505,6 @@ test("the panel is the sidebar's third view, beside files and git", async () => 
   const panel = t.captureCharFrame()
   expect(panel).toContain('extensions')
   expect(panel).toContain('INSTALLED')
-  // The market is not a heading either: it arrives only once something is typed.
-  expect(panel).not.toContain('AVAILABLE')
 })
 
 test('every icon glyph druk ships is one cell wide', () => {
@@ -523,4 +521,20 @@ test('every icon glyph druk ships is one cell wide', () => {
 test('the default config draws no icons at all', () => {
   expect(DEFAULTS.iconTheme).toBe('none')
   expect(iconFor('none', { name: 'a.ts', isDir: false })).toBeNull()
+})
+
+test('the palette picks an icon set, as it picks a theme', async () => {
+  install(MANIFEST)
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  loadExtensions(dir)
+  const t = await launch(dir, {}, { height: 40 })
+
+  await openPalette(t)
+  await press(t, input => void input.typeText('File icons'))
+  expect(t.captureCharFrame()).toContain('File icons')
+  await pressEscape(t)
+
+  await runCommand(t, 'Blocks')
+  await settle(t)
+  expect(t.captureCharFrame()).toContain('▲ a.ts')
 })

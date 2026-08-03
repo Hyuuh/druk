@@ -250,6 +250,9 @@ export function createCommands(ctx: AppContext) {
     setTheme: settings.applyTheme,
     previewTheme: settings.previewTheme,
     restoreTheme: settings.restoreTheme,
+    setIconTheme: settings.applyIconTheme,
+    previewIcons: settings.previewIcons,
+    restoreIcons: settings.restoreIcons,
     toggleWrap: settings.toggleWrap,
     lineOp: editor.requestLineOp,
     triggerCompletion: editor.requestCompletion,
@@ -423,7 +426,7 @@ export function createCommands(ctx: AppContext) {
   }
 
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, { activeTheme: config.theme }),
+    buildCommands(actions, { activeTheme: config.theme, activeIconTheme: config.iconTheme }),
   )
 
   return { commands, actions }

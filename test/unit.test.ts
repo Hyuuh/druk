@@ -91,7 +91,7 @@ describe('registries', () => {
     const actions = new Proxy({} as CommandActions, {
       get: (_t, name: string) => () => ran.push(name),
     })
-    const tree = buildCommands(actions, { activeTheme: 'dark' })
+    const tree = buildCommands(actions, { activeTheme: 'dark', activeIconTheme: 'none' })
     const leaves = flattenCommands(tree)
 
     expect(leaves.length).toBeGreaterThan(10)
@@ -110,7 +110,9 @@ describe('registries', () => {
     const actions = new Proxy({} as CommandActions, {
       get: (_t, name: string) => (arg?: unknown) => ran.push(`${name}:${arg ?? ''}`),
     })
-    const themes = buildCommands(actions, { activeTheme: 'dark' }).find(c => c.id === 'themes')
+    const themes = buildCommands(actions, { activeTheme: 'dark', activeIconTheme: 'none' }).find(
+      c => c.id === 'themes',
+    )
     const leaves = themes?.children ?? []
 
     expect(leaves.length).toBe(Object.keys(THEMES).length)

@@ -95,6 +95,17 @@ export function createSettings(deps: {
   const restoreTheme = () => paintTheme(config.theme)
 
   /**
+   * The icon set on screen, which is the config's except while a list is being
+   * arrowed through. Themes get this for free — the theme store is already
+   * separate from the config — but icons are read straight off `iconTheme`, so
+   * previewing one without writing it to disk needs a layer of its own.
+   */
+  const [iconPreview, setIconPreview] = createSignal<string | null>(null)
+  const activeIconTheme = () => iconPreview() ?? config.iconTheme
+  const previewIcons = (id: string) => setIconPreview(id)
+  const restoreIcons = () => setIconPreview(null)
+
+  /**
    * Write `patch` into one layer, persist that file, and re-resolve.
    *
    * Three settings are also live state held elsewhere — the theme store, the
@@ -207,6 +218,9 @@ export function createSettings(deps: {
   }
 
   const applyIconTheme = (id: string) => {
+    // Before the write, not after: the preview is what the tree is reading, and
+    // leaving it up would keep showing the arrowed-past set over the saved one.
+    restoreIcons()
     patchConfig({ iconTheme: id })
     status.say(
       config.iconTheme === NO_ICONS
@@ -964,6 +978,9 @@ export function createSettings(deps: {
     toggleLspCompletion,
     toggleServer,
     applyIconTheme,
+    activeIconTheme,
+    previewIcons,
+    restoreIcons,
     reloadExtensions,
     toggleExtension,
     toggleMarket,

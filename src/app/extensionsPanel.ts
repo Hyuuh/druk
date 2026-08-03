@@ -7,10 +7,10 @@
  * row performs belongs to somebody else: `settings` writes the config and
  * reloads the manifests, `market` fetches and installs.
  *
- * The market is not on screen until it is searched for — not even as a folded
- * heading. A registry may carry a thousand entries, and none of them is what the
- * panel is for: what you have installed is. Typing is what asks for the rest, and
- * even then the matches are capped, with a row saying how many were left out.
+ * `AVAILABLE` lists the whole registry minus what is already installed, so what
+ * can be had is on screen without having to guess a name first. It is capped all
+ * the same, with a row saying how many were left out: a fork's registry may carry
+ * far more than this one, and a sidebar is no place to scroll a thousand rows.
  */
 import { createMemo, createSignal } from 'solid-js'
 
@@ -54,8 +54,8 @@ export type ExtensionRow =
 const SECTIONS = { installed: 'INSTALLED', available: 'AVAILABLE' } as const
 
 /**
- * Market matches a search will list. A one-letter query against a big registry
- * matches most of it, and a sidebar is no place to scroll a thousand rows —
+ * Market rows the panel will list. druk's own registry is well under this, so
+ * the cap is for a fork's: a sidebar is no place to scroll a thousand rows, and
  * narrowing the search is faster than paging through them.
  */
 const MAX_RESULTS = 50
@@ -111,9 +111,8 @@ export function createExtensionsPanel(deps: {
       .filter(row => matches(`${row.label} ${row.id} ${row.about} ${row.keywords}`)),
   )
 
-  /** Empty until something is typed: the market is what the search is for. */
+  /** Everything the registry offers that is not already installed. */
   const availableList = createMemo(() => {
-    if (!query()?.trim()) return []
     const held = new Set(extensions().map(extension => extension.id))
     return market
       .catalog()
@@ -154,13 +153,15 @@ export function createExtensionsPanel(deps: {
     }
     const available = availableList()
     if (available.length === 0) return out
+    const shutMarket = !query() && collapsed().available === true
     out.push({
       kind: 'section',
       id: 'available',
       label: SECTIONS.available,
       count: available.length,
-      collapsed: false,
+      collapsed: shutMarket,
     })
+    if (shutMarket) return out
     out.push(...available.slice(0, MAX_RESULTS))
     // Never a silent cap: a list that stops at fifty with nothing said reads as
     // a market that only has fifty.
@@ -168,8 +169,11 @@ export function createExtensionsPanel(deps: {
       out.push({
         kind: 'note',
         id: 'more',
-        // Short: the sidebar is thirty columns and a longer line wraps.
-        label: `+${available.length - MAX_RESULTS} more matches`,
+        // Short: the sidebar is thirty columns and a longer line wraps. "matches"
+        // only where something was typed — the unsearched list matched nothing.
+        label: query()
+          ? `+${available.length - MAX_RESULTS} more matches`
+          : `+${available.length - MAX_RESULTS} more — search to narrow`,
       })
     }
     return out

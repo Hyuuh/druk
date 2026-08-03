@@ -391,6 +391,20 @@ export function App(props: {
     void market.check()
   })
 
+  // `AVAILABLE` lists the registry rather than waiting to be searched, so opening
+  // the panel is what has to guarantee there is a catalog to list. `ready` is the
+  // shared first fetch, so this costs nothing when the startup check already ran,
+  // and it is deliberately not gated on `extensionUpdates`: that setting silences
+  // druk's own offers, and opening this panel is the user asking.
+  createEffect(
+    on(
+      () => panes.sidebar() && panes.view() === 'extensions',
+      showing => {
+        if (showing) void market.ready()
+      },
+    ),
+  )
+
   // Focus reporting (DECSET 1004): the terminal sends CSI I / CSI O as the window
   // gains / loses focus. OpenTUI's key parser recognises both and swallows them,
   // so the raw stdin stream is the only place left to see the blur. The mode is
@@ -531,7 +545,7 @@ export function App(props: {
                 gitIgnored={git.gitIgnored()}
                 cutPaths={fileOps.cut()}
                 markedPaths={tree.marked()}
-                iconTheme={config.iconTheme}
+                iconTheme={settings.activeIconTheme()}
                 onActivate={node => {
                   // Landing in a file is how a page closes — the tree stays
                   // interactive while one is up, like any other editor page.
