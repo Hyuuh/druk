@@ -118,7 +118,7 @@ export function App(props: {
   const promptState = createPromptState()
   const lsp = createLsp({ rootDir, settings, status, prompts: promptState })
   const market = createMarket({ rootDir, settings, status, prompts: promptState })
-  const extensionsPanel = createExtensionsPanel({ settings, market, status })
+
   // A file whose language no installed extension serves is the market's cue.
   lsp.onMissingServer(market.suggestForFiletype)
   // Also on the quit path: the renderer tears the root down before exiting, and
@@ -135,6 +135,13 @@ export function App(props: {
     editor,
     git,
     setPrompt: promptState.setPrompt,
+  })
+  const extensionsPanel = createExtensionsPanel({
+    settings,
+    market,
+    status,
+    lsp,
+    prompts: promptState,
   })
   const navigation = createNavigation({ workspace, editor, panes, status })
   const fileOps = createFileOps({ rootDir, status, tree, workspace })
@@ -693,6 +700,7 @@ export function App(props: {
                 blocked={overlays.overlay()}
                 onFocus={() => panes.setFocus('editor')}
                 onRestart={actions.restartLsp}
+                onUninstall={actions.uninstallServer}
                 onClose={() => workspace.setPage(null)}
               />
             </box>

@@ -89,8 +89,11 @@ files and a server otherwise resolves imports against the `node_modules` it saw
 at startup forever), a language-server status page (palette →
 Problems → Language server status — each server's state, command and open
 documents over a live log of its stderr, `window/logMessage` traffic and
-lifecycle events; ↑↓ picks the server, `r` restarts them all, and the log
-survives a restart so the run before stays readable), LSP autocomplete (a fuzzy-filtered menu that opens as you
+lifecycle events; ↑↓ picks the server, `r` restarts them all, `d` deletes
+druk's own copy of the selected one — a confirm naming the npm packages that
+go with it, and refused for a server on PATH or in the project, which are not
+druk's to remove — and the log survives a restart so the run before stays
+readable), LSP autocomplete (a fuzzy-filtered menu that opens as you
 type or on Ctrl+Space, applies auto-import edits, and is toggled by
 `lspCompletion`), go to definition (F12, the server's answer in whichever of the
 protocol's three shapes it comes) and open the file under the cursor
@@ -128,7 +131,8 @@ an extensions panel — the sidebar's third view beside Files and Git
 (`Ctrl+Opt+X`, palette → Extensions → Extensions panel, or the `Ext` tab; Shift+Tab
 cycles the three, and the strip falls to initials where the names do not fit):
 `INSTALLED` lists every manifest, Enter turning one on or off and Backspace
-uninstalling one that is not built in; the market is **not on screen at all**
+uninstalling one that is not built in after a confirm that names the language
+servers druk fetched for it, since those go with it and those are the megabytes; the market is **not on screen at all**
 until it is searched for — not even as a folded heading, since a registry may
 carry a thousand entries and none of them is what the panel is for — and a search
 box drawn under the header at all times (`/`, or a click, starts typing into it)

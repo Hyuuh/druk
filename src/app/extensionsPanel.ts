@@ -18,7 +18,9 @@ import type { MarketEntry } from '../core/market'
 import { isNewer } from '../core/update'
 import { contributionSummary, extensions } from '../extensions'
 import type { Extension } from '../extensions'
+import type { Lsp } from './lsp'
 import type { Market } from './market'
+import type { PromptState } from './prompts'
 import type { Settings } from './settings'
 import type { Status } from './status'
 
@@ -53,8 +55,10 @@ export function createExtensionsPanel(deps: {
   settings: Settings
   market: Market
   status: Status
+  lsp: Lsp
+  prompts: PromptState
 }) {
-  const { settings, market, status } = deps
+  const { settings, market, status, lsp, prompts } = deps
 
   const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>({})
   const [cursor, setCursor] = createSignal(0)
@@ -172,11 +176,27 @@ export function createExtensionsPanel(deps: {
     settings.toggleExtension(current.id)
   }
 
-  /** Backspace: uninstall, where there is a folder on disk to delete. */
+  /**
+   * Backspace: uninstall, where there is a folder on disk to delete. Asked
+   * first, and the question names the language servers druk fetched for it —
+   * they are deleted with it, and they are the megabytes.
+   */
   const remove = () => {
     const current = row()
     if (current?.kind !== 'installed') return
-    market.remove(current.id)
+    if (current.builtin) {
+      return void status.say(`"${current.id}" ships with druk — turn it off instead`, 'warn')
+    }
+    const extension = extensions().find(entry => entry.id === current.id)
+    prompts.setPrompt({
+      kind: 'uninstallExtension',
+      id: current.id,
+      name: current.label,
+      servers: (extension?.servers ?? [])
+        .map(server => ({ id: server.id, removable: lsp.removable(server.id) }))
+        .filter(entry => entry.removable !== null)
+        .map(entry => ({ id: entry.id, name: entry.removable!.name })),
+    })
   }
 
   const reload = (): void => {
@@ -189,9 +209,21 @@ export function createExtensionsPanel(deps: {
   }
 
   const openSearch = () => setQuery(current => current ?? '')
+
+  /**
+   * Leave the search, keeping the cursor on the row it found.
+   *
+   * The whole point of searching for an extension is to do something to it, and
+   * the keys that do — Backspace above all — belong to the field while it is
+   * up. Resetting the cursor to the top here would mean the row you searched for
+   * is the one thing you cannot act on.
+   */
   const closeSearch = () => {
+    const held = row()
     setQuery(null)
-    setCursor(0)
+    const at =
+      held && held.kind !== 'section' ? rows().findIndex(entry => entry.id === held.id) : -1
+    setCursor(Math.max(0, at))
   }
   const search = (value: string) => {
     setQuery(value)

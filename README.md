@@ -243,7 +243,13 @@ file, the way eslint sits beside tsserver in VS Code. It uses the project's own
 
 `Ctrl+Opt+X` opens the extensions panel — the sidebar's third view, beside Files and
 Git. `INSTALLED` lists what you have: `Enter` turns one off and back on, `Backspace`
-uninstalls one.
+uninstalls one — after a confirm naming the language servers druk fetched for it,
+which are deleted with it.
+
+Servers themselves are removable too: `d` on the language-server status page
+(`F1` → `Problems` → `Language server status`) deletes druk's copy of the selected
+one. Only ever druk's — a server on your `PATH` or in the project's `node_modules`
+is not druk's to delete, and it says so instead.
 
 The market is not listed. Search for it: the box at the top of the panel (`/`, or
 click it) covers what you have and what the market offers alike, and an `AVAILABLE`

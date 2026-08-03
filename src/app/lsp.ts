@@ -15,12 +15,13 @@ import {
   hasNodeRuntime,
   installServer,
   installedCommand,
+  removeServer,
   SERVER_ROOT,
 } from '../lsp/install'
 import { projectCommand } from '../lsp/project'
 import { isUnnecessary, severityOf } from '../lsp/protocol'
 import type { CompletionItem, Diagnostic, ProblemSeverity } from '../lsp/protocol'
-import { installHint, resolveServers } from '../lsp/servers'
+import { installHint, resolveServers, servers as serverSpecs } from '../lsp/servers'
 import type { FetchableInstall, ResolvedServer } from '../lsp/servers'
 import type { ServerLogLine, ServerView } from '../lsp/status'
 import type { PromptState } from './prompts'
@@ -335,6 +336,41 @@ export function createLsp(deps: {
   }
 
   /**
+   * druk's own copy of `id`, and what removing it would take. Null when there is
+   * nothing of druk's to remove — the server is on PATH, or in the project, or
+   * was never installed at all.
+   */
+  const removable = (id: string): { name: string; packages: string[] } | null => {
+    const spec = serverSpecs().find(server => server.id === id)
+    if (!spec?.install || spec.install.kind === 'manual') return null
+    const name = spec.command[0]
+    if (!name || !installedCommand(spec.command)) return null
+    return { name, packages: spec.install.kind === 'npm' ? spec.install.packages : [name] }
+  }
+
+  /**
+   * Delete druk's copy of a server. The client goes first: on Windows a running
+   * process holds its own executable open, and everywhere else a server left
+   * running against deleted files is a crash report nobody can read.
+   */
+  const uninstall = async (id: string): Promise<void> => {
+    const spec = serverSpecs().find(server => server.id === id)
+    if (!spec?.install) return void status.say(`${id}: druk did not install it`, 'warn')
+    const name = spec.command[0] ?? id
+    clients.get(id)?.dispose()
+    clients.delete(id)
+    setServers(id, { state: 'stopped', error: null, docs: [] })
+    status.say(`Removing ${name}…`)
+    const error = await removeServer(spec.install, name)
+    if (error) return void status.say(`Could not remove ${name}: ${error}`, 'error')
+    // The documents it held are open in the other servers still; this only makes
+    // the next matching file try to spawn it again — and be offered the install.
+    setGeneration(generation() + 1)
+    offered.delete(id)
+    status.say(`Removed ${name} from ${SERVER_ROOT}`)
+  }
+
+  /**
    * Kill every server and forget the failure marks, so the next `clientFor`
    * starts fresh. Serves both App teardown and the settings toggle: turning LSP
    * back on respawns servers as files re-sync.
@@ -447,6 +483,8 @@ export function createLsp(deps: {
     onDiagnosticsRefresh,
     onMissingServer,
     install,
+    removable,
+    uninstall,
     generation,
     restart,
     restarts,

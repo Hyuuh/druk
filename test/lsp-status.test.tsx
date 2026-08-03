@@ -88,3 +88,23 @@ test('r on the page restarts the servers', async () => {
   await untilFrame(t, 'Restarted language servers')
   await until(t, () => spawns(marker) === 2, LSP_WAIT)
 }, 30_000)
+
+test('d on the page refuses to remove a server druk did not install', async () => {
+  const dir = fixture({ 'a.ts': 'const oops = 1\n' })
+  const t = await launch(
+    dir,
+    { lsp: true, lspServers: { typescript: [process.execPath, FAKE], eslint: [] } },
+    { width: 100 },
+    { openFile: join(dir, 'a.ts') },
+  )
+  await untilFrame(t, '● 1', LSP_WAIT)
+  await runCommand(t, 'Language server status')
+  await untilFrame(t, 'Language servers', LSP_WAIT)
+
+  await press(t, input => input.pressKey('d'))
+  // No confirm, because there is nothing of druk's to delete: this command was
+  // overridden onto a fixture, and one on PATH or in the project is the user's.
+  const frame = t.captureCharFrame()
+  expect(frame).not.toContain('Remove language server')
+  expect(frame).toContain('druk did not install it')
+}, 30_000)

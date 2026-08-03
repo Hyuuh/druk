@@ -69,6 +69,7 @@ export interface CommandActions {
   problemsNext: () => void
   problemsPrev: () => void
   restartLsp: () => void
+  uninstallServer: (id: string) => void
   lspStatus: () => void
   gitDiffFile: () => void
   gitCompareBranches: () => void

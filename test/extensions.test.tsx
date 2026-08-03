@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
@@ -22,7 +22,16 @@ import { languageFor } from '../src/languages'
 import { filetypeForPath } from '../src/languages/highlight'
 import { resolveServer } from '../src/lsp/servers'
 import { isThemeName, themeFor, themeNames } from '../src/themes'
-import { fixture, launch, openPalette, press, runCommand, settle } from './helpers'
+import {
+  fixture,
+  launch,
+  openPalette,
+  press,
+  pressEscape,
+  runCommand,
+  settle,
+  until,
+} from './helpers'
 
 /** The smallest theme a manifest can carry: every ui color, one syntax group. */
 const themeColors = (color: string) =>
@@ -336,6 +345,43 @@ test('the sidebar panel lists what is installed and turns one off', async () => 
   await press(t, input => input.pressEnter())
   await settle(t)
   expect(t.captureCharFrame()).toContain('✗ Test Pack')
+})
+
+test('Backspace asks before it deletes an extension, and deleting is what it does', async () => {
+  const folder = install(MANIFEST)
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  loadExtensions(dir)
+  const t = await launch(dir, {}, { height: 40 })
+
+  await runCommand(t, 'Extensions panel')
+  await settle(t)
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('Test Pack'))
+  // Esc leaves the field but keeps the row it found — Backspace is the field's
+  // while it is up, so this is the only way to reach the row with it.
+  await pressEscape(t)
+  await press(t, input => input.pressBackspace())
+  // Asked, not done: the folder is still there while the question is up.
+  expect(t.captureCharFrame()).toContain('Uninstall extension')
+  expect(existsSync(folder)).toBe(true)
+
+  await press(t, input => input.pressEnter())
+  await until(t, () => !existsSync(folder))
+})
+
+test('a built-in has no folder to delete, so Backspace says so instead', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const t = await launch(dir, {}, { height: 40 })
+
+  await runCommand(t, 'Extensions panel')
+  await settle(t)
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('TypeScript'))
+  await pressEscape(t)
+  await press(t, input => input.pressBackspace())
+  const frame = t.captureCharFrame()
+  expect(frame).not.toContain('Uninstall extension')
+  expect(frame).toContain('ships with druk')
 })
 
 test("the panel is the sidebar's third view, beside files and git", async () => {

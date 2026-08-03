@@ -9,7 +9,7 @@ import type { Problem } from '../src/app/lsp'
 import { loadExtensions } from '../src/extensions'
 import { styleIdForGroup } from '../src/languages/highlight'
 import { spawnLspClient } from '../src/lsp/client'
-import { downloadServer, installServer, installedCommand } from '../src/lsp/install'
+import { downloadServer, installServer, installedCommand, removeServer } from '../src/lsp/install'
 import { projectCommand, typescriptMajor } from '../src/lsp/project'
 import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
 import { isUnnecessary, severityOf } from '../src/lsp/protocol'
@@ -205,6 +205,31 @@ describe('installed servers', () => {
       server.stop()
     }
   }, 20_000)
+
+  test('a downloaded server is removed by deleting its binary', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    const target = join(root, 'bin', 'expert')
+    mkdirSync(join(root, 'bin'), { recursive: true })
+    writeFileSync(target, '')
+    expect(installedCommand(['expert'], root)).not.toBeNull()
+
+    expect(
+      await removeServer({ kind: 'download', url: 'http://x/expert' }, 'expert', root),
+    ).toBeNull()
+    expect(existsSync(target)).toBe(false)
+    // Removing what is already gone is not a failure: the promise the caller
+    // made the user is that it is not there, and it is not.
+    expect(
+      await removeServer({ kind: 'download', url: 'http://x/expert' }, 'expert', root),
+    ).toBeNull()
+  })
+
+  test('a server druk never installed is refused rather than half-removed', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    expect(await removeServer({ kind: 'manual', command: 'brew install zls' }, 'zls', root)).toBe(
+      'druk did not install it',
+    )
+  })
 
   test('an install with no npm to run it fails instead of hanging', async () => {
     const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
