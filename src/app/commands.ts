@@ -125,7 +125,6 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
   return [
     { id: 'open', label: 'Open file…', hint: 'Ctrl+P', run: actions.openFile },
     { id: 'save', label: 'Save file', hint: 'Ctrl+S', run: actions.save },
-    { id: 'saveAll', label: 'Save all', run: actions.saveAll },
     { id: 'goto', label: 'Go to line…', hint: 'Ctrl+G', run: actions.gotoLine },
     { id: 'undo', label: 'Undo', hint: 'Ctrl+Z', run: actions.undo },
     { id: 'redo', label: 'Redo', hint: 'Ctrl+Y', run: actions.redo },
@@ -157,6 +156,7 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       id: 'file',
       label: 'File',
       children: [
+        { id: 'file.saveAll', label: 'Save all', run: actions.saveAll },
         { id: 'file.new', label: 'New file', hint: 'Ctrl+N', run: actions.newFile },
         { id: 'file.newDir', label: 'New folder', hint: `Ctrl+${ALT}+N`, run: actions.newFolder },
         { id: 'file.rename', label: 'Rename…', hint: 'r', run: actions.rename },
