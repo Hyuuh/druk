@@ -23,7 +23,7 @@ import { GRAMMARS } from '../languages/grammars'
 import type { ServerInstall, ServerSpec } from '../lsp/servers'
 import { THEMES } from '../themes'
 import type { Theme, ThemeUi } from '../themes'
-import type { Extension, ExtensionProblem } from './types'
+import type { Extension, ExtensionCategory, ExtensionProblem } from './types'
 
 /** Read off a shipped theme, so a new chrome color needs no second list here. */
 const UI_KEYS = Object.keys(THEMES.dark.ui) as (keyof ThemeUi)[]
@@ -392,10 +392,30 @@ export function parseManifest(
       icons,
       languages,
       servers,
+      categories: categoriesOf({ themes, icons, languages, servers }),
       assets,
     },
     problems,
   }
+}
+
+/**
+ * What an extension is, from what it contributes. The one place the mapping
+ * lives: the market's catalog rows and the loaded extensions both go through it,
+ * so a search cannot find one and miss the other.
+ */
+export function categoriesOf(parts: {
+  languages: unknown[]
+  servers: unknown[]
+  themes: unknown[]
+  icons: unknown[]
+}): ExtensionCategory[] {
+  const found: ExtensionCategory[] = []
+  if (parts.languages.length > 0) found.push('language')
+  if (parts.servers.length > 0) found.push('lsp')
+  if (parts.themes.length > 0) found.push('theme')
+  if (parts.icons.length > 0) found.push('icons')
+  return found
 }
 
 /** The one-line summary the palette and the settings page show. */

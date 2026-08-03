@@ -3,6 +3,20 @@ import type { Language } from '../languages'
 import type { ServerSpec } from '../lsp/servers'
 import type { Theme } from '../themes'
 
+/**
+ * What an extension is, in one word each — derived from what it contributes,
+ * never declared. A manifest carrying `themes` *is* a theme extension, and a
+ * field saying otherwise could only ever be wrong.
+ *
+ * These are the words the extensions panel's search answers to, so they are
+ * user-facing: `lsp` rather than `languageServers`, because that is what someone
+ * looking for one types.
+ */
+export type ExtensionCategory = 'language' | 'lsp' | 'theme' | 'icons'
+
+/** Every category there is, in the order a list of them reads best. */
+export const CATEGORIES: ExtensionCategory[] = ['language', 'lsp', 'theme', 'icons']
+
 /** One extension's contributions, already validated. */
 export interface Extension {
   id: string
@@ -22,6 +36,8 @@ export interface Extension {
   icons: IconTheme[]
   languages: Language[]
   servers: ServerSpec[]
+  /** Derived from the four lists above; `categoriesOf` is the one place it is decided. */
+  categories: ExtensionCategory[]
   /**
    * Files the manifest refers to, relative to its folder. The market fetches
    * these beside `extension.json`; an extension with none is one file.

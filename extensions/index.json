@@ -12,9 +12,11 @@
           "ayu-light"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "bash",
@@ -26,11 +28,12 @@
         "icons": [],
         "filetypes": [
           "bash"
-        ],
-        "servers": [
-          "bash"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "c",
@@ -42,11 +45,12 @@
         "icons": [],
         "filetypes": [
           "c"
-        ],
-        "servers": [
-          "c"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "catppuccin",
@@ -61,9 +65,11 @@
           "catppuccin-latte"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "cpp",
@@ -75,11 +81,12 @@
         "icons": [],
         "filetypes": [
           "cpp"
-        ],
-        "servers": [
-          "cpp"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "csharp",
@@ -91,9 +98,11 @@
         "icons": [],
         "filetypes": [
           "csharp"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "css",
@@ -108,11 +117,12 @@
           "scss",
           "sass",
           "less"
-        ],
-        "servers": [
-          "css"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "dart",
@@ -124,9 +134,11 @@
         "icons": [],
         "filetypes": [
           "dart"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "dotenv",
@@ -138,9 +150,11 @@
         "icons": [],
         "filetypes": [
           "dotenv"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "dracula",
@@ -152,9 +166,11 @@
           "dracula"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "elixir",
@@ -166,11 +182,12 @@
         "icons": [],
         "filetypes": [
           "elixir"
-        ],
-        "servers": [
-          "elixir"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "eslint",
@@ -187,11 +204,11 @@
           "javascriptreact",
           "vue",
           "svelte"
-        ],
-        "servers": [
-          "eslint"
         ]
-      }
+      },
+      "categories": [
+        "lsp"
+      ]
     },
     {
       "id": "everforest",
@@ -204,9 +221,11 @@
           "everforest-light"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "go",
@@ -218,11 +237,12 @@
         "icons": [],
         "filetypes": [
           "go"
-        ],
-        "servers": [
-          "go"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "gruvbox",
@@ -235,9 +255,11 @@
           "gruvbox-light"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "hcl",
@@ -250,9 +272,11 @@
         "filetypes": [
           "terraform",
           "hcl"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "html",
@@ -264,11 +288,12 @@
         "icons": [],
         "filetypes": [
           "html"
-        ],
-        "servers": [
-          "html"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "ini",
@@ -280,9 +305,11 @@
         "icons": [],
         "filetypes": [
           "ini"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "java",
@@ -294,9 +321,11 @@
         "icons": [],
         "filetypes": [
           "java"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "json",
@@ -308,11 +337,12 @@
         "icons": [],
         "filetypes": [
           "json"
-        ],
-        "servers": [
-          "json"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "kanagawa",
@@ -326,9 +356,11 @@
           "kanagawa-lotus"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "kotlin",
@@ -340,9 +372,11 @@
         "icons": [],
         "filetypes": [
           "kotlin"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "liquid",
@@ -354,9 +388,11 @@
         "icons": [],
         "filetypes": [
           "liquid"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "lua",
@@ -368,11 +404,12 @@
         "icons": [],
         "filetypes": [
           "lua"
-        ],
-        "servers": [
-          "lua"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "markdown",
@@ -384,9 +421,11 @@
         "icons": [],
         "filetypes": [
           "markdown"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "nerd-icons",
@@ -398,9 +437,11 @@
         "icons": [
           "nerd"
         ],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "icons"
+      ]
     },
     {
       "id": "nord",
@@ -412,9 +453,11 @@
           "nord"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "one-dark",
@@ -426,9 +469,11 @@
           "one-dark"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "php",
@@ -440,11 +485,12 @@
         "icons": [],
         "filetypes": [
           "php"
-        ],
-        "servers": [
-          "php"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "python",
@@ -456,11 +502,12 @@
         "icons": [],
         "filetypes": [
           "python"
-        ],
-        "servers": [
-          "python"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "rose-pine",
@@ -474,9 +521,11 @@
           "rose-pine-dawn"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "ruby",
@@ -488,11 +537,12 @@
         "icons": [],
         "filetypes": [
           "ruby"
-        ],
-        "servers": [
-          "ruby"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "rust",
@@ -504,11 +554,12 @@
         "icons": [],
         "filetypes": [
           "rust"
-        ],
-        "servers": [
-          "rust"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "scala",
@@ -520,9 +571,11 @@
         "icons": [],
         "filetypes": [
           "scala"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "solarized",
@@ -535,9 +588,11 @@
           "solarized-light"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "sql",
@@ -549,9 +604,11 @@
         "icons": [],
         "filetypes": [
           "sql"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "svelte",
@@ -563,9 +620,11 @@
         "icons": [],
         "filetypes": [
           "svelte"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "swift",
@@ -577,11 +636,12 @@
         "icons": [],
         "filetypes": [
           "swift"
-        ],
-        "servers": [
-          "swift"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "tokyo-night",
@@ -593,9 +653,11 @@
           "tokyo-night"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "toml",
@@ -607,9 +669,11 @@
         "icons": [],
         "filetypes": [
           "toml"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "tsrx",
@@ -621,9 +685,11 @@
         "icons": [],
         "filetypes": [
           "tsrx"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "typescript",
@@ -638,11 +704,12 @@
           "javascript",
           "typescriptreact",
           "javascriptreact"
-        ],
-        "servers": [
-          "typescript"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "vesper",
@@ -654,9 +721,11 @@
           "vesper"
         ],
         "icons": [],
-        "filetypes": [],
-        "servers": []
-      }
+        "filetypes": []
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "vue",
@@ -668,9 +737,11 @@
         "icons": [],
         "filetypes": [
           "vue"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "yaml",
@@ -682,9 +753,11 @@
         "icons": [],
         "filetypes": [
           "yaml"
-        ],
-        "servers": []
-      }
+        ]
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "zig",
@@ -696,11 +769,12 @@
         "icons": [],
         "filetypes": [
           "zig"
-        ],
-        "servers": [
-          "zig"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     }
   ]
 }

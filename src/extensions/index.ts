@@ -32,10 +32,11 @@ import { clearExtensionServers, registerServer } from '../lsp/servers'
 import { clearExtensionThemes, registerTheme } from '../themes'
 import { builtinExtensions } from './builtin'
 import { parseManifest } from './manifest'
-import type { Extension, ExtensionLoad, ExtensionProblem } from './types'
+import type { Extension, ExtensionCategory, ExtensionLoad, ExtensionProblem } from './types'
 
-export type { Extension, ExtensionLoad, ExtensionProblem }
-export { contributionSummary, parseManifest } from './manifest'
+export type { Extension, ExtensionCategory, ExtensionLoad, ExtensionProblem }
+export { CATEGORIES } from './types'
+export { categoriesOf, contributionSummary, parseManifest } from './manifest'
 
 /** Beside `config.json`, so one folder holds everything druk reads. */
 export const EXTENSIONS_DIR = join(dirname(CONFIG_FILE), 'extensions')

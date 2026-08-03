@@ -17,7 +17,7 @@ import { createMemo, createSignal } from 'solid-js'
 import type { MarketEntry } from '../core/market'
 import { isNewer } from '../core/update'
 import { contributionSummary, extensions } from '../extensions'
-import type { Extension } from '../extensions'
+import type { Extension, ExtensionCategory } from '../extensions'
 import type { Lsp } from './lsp'
 import type { Market } from './market'
 import type { PromptState } from './prompts'
@@ -31,6 +31,8 @@ export type ExtensionRow =
       id: string
       label: string
       version: string
+      /** What it is — `language`, `lsp`, `theme`, `icons` — drawn where there is room. */
+      categories: ExtensionCategory[]
       /** What the market has that this does not, or null. */
       update: string | null
       disabled: boolean
@@ -38,27 +40,18 @@ export type ExtensionRow =
       /** What it contributes — the search matches on it too. */
       about: string
     }
-  | { kind: 'available'; id: string; label: string; version: string; about: string }
+  | {
+      kind: 'available'
+      id: string
+      label: string
+      version: string
+      about: string
+      categories: ExtensionCategory[]
+    }
   /** An inert line: what the cap left out. Enter on it does nothing. */
   | { kind: 'note'; id: string; label: string }
 
 const SECTIONS = { installed: 'INSTALLED', available: 'AVAILABLE' } as const
-
-/**
- * The words a contribution answers to, beside the ids it registers.
- *
- * Searching an extension market by name only works when you already know the
- * name. What a user actually has is a kind — "a theme", "something with an lsp",
- * "whatever does Go" — so each kind is spelled several ways here and matched as
- * plain substrings. `server` and `lsp` are the same question asked twice, and
- * both are asked.
- */
-const KIND_WORDS = {
-  themes: 'theme colors colours palette appearance',
-  icons: 'icons icon theme file icons appearance',
-  languages: 'language syntax highlighting grammar',
-  servers: 'lsp server language server diagnostics',
-} as const
 
 /**
  * Market matches a search will list. A one-letter query against a big registry
@@ -92,15 +85,15 @@ export function createExtensionsPanel(deps: {
       .map((extension: Extension) => {
         const latest = market.catalog().find(entry => entry.id === extension.id)
         return {
+          categories: extension.categories,
+          // The ids it registers, so a language is findable by its own name as
+          // well as by its category: `go`, `gopls`, `nerd-icons`.
           keywords: [
             ...extension.themes.map(theme => theme.id),
             ...extension.icons.map(icons => icons.id),
             ...extension.languages.map(language => language.id),
             ...extension.servers.flatMap(server => [server.id, ...server.filetypes]),
-            extension.themes.length > 0 ? KIND_WORDS.themes : '',
-            extension.icons.length > 0 ? KIND_WORDS.icons : '',
-            extension.languages.length > 0 ? KIND_WORDS.languages : '',
-            extension.servers.length > 0 ? KIND_WORDS.servers : '',
+            ...extension.categories,
           ].join(' '),
           kind: 'installed' as const,
           id: extension.id,
@@ -131,15 +124,12 @@ export function createExtensionsPanel(deps: {
         label: entry.name,
         version: entry.version,
         about: entry.description,
+        categories: entry.categories,
         keywords: [
           ...entry.provides.themes,
           ...entry.provides.icons,
           ...entry.provides.filetypes,
-          ...entry.provides.servers,
-          entry.provides.themes.length > 0 ? KIND_WORDS.themes : '',
-          entry.provides.icons.length > 0 ? KIND_WORDS.icons : '',
-          entry.provides.filetypes.length > 0 ? KIND_WORDS.languages : '',
-          entry.provides.servers.length > 0 ? KIND_WORDS.servers : '',
+          ...entry.categories,
         ].join(' '),
       }))
       .filter(row => matches(`${row.label} ${row.id} ${row.about} ${row.keywords}`))

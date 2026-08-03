@@ -283,14 +283,16 @@ test('the search answers a kind, not only a name', async () => {
         name: 'Go',
         version: '1.1.0',
         description: 'gopls',
-        provides: { themes: [], icons: [], filetypes: ['go'], servers: ['go'] },
+        provides: { themes: [], icons: [], filetypes: ['go'] },
+        categories: ['language', 'lsp'],
       },
       {
         id: 'dracula',
         name: 'Dracula',
         version: '1.0.0',
         description: 'a palette',
-        provides: { themes: ['dracula'], icons: [], filetypes: [], servers: [] },
+        provides: { themes: ['dracula'], icons: [], filetypes: [] },
+        categories: ['theme'],
       },
     ],
   }

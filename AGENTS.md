@@ -137,12 +137,14 @@ until it is searched for — not even as a folded heading, since a registry may
 carry a thousand entries and none of them is what the panel is for — and a search
 box drawn under the header at all times (`/`, or a click, starts typing into it)
 is what raises the `AVAILABLE` section, over both sections at once, landing the
-cursor on its first hit so the Enter after it installs; the search matches the
-*kind* as well as the name — `theme`, `lsp`, `language`, `icons`, and every id
-and filetype a manifest registers — so the market is findable by what it does
-rather than only by what it is called (the catalog carries `provides.servers`
-apart from `provides.filetypes` for exactly this: without it `lsp` would answer
-with every language druk knows); matches are capped at
+cursor on its first hit so the Enter after it installs; every extension has
+*categories* — `language`, `lsp`, `theme`, `icons`, derived from what it
+contributes and never declared, since a manifest carrying `themes` is a theme
+extension and a field saying otherwise could only be wrong (`categoriesOf` in
+`src/extensions/manifest.ts` is the one place that decides, and the catalog
+carries them per row) — which the search matches beside the name and every id
+and filetype a manifest registers, and which the row draws dim beside the name
+wherever the sidebar has columns going spare; matches are capped at
 fifty with a `+N more matches` row saying what was left out; `u` updates
 everything and `r` re-reads the manifests. Only the two that are
 settings — the startup check and the registry URL — are on the settings page,

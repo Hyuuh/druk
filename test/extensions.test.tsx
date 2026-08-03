@@ -142,6 +142,21 @@ test('a language manifest contributes the language and its server', () => {
   expect(server?.install).toEqual({ kind: 'manual', command: 'nimble install nimlangserver' })
 })
 
+test('what an extension is comes from what it contributes, never from a field', () => {
+  // Derived, so a manifest cannot claim to be a theme pack and ship a server.
+  const appearance = parseManifest({ ...MANIFEST, categories: ['lsp'] }, '/p.json')
+  expect(appearance.extension?.categories).toEqual(['theme', 'icons'])
+
+  const language = parseManifest(LANGUAGE, '/l.json')
+  expect(language.extension?.categories).toEqual(['language', 'lsp'])
+
+  // Markdown ships no server, so `lsp` is not one of its words — the whole point
+  // of keeping the categories apart from the filetypes.
+  const { extensions: loaded } = loadExtensions(fixture({}))
+  const markdown = loaded.find(extension => extension.id === 'markdown')
+  expect(markdown?.categories).toEqual(['language'])
+})
+
 test('a manifest that is both a theme pack and a language is refused', () => {
   // The two families are installed for different reasons and updated on
   // different schedules; one extension doing both is not something to allow.

@@ -53,6 +53,20 @@ export function ExtensionsPanel(props: ExtensionsPanelProps) {
     return row.update ? `→ ${row.update}` : row.version
   }
 
+  /**
+   * What the row is, drawn dim between the name and the version — and only where
+   * the columns are going spare. A sidebar this narrow has none most of the
+   * time, and a category that pushed a name out of view would cost more than it
+   * told.
+   */
+  const categories = (row: ExtensionRow) => {
+    if (row.kind !== 'installed' && row.kind !== 'available') return ''
+    const text = row.categories.join(' ')
+    // 5 for the glyph column, 2 for the gaps either side, 1 for the trailing pad.
+    const room = props.width - 5 - row.label.length - version(row).length - 3
+    return text.length > 0 && text.length <= room ? text : ''
+  }
+
   return (
     <box
       width={props.width}
@@ -181,13 +195,21 @@ export function ExtensionsPanel(props: ExtensionsPanelProps) {
                         row.kind === 'installed' ? `   ${row.disabled ? '✗' : '✓'} ` : '   + '
                       }
                     />
-                    <box flexGrow={1} backgroundColor={bg()}>
+                    <text
+                      fg={row.kind === 'installed' && row.disabled ? ui.dim : ui.text}
+                      bg={bg()}
+                      flexShrink={1}
+                      content={row.label}
+                    />
+                    <Show when={categories(row)}>
                       <text
-                        fg={row.kind === 'installed' && row.disabled ? ui.dim : ui.text}
+                        fg={ui.faint}
                         bg={bg()}
-                        content={row.label}
+                        flexShrink={0}
+                        content={`  ${categories(row)}`}
                       />
-                    </box>
+                    </Show>
+                    <box flexGrow={1} backgroundColor={bg()} />
                     <text
                       fg={installedRow(row)?.update ? ui.accent : ui.faint}
                       bg={bg()}

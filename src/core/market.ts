@@ -30,7 +30,8 @@ import { join } from 'node:path'
 // reads `MARKET_URL` from here for its default — so the extensions folder is passed
 // in by the caller rather than closing that cycle.
 import { parseManifest } from '../extensions/manifest'
-import type { Extension } from '../extensions/types'
+import { CATEGORIES } from '../extensions/types'
+import type { Extension, ExtensionCategory } from '../extensions/types'
 
 /** druk's own market. `extensionRegistry` points elsewhere for a fork or a test. */
 export const MARKET_URL = 'https://raw.githubusercontent.com/letstri/druk/main/extensions/'
@@ -69,14 +70,15 @@ export interface MarketEntry {
      * extension, which one is it?", so a language with no server counts too.
      */
     filetypes: string[]
-    /**
-     * Server ids. Kept apart from `filetypes`, which merges languages and
-     * servers together: without it nothing can tell a syntax-only extension from
-     * one that also spawns a program, and the panel's search would answer "lsp"
-     * with every language druk knows.
-     */
-    servers: string[]
   }
+  /**
+   * What it is, in one word each. In the catalog rather than derived from
+   * `provides`, which merges languages and servers into one `filetypes` list:
+   * from that alone nothing can tell a syntax-only extension from one that
+   * spawns a program, and a search for `lsp` would answer with every language
+   * druk knows.
+   */
+  categories: ExtensionCategory[]
 }
 
 export interface CachedCatalog {
@@ -107,8 +109,8 @@ export function entryFor(extension: Extension): MarketEntry {
           ...extension.servers.flatMap(server => server.filetypes),
         ]),
       ],
-      servers: extension.servers.map(server => server.id),
     },
+    categories: extension.categories,
   }
 }
 
@@ -135,10 +137,12 @@ function parseEntry(raw: unknown): MarketEntry | null {
       themes: ids(provides.themes),
       icons: ids(provides.icons),
       filetypes: ids(provides.filetypes),
-      // Absent from a catalog written before this existed, and from a cache of
-      // one: an empty list is the honest answer, not a reason to drop the row.
-      servers: ids(provides.servers),
     },
+    // Absent from a catalog written before this existed, and from a cache of
+    // one: an empty list is the honest answer, not a reason to drop the row.
+    categories: ids(raw.categories).filter((word): word is ExtensionCategory =>
+      (CATEGORIES as string[]).includes(word),
+    ),
   }
 }
 

@@ -106,6 +106,14 @@ server option added upstream needs no druk release. Find the minimum set by
 running the server by hand: most refuse to work with a field missing and say
 nothing about which.
 
+## Categories
+
+An extension's categories — `language`, `lsp`, `theme`, `icons` — are **derived
+from what it contributes**, never declared. A manifest carrying `themes` is a
+theme extension; a `categories` field would only ever be a way to be wrong about
+that, so there is none. They are what the extensions panel's search matches
+beside the name, and `bun run extensions` writes them into `index.json`.
+
 ## An appearance extension
 
 `themes` needs every `ui` key `src/themes/types.ts` declares, all `#rrggbb`; copy a
