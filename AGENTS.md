@@ -14,6 +14,11 @@ Features: file tree with bulk file operations and opt-in hiding of dotfiles and
 git-ignored files, a `▴` in the sidebar header that shuts every folder at once
 (palette → View → Collapse folders in sidebar, which folds whichever of the two
 sidebar views is up, and the button is drawn only while there is something to fold),
+copy the path of a file to the system clipboard (`Ctrl+Opt+C`, palette → File → Copy
+path / Copy relative path — whichever file the tree's cursor is on while the tree has
+the keyboard, and the open file otherwise; sent over OSC 52 as well as to `pbcopy`/
+`wl-copy`, so it reaches the clipboard of the terminal an SSH session is really on,
+and a path outside the project has no relative form so it copies absolute and says so),
 preview/pinned tabs, tree-sitter syntax
 highlighting, search (current file and project-wide — the project scan and the fuzzy
 file picker both skip git-ignored paths, whatever the tree's `respectGitignore` says, so

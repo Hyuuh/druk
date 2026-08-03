@@ -109,6 +109,7 @@ status bar with the branch, unsaved state and cursor position.
 | `Opt+Shift+↑` / `↓` | Duplicate line or selection |
 | `Ctrl+Opt+T` | Reopen closed tab |
 | `Ctrl+Opt+←` / `→` | Previous / next tab |
+| `Ctrl+Opt+C` | Copy the path of this file (relative form in the palette) |
 | `Ctrl+Opt+G` | Source control panel (commit / push) |
 | `Ctrl+Opt+M` | Markdown: rendered / source |
 

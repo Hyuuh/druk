@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import type { KeyEvent } from '@opentui/core'
 
 import { parentRow } from '../core/changeTree'
+import { secondary } from '../core/keybindings'
 import { useKeys } from '../ui/useKeys'
 import type { CommandActions } from './commands'
 import type { AppContext } from './context'
@@ -57,6 +58,8 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'find.replaceProject': actions.replaceInProject,
     'file.new': () => prompts.setPrompt({ kind: 'newFile', dir: tree.targetDir() }),
     'file.newDir': () => prompts.setPrompt({ kind: 'newFolder', dir: tree.targetDir() }),
+    'file.copyPath': actions.copyPath,
+    'file.copyRelativePath': actions.copyRelativePath,
     'tabs.close': () => {
       // A page is the frontmost "tab": close it before any file tab.
       if (workspace.page()) return workspace.setPage(null)
@@ -128,7 +131,10 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     // renderer's own selection covers mouse drags only. Either way it
     // routes through `quit()`, so a dirty buffer still gets its prompt. Not a
     // bindable command: the two meanings are split across two owners.
-    if (key.ctrl && k === 'c' && !editorOwnsCopy()) return claim(prompts.quit)
+    //
+    // Plain Ctrl+C alone: this runs ahead of the keymap, so without the modifier
+    // check every Ctrl+Opt+C chord would quit the editor instead of running.
+    if (key.ctrl && k === 'c' && !secondary(key) && !editorOwnsCopy()) return claim(prompts.quit)
 
     // In vim, Ctrl+R is redo and belongs to the editor, whatever the keymap says it
     // runs. Project search keeps its other spelling, Ctrl+Opt+F, so nothing becomes
