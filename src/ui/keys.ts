@@ -136,6 +136,13 @@ export const KEYS: KeyInfo[] = [
     where: 'all',
     ids: ['file.newDir'],
   },
+  {
+    key: `Ctrl+${ALT}+C`,
+    label: 'Copy path of this file',
+    section: 'Files & tabs',
+    where: 'all',
+    ids: ['file.copyPath'],
+  },
   { key: 'Ctrl+W', label: 'Close tab', section: 'Files & tabs', where: 'all', ids: ['tabs.close'] },
   {
     key: `Ctrl+${ALT}+T`,

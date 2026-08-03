@@ -46,6 +46,8 @@ export interface CommandActions {
   rename: () => void
   cutForMove: () => void
   copyForPaste: () => void
+  copyPath: () => void
+  copyRelativePath: () => void
   paste: () => void
   remove: () => void
   closeTab: () => void
@@ -154,6 +156,17 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         { id: 'file.cut', label: 'Cut for moving', hint: 'x', run: actions.cutForMove },
         { id: 'file.copy', label: 'Copy', hint: 'c', run: actions.copyForPaste },
         { id: 'file.paste', label: 'Paste here', hint: 'p', run: actions.paste },
+        {
+          id: 'file.copyPath',
+          label: 'Copy path',
+          hint: `Ctrl+${ALT}+C`,
+          run: actions.copyPath,
+        },
+        {
+          id: 'file.copyRelativePath',
+          label: 'Copy relative path',
+          run: actions.copyRelativePath,
+        },
         { id: 'file.delete', label: 'Delete…', hint: 'd', run: actions.remove },
       ],
     },

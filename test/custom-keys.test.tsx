@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 
 import { ALT } from '../src/ui/keys'
-import { fixture, launch, openPalette, press, pressEscape, pressTimes, runCommand } from './helpers'
+import { fixture, launch, openPalette, press, pressEscape, runCommand } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = { 'a.ts': 'alpha beta\n', 'b.ts': 'const b = 2\n' }
@@ -60,16 +60,26 @@ test('the help table advertises the custom key, not the one it replaced', async 
     { height: 60 },
   )
   await runCommand(t, 'Keyboard shortcuts')
-  const sidebarRow = frame(t)
-    .split('\n')
-    .find(line => line.includes('Show / hide sidebar'))!
-  expect(sidebarRow).toContain(`Ctrl+${ALT}+B`)
+  /**
+   * The row carrying `text`, scrolled to if it is not on screen yet. Advertising
+   * one more key moves every row below it down a line, so a table this long is
+   * walked rather than read off a screenful at a fixed offset.
+   */
+  const rowFor = async (text: string) => {
+    for (let i = 0; i < 60; i++) {
+      const row = frame(t)
+        .split('\n')
+        .find(line => line.includes(text))
+      if (row) return row
+      await press(t, input => input.pressArrow('down'))
+    }
+    return ''
+  }
+  expect(await rowFor('Show / hide sidebar')).toContain(`Ctrl+${ALT}+B`)
   // A command the table has no row of its own for still gets one, or its new key
   // would only exist in the config file. It sits at the end, past the window.
-  await pressTimes(t, 12, input => input.pressArrow('down'))
-  const end = frame(t)
-  expect(end).toContain('Custom keys')
-  expect(end.split('\n').find(line => line.includes('Settings'))).toContain('F6')
+  expect(await rowFor('Settings')).toContain('F6')
+  expect(frame(t)).toContain('Custom keys')
 })
 
 test('a chord bound twice leaves one command with it and warns about the other', async () => {

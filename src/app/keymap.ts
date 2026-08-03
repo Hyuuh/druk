@@ -49,6 +49,8 @@ export const BINDABLE: Bindable[] = [
   { id: 'find.replaceProject', label: 'Replace in project', defaults: [] },
   { id: 'file.new', label: 'New file', defaults: ['Ctrl+N'] },
   { id: 'file.newDir', label: 'New folder', defaults: [`Ctrl+${ALT}+N`] },
+  { id: 'file.copyPath', label: 'Copy path', defaults: [`Ctrl+${ALT}+C`] },
+  { id: 'file.copyRelativePath', label: 'Copy relative path', defaults: [] },
   { id: 'tabs.close', label: 'Close tab', defaults: ['Ctrl+W'] },
   { id: 'tabs.reopen', label: 'Reopen closed tab', defaults: [`Ctrl+${ALT}+T`] },
   { id: 'tabs.switch', label: 'Switch to open tab', defaults: ['Ctrl+T'], also: ['Ctrl+↑'] },

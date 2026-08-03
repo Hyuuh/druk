@@ -144,7 +144,7 @@ export function App(props: {
     prompts: promptState,
   })
   const navigation = createNavigation({ workspace, editor, panes, status })
-  const fileOps = createFileOps({ rootDir, status, tree, workspace })
+  const fileOps = createFileOps({ rootDir, status, tree, workspace, renderer })
   const gitOp = createGitOp({ rootDir, git, status, workspace })
   const branches = createBranches({ rootDir, status, git, gitOp, prompts: promptState })
   const promptHandlers = createPromptHandlers({
