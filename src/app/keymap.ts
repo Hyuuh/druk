@@ -45,6 +45,8 @@ export const BINDABLE: Bindable[] = [
   { id: 'goto.file', label: 'Open file under cursor', defaults: [`Ctrl+${ALT}+O`] },
   { id: 'find.file', label: 'Find in current file', defaults: ['Ctrl+F'] },
   { id: 'find.project', label: 'Find in project', defaults: ['Ctrl+R'], also: [`Ctrl+${ALT}+F`] },
+  { id: 'find.next', label: 'Find next', defaults: ['F3'] },
+  { id: 'find.prev', label: 'Find previous', defaults: ['Shift+F3'] },
   { id: 'find.replace', label: 'Replace in current file', defaults: [] },
   { id: 'find.replaceProject', label: 'Replace in project', defaults: [] },
   { id: 'file.new', label: 'New file', defaults: ['Ctrl+N'] },

@@ -96,6 +96,7 @@ status bar with the branch, unsaved state and cursor position.
 | `Ctrl+T` | Switch between open tabs |
 | `Ctrl+S` | Save |
 | `Ctrl+F` | Find in this file (`Tab` adds replace) |
+| `F3` / `Shift+F3` | Next / previous match of the last search |
 | `Ctrl+R` | Find in the whole project |
 | `Ctrl+G` | Go to line |
 | `Ctrl+N` | New file |
@@ -157,6 +158,11 @@ the file you are on, so one file with forty hits stops burying the rest.
 
 In file search, `Tab` opens the replace field instead: `Enter` replaces the selected match,
 `Ctrl+A` replaces every match in the file.
+
+The search outlives the panel: `F3` jumps to the next match from wherever the cursor is,
+`Shift+F3` to the previous one, both wrapping at the ends and counting off `2 of 7` in the
+status bar — no need to reopen anything. With text selected and nothing searched yet, `F3`
+starts from the selection.
 
 The whole project replaces too: *Find → Replace in project* in the palette opens the
 project search with the replace field showing, and every row previews the hit beside what

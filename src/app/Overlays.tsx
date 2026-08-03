@@ -64,6 +64,15 @@ export function createOverlays(deps: {
   const [picker, setPicker] = createSignal<'files' | 'tabs' | null>(null)
   /** Open search: its scope, and whether the replacement field starts showing. */
   const [search, setSearch] = createSignal<{ scope: SearchScope; replacing?: boolean } | null>(null)
+  /**
+   * The last file-scope search, kept after the panel dies so find-next can
+   * repeat it. Flags ride along: a case toggle flipped after the final
+   * keystroke is part of what was searched for.
+   */
+  const [lastFileSearch, setLastFileSearch] = createSignal<{
+    query: string
+    options: SearchOptions
+  } | null>(null)
   const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
   /** The problems list, jumping to a diagnostic on Enter. */
   const [problemsOpen, setProblemsOpen] = createSignal(false)
@@ -118,6 +127,8 @@ export function createOverlays(deps: {
     setPicker,
     search,
     setSearch,
+    lastFileSearch,
+    setLastFileSearch,
     update,
     setUpdate,
     problemsOpen,
@@ -234,6 +245,11 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             activePath={workspace.activePath()}
             activeContent={workspace.activeBuffer()?.content ?? ''}
             initialQuery={overlays.selection()}
+            onSearch={
+              open().scope === 'file'
+                ? (query, options) => overlays.setLastFileSearch({ query, options })
+                : undefined
+            }
             replacing={open().replacing}
             buffers={open().scope === 'project' ? workspace.replaceOverlay : undefined}
             suspended={prompts.prompt() !== null}

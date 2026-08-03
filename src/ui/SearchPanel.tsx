@@ -46,6 +46,12 @@ export interface SearchPanelProps {
    * stand down itself or Enter on a confirm would also apply the selected match.
    */
   suspended?: boolean
+  /**
+   * Told what was searched for, as it changes — query and flags both, since a
+   * toggle flipped after the last keystroke re-runs the search too. The caller
+   * keeps it past the panel's death; find-next is why.
+   */
+  onSearch?: (query: string, options: SearchOptions) => void
   onPick: (match: Match) => void
   /** Replace the selected match only. */
   onReplaceOne?: (match: Match, replacement: string) => void
@@ -168,6 +174,12 @@ export function SearchPanel(props: SearchPanelProps) {
   // Bumped after a project-scope apply: the scan reads disk and buffers, which
   // no signal covers, so freshness after our own replace is asked for by hand.
   const [generation, setGeneration] = createSignal(0)
+
+  createEffect(
+    on([query, options], ([q, opts]) => {
+      if (q.length >= MIN_QUERY) props.onSearch?.(q, opts)
+    }),
+  )
 
   const matches = createMemo(() => {
     generation()

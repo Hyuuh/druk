@@ -40,6 +40,8 @@ export interface CommandActions {
   redo: () => void
   findInFile: () => void
   findInProject: () => void
+  findNext: () => void
+  findPrev: () => void
   replaceInFile: () => void
   replaceInProject: () => void
   newFile: () => void
@@ -138,6 +140,8 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           hint: 'Ctrl+R',
           run: actions.findInProject,
         },
+        { id: 'find.next', label: 'Find next', hint: 'F3', run: actions.findNext },
+        { id: 'find.prev', label: 'Find previous', hint: 'Shift+F3', run: actions.findPrev },
         {
           id: 'find.replace',
           label: 'Replace in current file',
