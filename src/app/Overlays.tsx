@@ -7,6 +7,7 @@ import type { Branch } from '../core/git'
 import { replaceAll, replaceMatch } from '../core/search'
 import type { Match } from '../core/search'
 import type { UpdateInfo } from '../core/update'
+import type { PackageManager } from '../lsp/install'
 import { BranchPicker } from '../ui/BranchPicker'
 import { ChoiceModal } from '../ui/ChoiceModal'
 import { CommandPalette } from '../ui/CommandPalette'
@@ -177,6 +178,26 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             onCancel={() => prompts.setPrompt(null)}
           />
         )}
+      </Show>
+      <Show
+        when={() => {
+          const prompt = prompts.prompt()
+          return prompt?.kind === 'installServer' && prompt.install.kind === 'npm'
+        }}
+      >
+        {() => {
+          const prompt = prompts.prompt()
+          if (prompt?.kind !== 'installServer' || prompt.install.kind !== 'npm') return null
+          return (
+            <ChoiceModal
+              title="Language server missing"
+              message={`${prompt.name} is not installed. Choose a package manager:`}
+              choices={prompt.managers.map(manager => ({ id: manager, label: manager }))}
+              onPick={id => prompts.chooseInstallServer(id as PackageManager)}
+              onCancel={prompts.cancelPrompt}
+            />
+          )
+        }}
       </Show>
       <Show when={prompts.confirmation()}>
         {(ask: () => Confirmation) => (

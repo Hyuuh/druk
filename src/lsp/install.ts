@@ -24,11 +24,20 @@ import type { ServerInstall } from './servers'
 /** Long enough for a slow link; short enough to not hang. */
 const INSTALL_TIMEOUT_MS = 180_000
 
+export type PackageManager = 'npm' | 'bun' | 'yarn' | 'pnpm'
+
 export const SERVER_ROOT = join(
   process.env.XDG_DATA_HOME ?? join(os.homedir(), '.local', 'share'),
   'druk',
   'lsp',
 )
+
+export function availablePackageManagers(): PackageManager[] {
+  const node = Bun.which('node')
+  return (['npm', 'bun', 'yarn', 'pnpm'] as PackageManager[]).filter(
+    manager => Bun.which(manager) && (manager === 'bun' || node),
+  )
+}
 
 /**
  * `command` rewritten to run the copy druk installed, or null if there is none.
@@ -114,20 +123,25 @@ export async function removeServer(
 export async function installServer(
   packages: string[],
   root = SERVER_ROOT,
+  manager: PackageManager = 'npm',
 ): Promise<string | null> {
-  // --no-save keeps npm from writing a package.json describing a "project"
-  // that is really just a bin directory; --prefix creates the tree regardless.
-  const result = await run(
-    'npm',
-    ['install', '--prefix', root, '--no-save', '--no-audit', '--no-fund', ...packages],
-    { timeout: INSTALL_TIMEOUT_MS },
-  )
+  const args =
+    manager === 'npm'
+      ? ['install', '--prefix', root, '--no-save', '--no-audit', '--no-fund', ...packages]
+      : manager === 'bun'
+        ? ['add', '--cwd', root, '--no-save', ...packages]
+        : manager === 'yarn'
+          ? ['add', '--cwd', root, '--ignore-scripts', '--non-interactive', ...packages]
+          : ['add', '--dir', root, '--no-save', ...packages]
+  const result = await run(manager, args, { timeout: INSTALL_TIMEOUT_MS })
   if (result.error) {
-    return notInstalled(result) ? 'npm is not installed, or not on PATH' : result.error.message
+    return notInstalled(result)
+      ? `${manager} is not installed, or not on PATH`
+      : result.error.message
   }
-  if (result.timedOut) return 'npm timed out'
+  if (result.timedOut) return `${manager} timed out`
   if (result.status === 0) return null
-  return firstLine(result.stderr) || `npm exited with code ${result.status}`
+  return firstLine(result.stderr) || `${manager} exited with code ${result.status}`
 }
 
 /**

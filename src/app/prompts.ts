@@ -5,6 +5,7 @@ import { createMemo, createSignal } from 'solid-js'
 import { createDir, createFile, isDirectory } from '../core/fs'
 import { commitPaths, pullAndPush, PUSH_REJECTED, undoLastCommit } from '../core/git'
 import { SERVER_ROOT } from '../lsp/install'
+import type { PackageManager } from '../lsp/install'
 import { installHint } from '../lsp/servers'
 import type { Branches } from './branches'
 import type { EditorBridge } from './editor'
@@ -117,6 +118,14 @@ export function createPromptHandlers(deps: {
   }
 
   /** Carry out whatever the open confirm prompt was asking about. */
+  const chooseInstallServer = (choice: PackageManager | 'download') => {
+    const p = prompt()
+    setPrompt(null)
+    if (p?.kind !== 'installServer') return
+    if (choice !== 'download' && !p.managers.includes(choice)) return
+    void lsp.install(p.id, p.name, p.install, choice === 'download' ? undefined : choice)
+  }
+
   const confirmPrompt = () => {
     const p = prompt()
     setPrompt(null)
@@ -144,7 +153,8 @@ export function createPromptHandlers(deps: {
           done: () => `Pulled and pushed ${p.branch}`,
         })
       case 'installServer':
-        return void lsp.install(p.id, p.name, p.install)
+        if (p.install.kind === 'download') return void lsp.install(p.id, p.name, p.install)
+        return
       case 'uninstallServer':
         return void lsp.uninstall(p.id)
       case 'installExtension':
@@ -278,16 +288,12 @@ export function createPromptHandlers(deps: {
               : `Delete ${p.name}? Its folder in the extensions directory goes with it.`,
         }
       case 'installServer':
+        if (p.install.kind !== 'download') return null
         return {
           title: 'Language server missing',
-          verb: 'install it',
+          verb: 'download it',
           danger: false,
-          // Where it lands is the part worth showing: nothing global is touched,
-          // and deleting that one directory undoes the whole thing.
-          message:
-            p.install.kind === 'npm'
-              ? `${p.name} is not installed. Fetch it with npm into ${SERVER_ROOT}?`
-              : `${p.name} is not installed. Download it into ${SERVER_ROOT}?`,
+          message: `${p.name} is not installed. Download it into ${SERVER_ROOT}?`,
         }
       case 'installExtension':
         return {
@@ -314,6 +320,7 @@ export function createPromptHandlers(deps: {
     quit,
     submitPrompt,
     confirmPrompt,
+    chooseInstallServer,
     cancelPrompt,
     promptTitle,
     promptValue,
