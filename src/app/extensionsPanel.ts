@@ -45,6 +45,22 @@ export type ExtensionRow =
 const SECTIONS = { installed: 'INSTALLED', available: 'AVAILABLE' } as const
 
 /**
+ * The words a contribution answers to, beside the ids it registers.
+ *
+ * Searching an extension market by name only works when you already know the
+ * name. What a user actually has is a kind — "a theme", "something with an lsp",
+ * "whatever does Go" — so each kind is spelled several ways here and matched as
+ * plain substrings. `server` and `lsp` are the same question asked twice, and
+ * both are asked.
+ */
+const KIND_WORDS = {
+  themes: 'theme colors colours palette appearance',
+  icons: 'icons icon theme file icons appearance',
+  languages: 'language syntax highlighting grammar',
+  servers: 'lsp server language server diagnostics',
+} as const
+
+/**
  * Market matches a search will list. A one-letter query against a big registry
  * matches most of it, and a sidebar is no place to scroll a thousand rows —
  * narrowing the search is faster than paging through them.
@@ -76,6 +92,16 @@ export function createExtensionsPanel(deps: {
       .map((extension: Extension) => {
         const latest = market.catalog().find(entry => entry.id === extension.id)
         return {
+          keywords: [
+            ...extension.themes.map(theme => theme.id),
+            ...extension.icons.map(icons => icons.id),
+            ...extension.languages.map(language => language.id),
+            ...extension.servers.flatMap(server => [server.id, ...server.filetypes]),
+            extension.themes.length > 0 ? KIND_WORDS.themes : '',
+            extension.icons.length > 0 ? KIND_WORDS.icons : '',
+            extension.languages.length > 0 ? KIND_WORDS.languages : '',
+            extension.servers.length > 0 ? KIND_WORDS.servers : '',
+          ].join(' '),
           kind: 'installed' as const,
           id: extension.id,
           label: extension.name,
@@ -89,7 +115,7 @@ export function createExtensionsPanel(deps: {
           about: contributionSummary(extension),
         }
       })
-      .filter(row => matches(`${row.label} ${row.id} ${row.about}`)),
+      .filter(row => matches(`${row.label} ${row.id} ${row.about} ${row.keywords}`)),
   )
 
   /** Empty until something is typed: the market is what the search is for. */
@@ -105,8 +131,18 @@ export function createExtensionsPanel(deps: {
         label: entry.name,
         version: entry.version,
         about: entry.description,
+        keywords: [
+          ...entry.provides.themes,
+          ...entry.provides.icons,
+          ...entry.provides.filetypes,
+          ...entry.provides.servers,
+          entry.provides.themes.length > 0 ? KIND_WORDS.themes : '',
+          entry.provides.icons.length > 0 ? KIND_WORDS.icons : '',
+          entry.provides.filetypes.length > 0 ? KIND_WORDS.languages : '',
+          entry.provides.servers.length > 0 ? KIND_WORDS.servers : '',
+        ].join(' '),
       }))
-      .filter(row => matches(`${row.label} ${row.id} ${row.about}`))
+      .filter(row => matches(`${row.label} ${row.id} ${row.about} ${row.keywords}`))
   })
 
   const rows = createMemo<ExtensionRow[]>(() => {

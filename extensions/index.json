@@ -12,7 +12,8 @@
           "ayu-light"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -24,6 +25,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "bash"
+        ],
+        "servers": [
           "bash"
         ]
       }
@@ -37,6 +41,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "c"
+        ],
+        "servers": [
           "c"
         ]
       }
@@ -54,7 +61,8 @@
           "catppuccin-latte"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -66,6 +74,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "cpp"
+        ],
+        "servers": [
           "cpp"
         ]
       }
@@ -80,7 +91,8 @@
         "icons": [],
         "filetypes": [
           "csharp"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -96,6 +108,9 @@
           "scss",
           "sass",
           "less"
+        ],
+        "servers": [
+          "css"
         ]
       }
     },
@@ -109,7 +124,8 @@
         "icons": [],
         "filetypes": [
           "dart"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -122,7 +138,8 @@
         "icons": [],
         "filetypes": [
           "dotenv"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -135,7 +152,8 @@
           "dracula"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -147,6 +165,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "elixir"
+        ],
+        "servers": [
           "elixir"
         ]
       }
@@ -166,6 +187,9 @@
           "javascriptreact",
           "vue",
           "svelte"
+        ],
+        "servers": [
+          "eslint"
         ]
       }
     },
@@ -180,7 +204,8 @@
           "everforest-light"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -192,6 +217,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "go"
+        ],
+        "servers": [
           "go"
         ]
       }
@@ -207,7 +235,8 @@
           "gruvbox-light"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -221,7 +250,8 @@
         "filetypes": [
           "terraform",
           "hcl"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -233,6 +263,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "html"
+        ],
+        "servers": [
           "html"
         ]
       }
@@ -247,7 +280,8 @@
         "icons": [],
         "filetypes": [
           "ini"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -260,7 +294,8 @@
         "icons": [],
         "filetypes": [
           "java"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -272,6 +307,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "json"
+        ],
+        "servers": [
           "json"
         ]
       }
@@ -288,7 +326,8 @@
           "kanagawa-lotus"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -301,7 +340,8 @@
         "icons": [],
         "filetypes": [
           "kotlin"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -314,7 +354,8 @@
         "icons": [],
         "filetypes": [
           "liquid"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -326,6 +367,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "lua"
+        ],
+        "servers": [
           "lua"
         ]
       }
@@ -340,7 +384,8 @@
         "icons": [],
         "filetypes": [
           "markdown"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -353,7 +398,8 @@
         "icons": [
           "nerd"
         ],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -366,7 +412,8 @@
           "nord"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -379,7 +426,8 @@
           "one-dark"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -391,6 +439,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "php"
+        ],
+        "servers": [
           "php"
         ]
       }
@@ -404,6 +455,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "python"
+        ],
+        "servers": [
           "python"
         ]
       }
@@ -420,7 +474,8 @@
           "rose-pine-dawn"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -432,6 +487,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "ruby"
+        ],
+        "servers": [
           "ruby"
         ]
       }
@@ -446,6 +504,9 @@
         "icons": [],
         "filetypes": [
           "rust"
+        ],
+        "servers": [
+          "rust"
         ]
       }
     },
@@ -459,7 +520,8 @@
         "icons": [],
         "filetypes": [
           "scala"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -473,7 +535,8 @@
           "solarized-light"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -486,7 +549,8 @@
         "icons": [],
         "filetypes": [
           "sql"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -499,7 +563,8 @@
         "icons": [],
         "filetypes": [
           "svelte"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -511,6 +576,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "swift"
+        ],
+        "servers": [
           "swift"
         ]
       }
@@ -525,7 +593,8 @@
           "tokyo-night"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -538,7 +607,8 @@
         "icons": [],
         "filetypes": [
           "toml"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -551,7 +621,8 @@
         "icons": [],
         "filetypes": [
           "tsrx"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -567,6 +638,9 @@
           "javascript",
           "typescriptreact",
           "javascriptreact"
+        ],
+        "servers": [
+          "typescript"
         ]
       }
     },
@@ -580,7 +654,8 @@
           "vesper"
         ],
         "icons": [],
-        "filetypes": []
+        "filetypes": [],
+        "servers": []
       }
     },
     {
@@ -593,7 +668,8 @@
         "icons": [],
         "filetypes": [
           "vue"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -606,7 +682,8 @@
         "icons": [],
         "filetypes": [
           "yaml"
-        ]
+        ],
+        "servers": []
       }
     },
     {
@@ -618,6 +695,9 @@
         "themes": [],
         "icons": [],
         "filetypes": [
+          "zig"
+        ],
+        "servers": [
           "zig"
         ]
       }

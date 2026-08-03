@@ -253,7 +253,9 @@ is not druk's to delete, and it says so instead.
 
 The market is not listed. Search for it: the box at the top of the panel (`/`, or
 click it) covers what you have and what the market offers alike, and an `AVAILABLE`
-section appears with the matches — capped at fifty, with a row saying how many were
+section appears with the matches. It searches by **kind** as well as by name —
+`theme`, `lsp`, `language`, `icons`, or any language id (`go`, `rust`) — so you can
+find an extension by what it does rather than what it is called — capped at fifty, with a row saying how many were
 left out. The cursor lands on the first hit, so `Enter` installs, after showing what
 the extension adds and, for a language server, the command druk would run. `u`
 updates everything; `r` re-reads the manifests.

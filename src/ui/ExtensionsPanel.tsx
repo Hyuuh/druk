@@ -101,9 +101,13 @@ export function ExtensionsPanel(props: ExtensionsPanelProps) {
         <box flexGrow={1}>
           <Show
             when={props.query !== null}
-            fallback={<text fg={ui.faint} bg={ui.sidebarBg} content="search extensions" />}
+            fallback={<text fg={ui.faint} bg={ui.sidebarBg} content="name, theme, lsp, go…" />}
           >
-            <TextInput value={props.query ?? ''} placeholder="search…" onInput={props.onSearch} />
+            <TextInput
+              value={props.query ?? ''}
+              placeholder="name, theme, lsp, go…"
+              onInput={props.onSearch}
+            />
           </Show>
         </box>
       </box>

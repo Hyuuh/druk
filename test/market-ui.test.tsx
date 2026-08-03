@@ -272,3 +272,61 @@ function existsSyncSafe(path: string): boolean {
     return false
   }
 }
+
+test('the search answers a kind, not only a name', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const t = await launch(dir, { extensionUpdates: true }, { height: 40 })
+  catalog = {
+    extensions: [
+      {
+        id: 'go',
+        name: 'Go',
+        version: '1.1.0',
+        description: 'gopls',
+        provides: { themes: [], icons: [], filetypes: ['go'], servers: ['go'] },
+      },
+      {
+        id: 'dracula',
+        name: 'Dracula',
+        version: '1.0.0',
+        description: 'a palette',
+        provides: { themes: ['dracula'], icons: [], filetypes: [], servers: [] },
+      },
+    ],
+  }
+  await runCommand(t, 'Check for extension updates')
+  await untilFrame(t, 'Extension market: 2 extensions')
+  await runCommand(t, 'Extensions panel')
+  await settle(t)
+
+  // Nothing in Dracula's name or blurb says "theme" — the contribution does.
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('theme'))
+  const themes = t.captureCharFrame()
+  expect(themes).toContain('Dracula')
+  expect(themes).not.toContain('Go 1.1.0')
+
+  // And "lsp" is the other question: a language extension with no server must
+  // not answer it, which is why the catalog carries the server ids apart from
+  // the filetypes.
+  await pressEscape(t)
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('lsp'))
+  const servers = t.captureCharFrame()
+  expect(servers).toContain('Go')
+  expect(servers).not.toContain('Dracula')
+})
+
+test('a kind search reaches what is installed too', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const t = await launch(dir, {}, { height: 40 })
+  await runCommand(t, 'Extensions panel')
+  await settle(t)
+
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('lsp'))
+  const frame = t.captureCharFrame()
+  // The preinstalled set: typescript and html carry servers, markdown does not.
+  expect(frame).toContain('TypeScript')
+  expect(frame).not.toContain('Markdown')
+})

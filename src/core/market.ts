@@ -69,6 +69,13 @@ export interface MarketEntry {
      * extension, which one is it?", so a language with no server counts too.
      */
     filetypes: string[]
+    /**
+     * Server ids. Kept apart from `filetypes`, which merges languages and
+     * servers together: without it nothing can tell a syntax-only extension from
+     * one that also spawns a program, and the panel's search would answer "lsp"
+     * with every language druk knows.
+     */
+    servers: string[]
   }
 }
 
@@ -100,6 +107,7 @@ export function entryFor(extension: Extension): MarketEntry {
           ...extension.servers.flatMap(server => server.filetypes),
         ]),
       ],
+      servers: extension.servers.map(server => server.id),
     },
   }
 }
@@ -127,6 +135,9 @@ function parseEntry(raw: unknown): MarketEntry | null {
       themes: ids(provides.themes),
       icons: ids(provides.icons),
       filetypes: ids(provides.filetypes),
+      // Absent from a catalog written before this existed, and from a cache of
+      // one: an empty list is the honest answer, not a reason to drop the row.
+      servers: ids(provides.servers),
     },
   }
 }

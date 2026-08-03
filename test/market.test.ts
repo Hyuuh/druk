@@ -36,7 +36,7 @@ const INDEX = {
       name: 'Nim',
       version: '1.2.0',
       description: 'nimlangserver',
-      provides: { themes: [], icons: [], filetypes: ['nim'] },
+      provides: { themes: [], icons: [], filetypes: ['nim'], servers: ['nim'] },
     },
   ],
 }
@@ -71,7 +71,7 @@ test('a malformed catalog row is dropped, not fatal', () => {
     name: 'ok',
     version: '1.0.0',
     description: '',
-    provides: { themes: [], icons: [], filetypes: [] },
+    provides: { themes: [], icons: [], filetypes: [], servers: [] },
   })
 })
 
