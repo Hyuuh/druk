@@ -58,6 +58,7 @@ export interface CommandActions {
   collapseSidebar: () => void
   toggleGitView: () => void
   toggleMarkdown: () => void
+  toggleWrap: () => void
   setTheme: (name: ThemeName) => void
   previewTheme: (name: ThemeName) => void
   restoreTheme: () => void
@@ -279,6 +280,11 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           label: 'Markdown: rendered / source',
           hint: `Ctrl+${ALT}+M`,
           run: actions.toggleMarkdown,
+        },
+        {
+          id: 'view.wrap',
+          label: 'Toggle word wrap',
+          run: actions.toggleWrap,
         },
         {
           id: 'view.focus',

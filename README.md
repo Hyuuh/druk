@@ -206,6 +206,7 @@ instead of breaking startup.
 | `iconTheme` | `"none"` | file icons in the tree: `unicode` (shapes any font has), or a set from the market — `nerd-icons` needs a patched font |
 | `tabSize` | `2` | 1–16 |
 | `cursorStyle` | `"block"` | `block`, `line` or `underline` — the caret's shape, which vim mode overrides while it is on, since there the shape is what tells normal from insert |
+| `wrap` | `true` | set `false` to keep each line on one row — the tail of a long line is then reached by moving the cursor into it (palette → View → Toggle word wrap) |
 | `vim` | `false` | normal / insert / visual modes, `hjkl w b 0 $ gg G`, counts, `i a o`, `x dd dw cw`, `v` + `d y c`, `yy p P`, `u` / `Ctrl+R` |
 | `sidebarWidth` | `"auto"` | a quarter of the window, or pin 15–80 columns |
 | `trimOnSave` | `false` | on save: strip trailing spaces and end the file with one newline |

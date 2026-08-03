@@ -600,6 +600,7 @@ export function App(props: {
             lineOp={editor.lineOp()}
             vim={config.vim}
             cursorStyle={config.cursorStyle}
+            wrap={config.wrap}
             tabSize={config.tabSize}
             gitLines={git.gitLines()}
             problems={problemLines()}

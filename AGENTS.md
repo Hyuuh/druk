@@ -24,6 +24,9 @@ Tab or every file at once with Shift+Tab, which turns the results into a list of
 command palette,
 themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, which vim mode
 overrides while it is on, since there the shape is what tells normal from insert),
+word wrap on by default with a toggle (`wrap`, palette → View → Toggle word wrap —
+off, a long line's tail is reached by moving the cursor into it, since OpenTUI
+scrolls sideways only with the caret),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
 → / ←, or all of them from the header's `▴`) and palette commands for commit/undo/stash/push/fetch/pull — a push origin
