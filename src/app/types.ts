@@ -49,6 +49,8 @@ export type Prompt =
   | { kind: 'pullPush'; branch: string; hasUpstream: boolean }
   /** A language server is missing and druk can fetch it; `id` is the server id. */
   | { kind: 'installServer'; id: string; name: string; install: FetchableInstall }
+  /** Delete druk's own copy of a server. `packages` is what goes with it. */
+  | { kind: 'uninstallServer'; id: string; name: string; packages: string[] }
   /**
    * A market extension is worth installing. `why` is what raised it (a file whose
    * language has no server, a config naming a theme nothing registers, or an
@@ -64,6 +66,17 @@ export type Prompt =
       runs: string[]
       /** The version installed now, when this is an update rather than a first install. */
       current?: string
+    }
+  /**
+   * Delete an installed extension. `servers` names the language servers druk
+   * fetched for it, which go with it — the one part of an uninstall that reaches
+   * outside the extensions folder.
+   */
+  | {
+      kind: 'uninstallExtension'
+      id: string
+      name: string
+      servers: { id: string; name: string }[]
     }
   | null
 

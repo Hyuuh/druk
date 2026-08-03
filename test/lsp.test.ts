@@ -9,11 +9,11 @@ import type { Problem } from '../src/app/lsp'
 import { loadExtensions } from '../src/extensions'
 import { styleIdForGroup } from '../src/languages/highlight'
 import { spawnLspClient } from '../src/lsp/client'
-import { downloadServer, installServer, installedCommand } from '../src/lsp/install'
+import { downloadServer, installServer, installedCommand, removeServer } from '../src/lsp/install'
 import { projectCommand, typescriptMajor } from '../src/lsp/project'
 import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
 import { isUnnecessary, severityOf } from '../src/lsp/protocol'
-import { installHint, resolveServer } from '../src/lsp/servers'
+import { installHint, resolveServer, resolveServers } from '../src/lsp/servers'
 import { createDecoder, encodeMessage } from '../src/lsp/transport'
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
@@ -115,9 +115,25 @@ describe('protocol mapping', () => {
     ])
     // The hint names the default's package; an override would send them elsewhere.
     expect(resolveServer('typescript', { typescript: ['deno', 'lsp'] })?.install).toBeUndefined()
-    expect(resolveServer('typescript', { typescript: [] })).toBeNull()
-    expect(resolveServer('brainfuck', {})).toBeNull()
+    // An empty command disables that server, not every server for the language:
+    // eslint serves typescript too, and is left where it was.
+    expect(resolveServers('typescript', { typescript: [] }).map(server => server.id)).toEqual([
+      'eslint',
+    ])
+    expect(resolveServers('brainfuck', {})).toEqual([])
     expect(resolveServer(undefined, {})).toBeNull()
+  })
+
+  test('a language may have several servers, the language server first', () => {
+    // Both are spawned and both report; the order is what decides which one is
+    // asked for a completion first, and a linter must never be that one.
+    expect(resolveServers('typescript', {}).map(server => server.id)).toEqual([
+      'typescript',
+      'eslint',
+    ])
+    // Only the linter carries settings — it does nothing at all without them.
+    const eslint = resolveServers('typescript', {}).find(server => server.id === 'eslint')
+    expect((eslint?.settings as { validate?: string } | undefined)?.validate).toBe('on')
   })
 
   test('typescript is pinned to 5, the last line that ships a tsserver.js', () => {
@@ -189,6 +205,31 @@ describe('installed servers', () => {
       server.stop()
     }
   }, 20_000)
+
+  test('a downloaded server is removed by deleting its binary', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    const target = join(root, 'bin', 'expert')
+    mkdirSync(join(root, 'bin'), { recursive: true })
+    writeFileSync(target, '')
+    expect(installedCommand(['expert'], root)).not.toBeNull()
+
+    expect(
+      await removeServer({ kind: 'download', url: 'http://x/expert' }, 'expert', root),
+    ).toBeNull()
+    expect(existsSync(target)).toBe(false)
+    // Removing what is already gone is not a failure: the promise the caller
+    // made the user is that it is not there, and it is not.
+    expect(
+      await removeServer({ kind: 'download', url: 'http://x/expert' }, 'expert', root),
+    ).toBeNull()
+  })
+
+  test('a server druk never installed is refused rather than half-removed', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    expect(await removeServer({ kind: 'manual', command: 'brew install zls' }, 'zls', root)).toBe(
+      'druk did not install it',
+    )
+  })
 
   test('an install with no npm to run it fails instead of hanging', async () => {
     const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
@@ -292,6 +333,7 @@ describe('client against a live server', () => {
     const path = join(dir, 'a.ts')
     const deliveries = collector<Diagnostic[]>()
     const client = spawnLspClient({
+      id: 'test',
       command: [process.execPath, FAKE],
       rootDir: dir,
       onDiagnostics: (_uri, diagnostics) => deliveries.push(diagnostics),
@@ -320,6 +362,7 @@ describe('client against a live server', () => {
       missing: boolean
     }>()
     const client = spawnLspClient({
+      id: 'test',
       command: ['druk-no-such-language-server'],
       rootDir: tmpdir(),
       onDiagnostics: () => {},
@@ -337,6 +380,7 @@ describe('client against a live server', () => {
 
   test('a starting client is not dead — its documents must not be forgotten', () => {
     const client = spawnLspClient({
+      id: 'test',
       command: [process.execPath, FAKE],
       rootDir: tmpdir(),
       onDiagnostics: () => {},

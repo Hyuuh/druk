@@ -4,6 +4,7 @@ import { kindInfo, matchRuns } from '../lsp/completion'
 import type { KindGroup, Match } from '../lsp/completion'
 import { ui } from '../themes'
 import { windowAround } from './list'
+import { cut } from './text'
 
 /** Content rows the menu shows at most; more items scroll behind a counter row. */
 export const MENU_ROWS = 8
@@ -46,9 +47,6 @@ export function menuWidth(matches: Match[]): number {
   // bar + glyph+space + label + gap + detail + pad, plus the border pair.
   return Math.max(MIN_WIDTH, 1 + 2 + label + (detail > 0 ? 2 + detail : 0) + 1 + 2)
 }
-
-const cut = (text: string, room: number) =>
-  text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text
 
 /**
  * The completion popup. Purely presentational: EditorPane owns every decision —

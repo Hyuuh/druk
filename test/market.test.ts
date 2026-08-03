@@ -37,6 +37,7 @@ const INDEX = {
       version: '1.2.0',
       description: 'nimlangserver',
       provides: { themes: [], icons: [], filetypes: ['nim'] },
+      categories: ['language', 'lsp'],
     },
   ],
 }
@@ -72,6 +73,7 @@ test('a malformed catalog row is dropped, not fatal', () => {
     version: '1.0.0',
     description: '',
     provides: { themes: [], icons: [], filetypes: [] },
+    categories: [],
   })
 })
 

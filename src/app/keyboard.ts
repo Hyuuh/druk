@@ -10,11 +10,33 @@ import { matchKeymap } from './keymap'
 
 /** The global keymap: everything that fires before the focused pane sees the key. */
 export function installKeyboard(ctx: AppContext, actions: CommandActions) {
-  const { settings, tree, panes, editor, workspace, fileOps, prompts, overlays, git, comparison } =
-    ctx
+  const {
+    settings,
+    tree,
+    panes,
+    editor,
+    workspace,
+    fileOps,
+    prompts,
+    overlays,
+    git,
+    comparison,
+    extensions,
+    editorCovered,
+  } = ctx
   const { config } = settings
 
   const togglePeek = () => overlays.setPeek(peeking => !peeking)
+
+  /**
+   * Whether EditorPane's own Ctrl+C handler will run — it needs the focus slot, a
+   * live textarea and nothing drawn over it. Holding the focus slot is not enough:
+   * a page or viewer keeps it while taking no keys, and a tab-less editor has no
+   * buffer to copy from, so deferring on `focus()` alone left Ctrl+C owned by
+   * nobody on the welcome screen and under every page.
+   */
+  const editorOwnsCopy = () =>
+    panes.focus() === 'editor' && workspace.activePath() !== null && !editorCovered()
 
   /**
    * What each bindable command does when its key arrives — see `keymap.ts` for the
@@ -51,6 +73,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'tabs.closeAll': actions.closeAll,
     'view.sidebar': panes.toggleSidebar,
     'view.git': panes.toggleGitView,
+    'view.extensions': panes.toggleExtensionsView,
     'view.collapse': actions.collapseSidebar,
     'view.markdown': workspace.toggleRendered,
     'view.focus': actions.toggleFocus,
@@ -103,7 +126,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     // renderer's own selection covers mouse drags only. Either way it
     // routes through `quit()`, so a dirty buffer still gets its prompt. Not a
     // bindable command: the two meanings are split across two owners.
-    if (key.ctrl && k === 'c' && panes.focus() !== 'editor') return claim(prompts.quit)
+    if (key.ctrl && k === 'c' && !editorOwnsCopy()) return claim(prompts.quit)
 
     // In vim, Ctrl+R is redo and belongs to the editor, whatever the keymap says it
     // runs. Project search keeps its other spelling, Ctrl+Opt+F, so nothing becomes
@@ -144,6 +167,31 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     // would fire one of them — Ctrl+D on the tree used to open the delete prompt.
     if (key.ctrl || key.meta || key.option) return
 
+    // Ahead of the blanket `preventDefault` below, and the only branch that is:
+    // the extensions panel's search is a real input, so while it is up the
+    // printable keys are its. Claiming them here would swallow the typing.
+    if (panes.view() === 'extensions' && extensions.query() !== null) {
+      switch (k) {
+        case 'up':
+          extensions.move(-1)
+          break
+        case 'down':
+          extensions.move(1)
+          break
+        case 'return':
+        case 'enter':
+          extensions.activate()
+          break
+        case 'escape':
+          extensions.closeSearch()
+          break
+        default:
+          return // the field's
+      }
+      key.preventDefault()
+      return
+    }
+
     // Solid applies focus synchronously, so without this the key that opens a
     // file also reaches the freshly focused textarea.
     key.preventDefault()
@@ -155,6 +203,52 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     if (k === '[' || k === ']') return settings.nudgeSidebar(k === '[' ? -2 : 2)
 
     const vimNav: Record<string, string> = { h: 'left', j: 'down', k: 'up', l: 'right' }
+
+    // The extensions panel borrows the tree's focus slot, so its keys replace the
+    // tree's while it shows — or `d` would still offer to delete files.
+    if (panes.view() === 'extensions') {
+      switch (config.vim ? (vimNav[k] ?? k) : k) {
+        case 'tab':
+          // Shift+Tab walks the tab strip above the sidebar, the way it walks
+          // any other one; plain Tab keeps handing the keyboard to the editor.
+          if (key.shift) panes.showView('files')
+          else if (workspace.activePath() || workspace.diff()) panes.setFocus('editor')
+          break
+        case 'up':
+          extensions.move(-1)
+          break
+        case 'down':
+          extensions.move(1)
+          break
+        case 'right':
+          extensions.fold(false)
+          break
+        case 'left':
+          extensions.fold(true)
+          break
+        case 'return':
+        case 'enter':
+          extensions.activate()
+          break
+        case 'backspace':
+        case 'delete':
+          extensions.remove()
+          break
+        case '/':
+          extensions.openSearch()
+          break
+        case 'u':
+          extensions.updateAll()
+          break
+        case 'r':
+          extensions.reload()
+          break
+        case 'escape':
+          panes.toggleExtensionsView()
+          break
+      }
+      return
+    }
 
     // The source-control panel borrows the tree's focus slot, so its keys replace
     // the tree's while it shows — or `d` would still offer to delete files.
@@ -210,7 +304,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         case 'tab':
           // Shift+Tab walks the tab strip above the sidebar, the way it walks any
           // other one; plain Tab keeps handing the keyboard to the editor.
-          if (key.shift) panes.showView('files')
+          if (key.shift) panes.showView('extensions')
           else if (workspace.activePath() || workspace.diff()) panes.setFocus('editor')
           break
         case 'up':

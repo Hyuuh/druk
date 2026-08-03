@@ -75,6 +75,45 @@ the file renders plain. `install` is `{"kind": "npm", "packages": [...]}` when d
 can fetch the server itself, `{"kind": "manual", "command": "..."}` for a line to
 print, and absent for a server that arrives with an SDK.
 
+## A server-only extension: a linter
+
+`languageServers` needs no `languages` beside it, and **a filetype may have more
+than one server** — every one of them is spawned and synced, and their diagnostics
+are merged rather than replacing each other. That is what lets a linter report
+alongside the language server already serving the file, the way eslint sits beside
+tsserver in VS Code. See [`eslint/extension.json`](eslint/extension.json).
+
+A server that is configured rather than convention-driven carries `settings`: its
+own configuration object, handed over untouched. druk gives it to the server both
+ways the protocol allows — as the answer to every `workspace/configuration` request
+and as one `didChangeConfiguration` push — because servers differ in which they
+read, and eslint's reports nothing at all until it has been told to validate:
+
+```json
+"languageServers": [
+  {
+    "id": "eslint",
+    "command": ["vscode-eslint-language-server", "--stdio"],
+    "filetypes": ["typescript", "javascript"],
+    "install": { "kind": "npm", "packages": ["vscode-langservers-extracted"] },
+    "settings": { "validate": "on", "problems": {}, "nodePath": null }
+  }
+]
+```
+
+The keys are the server's, not druk's, and are passed through unvalidated — so a
+server option added upstream needs no druk release. Find the minimum set by
+running the server by hand: most refuse to work with a field missing and say
+nothing about which.
+
+## Categories
+
+An extension's categories — `language`, `lsp`, `theme`, `icons` — are **derived
+from what it contributes**, never declared. A manifest carrying `themes` is a
+theme extension; a `categories` field would only ever be a way to be wrong about
+that, so there is none. They are what the extensions panel's search matches
+beside the name, and `bun run extensions` writes them into `index.json`.
+
 ## An appearance extension
 
 `themes` needs every `ui` key `src/themes/types.ts` declares, all `#rrggbb`; copy a
@@ -105,7 +144,7 @@ the market's copy of one replaces the built-in, which is how it gets an update.
 ## Testing yours before it is merged
 
 Drop the folder straight into `$XDG_CONFIG_HOME/druk/extensions/` (usually
-`~/.config/druk/extensions/`) and press the extensions page's `Reload from disk` row.
+`~/.config/druk/extensions/`) and press `r` in the extensions panel.
 That path needs no registry at all, which is why `extensionRegistry` is only worth
 changing when you are serving a whole fork.
 

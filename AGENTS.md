@@ -56,7 +56,12 @@ nothing requires hand-editing config.json, project-local settings in
 `<project>/.druk/settings.json` that override the user's own key by key (VS Code's
 arrangement: palette → "Settings: this project", or Tab on the page to swap files;
 overridden rows are marked ◆ and Backspace resets one), LSP diagnostics from the user's own
-language servers (gutter marks, dots on a track beside the scrollbar — errors
+language servers — a filetype may have several and every one of them is spawned,
+synced and merged into one list of marks, which is how a linter (`extensions/eslint`,
+`vscode-eslint-language-server`) reports beside the language server already serving
+the file; a feature request goes to each in turn and keeps the first real answer,
+since load order cannot say which of them answers completions —
+(gutter marks, dots on a track beside the scrollbar — errors
 and warnings only, left of the git track and deliberately a different glyph —
 inline message text after the line, status-bar
 counts, a problems list in the palette, spans given a faint severity tint — no
@@ -84,8 +89,11 @@ files and a server otherwise resolves imports against the `node_modules` it saw
 at startup forever), a language-server status page (palette →
 Problems → Language server status — each server's state, command and open
 documents over a live log of its stderr, `window/logMessage` traffic and
-lifecycle events; ↑↓ picks the server, `r` restarts them all, and the log
-survives a restart so the run before stays readable), LSP autocomplete (a fuzzy-filtered menu that opens as you
+lifecycle events; ↑↓ picks the server, `r` restarts them all, `d` deletes
+druk's own copy of the selected one — a confirm naming the npm packages that
+go with it, and refused for a server on PATH or in the project, which are not
+druk's to remove — and the log survives a restart so the run before stays
+readable), LSP autocomplete (a fuzzy-filtered menu that opens as you
 type or on Ctrl+Space, applies auto-import edits, and is toggled by
 `lspCompletion`), go to definition (F12, the server's answer in whichever of the
 protocol's three shapes it comes) and open the file under the cursor
@@ -119,16 +127,30 @@ and is data rather than code, so installing one runs nothing and the compiled
 binary needs no loader; `disabledExtensions` shelves one without deleting it,
 and a malformed manifest costs its extension that one contribution and is
 reported on startup),
-an extensions page (palette → Extensions) built the way the settings page is —
-a full-slot page of sections, `/` to filter the rows: **Installed** lists every
-manifest with what it contributes, Enter enabling or disabling one and Backspace
-uninstalling one that is not built in; **Available** is the market minus what is
-already there, Enter raising the install confirm; **Market** holds the update
-check, the startup-check switch and the registry URL. Nothing about extensions
-is on the settings page,
+an extensions panel — the sidebar's third view beside Files and Git
+(`Ctrl+Opt+X`, palette → Extensions → Extensions panel, or the `Ext` tab; Shift+Tab
+cycles the three, and the strip falls to initials where the names do not fit):
+`INSTALLED` lists every manifest, Enter turning one on or off and Backspace
+uninstalling one that is not built in after a confirm that names the language
+servers druk fetched for it, since those go with it and those are the megabytes; the market is **not on screen at all**
+until it is searched for — not even as a folded heading, since a registry may
+carry a thousand entries and none of them is what the panel is for — and a search
+box drawn under the header at all times (`/`, or a click, starts typing into it)
+is what raises the `AVAILABLE` section, over both sections at once, landing the
+cursor on its first hit so the Enter after it installs; every extension has
+*categories* — `language`, `lsp`, `theme`, `icons`, derived from what it
+contributes and never declared, since a manifest carrying `themes` is a theme
+extension and a field saying otherwise could only be wrong (`categoriesOf` in
+`src/extensions/manifest.ts` is the one place that decides, and the catalog
+carries them per row) — which the search matches beside the name and every id
+and filetype a manifest registers, and which the row draws dim beside the name
+wherever the sidebar has columns going spare; matches are capped at
+fifty with a `+N more matches` row saying what was left out; `u` updates
+everything and `r` re-reads the manifests. Only the two that are
+settings — the startup check and the registry URL — are on the settings page,
 an extension market — `extensions/` **in this repository**, one folder per extension, served
 raw from `main`, so a merged pull request is installable without a druk release;
-the extensions page's Available section installs one after a confirm that names the
+the panel's `AVAILABLE` section installs one after a confirm that names the
 commands it would have druk spawn, an installed extension with a newer version in the
 catalog is reported in the status bar at startup, a file whose language no
 installed extension serves offers the extension that does, and a config naming a theme
@@ -307,7 +329,7 @@ dependency rule, and recipes for the extension points:
 | Want to add a… | Edit |
 | --- | --- |
 | language | a `languages` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `grammar` is `{"vendored": "<key in src/languages/grammars.ts>"}` for one druk embeds, `{"bundled": true}` for one OpenTUI carries, or `{"wasm": "…", "query": "…"}` for files in the extension folder. `patterns` are `{group, re, flags}` (regex as a string) for a format with no usable grammar; `extensions` / `filenames` / `filenamePattern` claim the names OpenTUI resolves none of. Adding a *vendored* grammar is still a source change: two static imports in `src/languages/grammars.ts` |
-| language server | a `languageServers` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `install` is `{"kind": "npm", "packages": […]}` or `{"kind": "download", "urls": {"<platform>-<arch>": "…"}}` when druk can fetch it itself, and `{"kind": "manual", "command": "…"}` for a line to print — a `download` carries a `command` too, for the machines the release has no build for; users override per-server with the `lspServers` setting, which can only *replace* a command some extension declared. A server whose command depends on what the project installed goes in `projectCommand` (`src/lsp/project.ts`) instead, which every server consults first — that part is code, and stays in `src/` |
+| language server | a `languageServers` entry in a market manifest — `extensions/<language>/extension.json`, then `bun run extensions`. `install` is `{"kind": "npm", "packages": […]}` or `{"kind": "download", "urls": {"<platform>-<arch>": "…"}}` when druk can fetch it itself, and `{"kind": "manual", "command": "…"}` for a line to print — a `download` carries a `command` too, for the machines the release has no build for; `settings` is the server's own configuration object, passed through unvalidated (it is the *server's* shape, not druk's) and given to it both ways the protocol offers — answered to every `workspace/configuration` item and pushed once as `didChangeConfiguration`. Several servers may claim one filetype and all of them are spawned; users override per-server with the `lspServers` setting, which can only *replace* a command some extension declared (an empty one disables that server alone). A server whose command depends on what the project installed goes in `projectCommand` (`src/lsp/project.ts`) instead, which every server consults first — that part is code, and stays in `src/` |
 | PDF viewer | rendering in `src/core/pdf.ts`, UI in `src/ui/PdfView.tsx`, and bufferless routing in `src/app/workspace.ts` |
 | theme | a `themes` entry in a market manifest — `extensions/<family>/extension.json`, one extension per palette family (catppuccin carries its four flavors), then `bun run extensions`. Only `dark` and `light` are built in, in `src/themes/`, because the defaults name them. Chrome roles that are a *relationship* between two colours (`border`, `sidebarBg`, `solidBg`) are derived in `colorsFor` there and are never listed by a theme |
 | icon theme | an `icons` entry in a market manifest — one codepoint per glyph, since the tree gives it the arrow's single column, and a two-cell glyph is dropped rather than drawn. `unicode` alone is built in (`src/icons/index.ts`), being the set any font already has |
@@ -318,7 +340,8 @@ dependency rule, and recipes for the extension points:
 | keybinding | a row in `BINDABLE` (`src/app/keymap.ts`) plus a handler under the same id in `src/app/keyboard.ts` — or, for an editor-only key, `src/ui/EditorPane.tsx` — advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Ctrl+K peek and the welcome screen), with the row's `ids` naming the commands it spells out |
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
 | market extension | a folder under `extensions/` holding `extension.json`, then `bun run extensions` to regenerate `extensions/index.json` — `test/extensions-repo.test.ts` fails when the committed index is stale, and bumping the manifest `version` is what makes installed copies see an update |
-| row on the extensions page | one of the three section builders in `src/app/extensionsPage.ts`; `src/ui/ExtensionsView.tsx` draws whatever they return and owns nothing but the selection. A row that needs free text hands an edit back from `activate`, the way a setting's `select` does |
+| row in the extensions panel | `src/app/extensionsPanel.ts` (the row model, the cursor, the fold state and what Enter does); `src/ui/ExtensionsPanel.tsx` draws whatever `rows()` returns and reports clicks, and the keys live in `src/app/keyboard.ts` beside the tree's and the git panel's |
+| sidebar view | `SidebarView` in `src/ui/SidebarTabs.tsx` (add a `short` initial — the strip falls back to those in a narrow sidebar), a branch in `App.tsx`'s sidebar, one in `keyboard.ts`'s pane switch, a `KeyScope` in `src/ui/keys.ts` with a `SCOPE_LABELS` entry in `KeyPeek.tsx`, and a `toggle…View` on `src/app/panes.ts` |
 | branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
 
 Key handlers subscribe through `useKeys` (`src/ui/useKeys.ts`), never OpenTUI's
@@ -461,6 +484,17 @@ Some OpenTUI element names are snake_case (`line_number` is the one druk uses).
   with a comment saying why (`afterResize` and `ignoreScrollOutsideBounds` in
   `src/ui/EditorPane.tsx` are the pattern) — never spell casts out mid-expression in
   component or logic code.
+- **Cut anything the user's own words reach to the columns it has.** OpenTUI's `<text>`
+  wraps by word unless told otherwise, so a branch named after an issue title, a path, a
+  commit subject or a server's diagnostic does not overflow quietly — it grows its row to
+  two, five, ninety lines and takes the panel's layout with it, and a fixed-height header
+  loses whatever it pushed past the last row. `cut()` in `src/ui/text.ts` fits a string to
+  a budget (`wrapText` there is for the modals that show a whole message); `wrapMode="none"`
+  on a one-line row is the backstop that makes a missed case a clipped string rather than a
+  broken panel. A column that cannot shrink (`flexShrink={0}`) needs both, and needs to
+  carry its own leading space — at the widths where both sides are cut there is no slack
+  left to space them apart. `test/long-names.test.tsx` draws those surfaces at a hostile
+  length; add to it rather than trusting a type.
 - Prefer the smallest change that fits the surrounding code; match its idiom.
 - Formatting and lint are enforced by oxfmt/oxlint — run them rather than hand-aligning.
 - Keep modules focused; if a file is becoming a grab bag, split it along feature lines.

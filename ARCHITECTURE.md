@@ -38,10 +38,10 @@ scripts/
     branches.ts      branch picker state + the switch/create/merge/rename/delete runs
     comparison.ts    branch-comparison state and its OID-keyed caches
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
-    panes.ts         focus, sidebar visibility, and which view it shows (tree / git)
+    panes.ts         focus, sidebar visibility, which view it shows (files/git/extensions)
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
     market.ts        the market as the editor sees it: updates, offers, installs
-    extensionsPage.ts  the extensions page's rows: installed, available, market
+    extensionsPanel.ts the sidebar's extensions view: rows, cursor, fold state
     lsp.ts           language servers: spawn per language, sync buffers, diagnostics,
                      completion requests (flushing the didChange debounce first)
     settings.ts      the two config layers (user / project) resolved into one store,
@@ -108,7 +108,7 @@ scripts/
     EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
     SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
     SearchPanel, DiffView, ImageView, PdfView, SettingsView, SettingEditor,
-    ExtensionsView, LspStatusView, UpdateBanner,
+    SettingPicker, ExtensionsPanel, LspStatusView, UpdateBanner,
     Overlay, TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
     modal.ts         modal geometry: width, list rows, text wrapping
     list.ts          list behaviour: windowing, panel scroll, picker keys, row colour
@@ -211,6 +211,33 @@ plain object because it is only read when the style table is rebuilt.
 Indent guides ride the same pipeline: `computeHighlights` appends one `indent.guide`
 capture per indent stop, so they inherit the newline-offset conversion and run-merging
 that syntax highlights use.
+
+### Add a language server
+
+A `languageServers` entry in a market manifest: `id`, the `command` to spawn, the
+`filetypes` it serves, an optional `install`, and an optional `settings`.
+
+Two things about it are worth knowing before writing one.
+
+**A filetype may have several servers, and all of them run.** `resolveServers`
+([`lsp/servers.ts`](src/lsp/servers.ts)) returns every match in extension load
+order; `clientsFor` ([`app/lsp.ts`](src/app/lsp.ts)) spawns and syncs each, and
+diagnostics are kept per sender and merged, so one publish never wipes another's
+marks. A linter and a language server serving the same files is the case this
+exists for — `extensions/eslint` beside `extensions/typescript`, as eslint and
+tsserver sit beside each other in VS Code. Feature requests are different: a
+completion or a definition goes to each ready server in turn and the first real
+answer wins, because load order cannot say which of them answers what.
+
+**`settings` is the server's own configuration, passed through unvalidated.** It
+is given both ways the protocol offers — answered to every `workspace/configuration`
+item and pushed once as `didChangeConfiguration` after the handshake — because
+servers differ in which they read. druk declares `workspace.configuration` for
+this reason alone; without it a server never asks, and one whose entire behaviour
+is configured does nothing at all. eslint is that server: it lints nothing until
+it has been told `validate: "on"`. `workspace/diagnostic/refresh` is the other
+half — a pull server that watches a config file says its answers went stale that
+way, and druk re-pulls every document it holds.
 
 ### Add an extension contribution kind
 

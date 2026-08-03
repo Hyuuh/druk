@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { fixture, launch, openFile, press, settle } from './helpers'
+import { fixture, launch, openFile, press, runCommand, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const FILE = { 'a.ts': 'const alpha = 1\nconst beta = 2\n' }
@@ -65,9 +65,50 @@ describe('Ctrl+C', () => {
     expect(t.captureCharFrame()).toContain('const alpha = 1')
   })
 
+  // The editor keeps the focus slot while a page or a viewer is drawn over it, but
+  // its textarea has stopped taking keys — so deferring Ctrl+C to it on the focus
+  // slot alone left the key owned by nobody. The unsaved edit is what makes these
+  // assertable: the prompt proves the quit path ran without tearing the renderer
+  // down, which the real-quit cases below have to be last to do.
+
+  test('still quits with a page over the editor', async () => {
+    const t = await openedFile(fixture(FILE))
+    await press(t, input => void input.typeText('EDIT'))
+    await runCommand(t, 'Settings')
+
+    const exited = await exitsDuring(() => press(t, input => input.pressKey('c', { ctrl: true })))
+
+    expect(exited).toBe(0)
+    expect(t.captureCharFrame()).toContain('Unsaved changes')
+  })
+
+  test('still quits with a file rendered instead of edited', async () => {
+    const t = await launch(fixture({ 'a.md': '# Title\n' }))
+    await openFile(t, 'a.md')
+    await press(t, input => void input.typeText('EDIT'))
+    await runCommand(t, 'Markdown: rendered / source')
+
+    const exited = await exitsDuring(() => press(t, input => input.pressKey('c', { ctrl: true })))
+
+    expect(exited).toBe(0)
+    expect(t.captureCharFrame()).toContain('Unsaved changes')
+  })
+
   test('quits when nothing is selected', async () => {
     const t = await openedFile(fixture(FILE))
     expect(selectedText(t)).toBeNull()
+
+    const exited = await exitsDuring(() => press(t, input => input.pressKey('c', { ctrl: true })))
+
+    expect(exited).toBe(1)
+  })
+
+  // Last: no buffer exists to prompt over, so this one quits for real. The welcome
+  // screen holds the editor's focus slot with no textarea behind it at all.
+  test('quits from the welcome screen', async () => {
+    const t = await launch(fixture(FILE))
+    await runCommand(t, 'Toggle sidebar')
+    await settle(t)
 
     const exited = await exitsDuring(() => press(t, input => input.pressKey('c', { ctrl: true })))
 

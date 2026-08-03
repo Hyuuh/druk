@@ -23,7 +23,7 @@ import { GRAMMARS } from '../languages/grammars'
 import type { ServerInstall, ServerSpec } from '../lsp/servers'
 import { THEMES } from '../themes'
 import type { Theme, ThemeUi } from '../themes'
-import type { Extension, ExtensionProblem } from './types'
+import type { Extension, ExtensionCategory, ExtensionProblem } from './types'
 
 /** Read off a shipped theme, so a new chrome color needs no second list here. */
 const UI_KEYS = Object.keys(THEMES.dark.ui) as (keyof ThemeUi)[]
@@ -204,7 +204,18 @@ function parseServer(raw: unknown, fail: (reason: string) => void): ServerSpec |
     return null
   }
   const install = parseInstall(raw.install)
-  return install ? { id, command, filetypes, install } : { id, command, filetypes }
+  // Any object, unvalidated on purpose: this is the *server's* settings shape,
+  // not druk's, and the manifest is the only thing that knows it. Rejecting a
+  // key druk has never heard of would mean a druk release for every server
+  // option — the opposite of what a data extension is for.
+  const settings = isRecord(raw.settings) ? raw.settings : undefined
+  return {
+    id,
+    command,
+    filetypes,
+    ...(install ? { install } : null),
+    ...(settings ? { settings } : null),
+  }
 }
 
 /** A relative path inside the extension's own folder — never an escape from it. */
@@ -381,10 +392,30 @@ export function parseManifest(
       icons,
       languages,
       servers,
+      categories: categoriesOf({ themes, icons, languages, servers }),
       assets,
     },
     problems,
   }
+}
+
+/**
+ * What an extension is, from what it contributes. The one place the mapping
+ * lives: the market's catalog rows and the loaded extensions both go through it,
+ * so a search cannot find one and miss the other.
+ */
+export function categoriesOf(parts: {
+  languages: unknown[]
+  servers: unknown[]
+  themes: unknown[]
+  icons: unknown[]
+}): ExtensionCategory[] {
+  const found: ExtensionCategory[] = []
+  if (parts.languages.length > 0) found.push('language')
+  if (parts.servers.length > 0) found.push('lsp')
+  if (parts.themes.length > 0) found.push('theme')
+  if (parts.icons.length > 0) found.push('icons')
+  return found
 }
 
 /** The one-line summary the palette and the settings page show. */

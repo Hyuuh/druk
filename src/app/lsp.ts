@@ -15,13 +15,14 @@ import {
   hasNodeRuntime,
   installServer,
   installedCommand,
+  removeServer,
   SERVER_ROOT,
 } from '../lsp/install'
 import { projectCommand } from '../lsp/project'
 import { isUnnecessary, severityOf } from '../lsp/protocol'
 import type { CompletionItem, Diagnostic, ProblemSeverity } from '../lsp/protocol'
-import { installHint, resolveServer } from '../lsp/servers'
-import type { FetchableInstall } from '../lsp/servers'
+import { installHint, resolveServers, servers as serverSpecs } from '../lsp/servers'
+import type { FetchableInstall, ResolvedServer } from '../lsp/servers'
 import type { ServerLogLine, ServerView } from '../lsp/status'
 import type { PromptState } from './prompts'
 import type { Settings } from './settings'
@@ -75,6 +76,25 @@ export function createLsp(deps: {
   const { rootDir, settings, status, prompts } = deps
 
   const [problems, setProblems] = createStore<Record<string, Problem[]>>({})
+  /**
+   * What each server said about each file, before they are merged into the list
+   * above. Kept apart because a file may be served by several — eslint and
+   * tsserver both answer for a `.ts` — and each publish replaces only its own
+   * sender's marks. Merging in place would let whichever spoke last wipe the
+   * other's.
+   */
+  const bySource = new Map<string, Map<string, Problem[]>>()
+
+  /**
+   * Set by `wireLspEffects`: ask one server for every open document's
+   * diagnostics again. A pull server that watches a config file says so with
+   * `workspace/diagnostic/refresh` rather than publishing anything, so without
+   * this an eslint config saved mid-session would never take effect.
+   */
+  let refreshPulls: ((serverId: string) => void) | null = null
+  const onDiagnosticsRefresh = (refresh: (serverId: string) => void) => {
+    refreshPulls = refresh
+  }
   /** By server id. `null` marks one that failed, so nothing respawns it. */
   const clients = new Map<string, LspClient | null>()
   /**
@@ -113,32 +133,44 @@ export function createLsp(deps: {
     })
   }
 
-  const onDiagnostics = (uri: string, diagnostics: Diagnostic[]) => {
+  const byPosition = (a: Problem, b: Problem) => a.line - b.line || a.col - b.col
+
+  /** One file's marks from every server that has spoken about it, in order. */
+  const merge = (path: string) => {
+    const senders = bySource.get(path)
+    const all = senders ? [...senders.values()].flat() : []
+    setProblems(path, all.toSorted(byPosition))
+  }
+
+  /** A publish from `serverId`. Replaces that server's marks for the file, only. */
+  const onDiagnosticsFrom = (serverId: string) => (uri: string, diagnostics: Diagnostic[]) => {
     let path: string
     try {
       path = fileURLToPath(uri)
     } catch {
       return // a scheme druk never opened; nothing to attach it to
     }
-    setProblems(
-      path,
-      diagnostics
-        .map(diagnostic => ({
-          path,
-          line: diagnostic.range.start.line,
-          col: diagnostic.range.start.character,
-          endLine: diagnostic.range.end.line,
-          endCol: diagnostic.range.end.character,
-          severity: severityOf(diagnostic),
-          unnecessary: isUnnecessary(diagnostic),
-          message: diagnostic.message,
-          source: diagnostic.source,
-        }))
-        .toSorted((a, b) => a.line - b.line || a.col - b.col),
+    const senders = bySource.get(path) ?? new Map<string, Problem[]>()
+    senders.set(
+      serverId,
+      diagnostics.map(diagnostic => ({
+        path,
+        line: diagnostic.range.start.line,
+        col: diagnostic.range.start.character,
+        endLine: diagnostic.range.end.line,
+        endCol: diagnostic.range.end.character,
+        severity: severityOf(diagnostic),
+        unnecessary: isUnnecessary(diagnostic),
+        message: diagnostic.message,
+        source: diagnostic.source,
+      })),
     )
+    bySource.set(path, senders)
+    merge(path)
   }
 
   const clearProblems = (path: string) => {
+    bySource.delete(path)
     if (problems[path]?.length) setProblems(path, [])
   }
 
@@ -148,7 +180,7 @@ export function createLsp(deps: {
    * per session — `offered` outlives the failure mark, so a decline is final
    * until the next launch.
    */
-  const reportMissing = (resolved: NonNullable<ReturnType<typeof resolveServer>>) => {
+  const reportMissing = (resolved: ResolvedServer) => {
     const name = resolved.command[0]!
     const spec = resolved.install
     if (!spec) return status.say(`LSP: ${name} is not installed, or not on PATH`, 'warn')
@@ -183,18 +215,8 @@ export function createLsp(deps: {
     return tsdk ? { tsserver: { path: tsdk } } : undefined
   }
 
-  /** The running client for `path`'s language — spawned on first use. */
-  const clientFor = (path: string): LspClient | null => {
-    if (!settings.config.lsp) return null
-    const filetype = filetypeForPath(path)
-    const resolved = resolveServer(filetype, settings.config.lspServers)
-    if (!resolved) {
-      // No extension names a server for this language. druk ships none itself, so
-      // this is the normal state for a language whose extension is not installed —
-      // the market decides whether that is worth an offer.
-      if (filetype) onNoServer?.(filetype)
-      return null
-    }
+  /** One server for `path`'s language, spawned on first use. Null if it failed. */
+  const spawnFor = (resolved: ResolvedServer): LspClient | null => {
     const known = clients.get(resolved.id)
     if (known !== undefined) return known
     // The project's own server first — for TypeScript it is the only one that
@@ -218,10 +240,13 @@ export function createLsp(deps: {
      * only costs them the docs/state sync no one needs that early. */
     let spawned: LspClient | null = null
     const client = spawnLspClient({
+      id: resolved.id,
       command,
       rootDir,
       initializationOptions: initializationOptionsFor(resolved.id),
-      onDiagnostics,
+      settings: resolved.settings,
+      onDiagnostics: onDiagnosticsFrom(resolved.id),
+      onRefreshDiagnostics: () => refreshPulls?.(resolved.id),
       onLog: entry => {
         appendLog(resolved.id, entry)
         if (!spawned) return
@@ -259,6 +284,35 @@ export function createLsp(deps: {
   }
 
   /**
+   * Every running server for `path`'s language, in extension load order. More
+   * than one is normal — a linter and a language server both serve TypeScript —
+   * and all of them are synced, so all of them report.
+   */
+  const clientsFor = (path: string): LspClient[] => {
+    if (!settings.config.lsp) return []
+    const filetype = filetypeForPath(path)
+    const resolved = resolveServers(filetype, settings.config.lspServers)
+    if (resolved.length === 0) {
+      // No extension names a server for this language. druk ships none itself, so
+      // this is the normal state for a language whose extension is not installed —
+      // the market decides whether that is worth an offer.
+      if (filetype) onNoServer?.(filetype)
+      return []
+    }
+    return resolved.map(spawnFor).filter(client => client !== null)
+  }
+
+  /**
+   * The client that answers a feature request. Every server sees the document,
+   * but only one can answer a completion or a definition — and which one is not
+   * knowable from load order, since a linter serves the same filetype and
+   * answers neither. So the callers ask each in turn and keep the first real
+   * answer; this is only the list to walk.
+   */
+  const readyClients = (path: string): LspClient[] =>
+    clientsFor(path).filter(client => client.ready())
+
+  /**
    * Fetch a server the user agreed to install, then let it spawn: the failure
    * mark goes, and the generation bump re-opens the documents that were skipped
    * while it was missing.
@@ -279,6 +333,41 @@ export function createLsp(deps: {
     clients.delete(id)
     setGeneration(generation() + 1)
     status.say(`Installed ${name}`)
+  }
+
+  /**
+   * druk's own copy of `id`, and what removing it would take. Null when there is
+   * nothing of druk's to remove — the server is on PATH, or in the project, or
+   * was never installed at all.
+   */
+  const removable = (id: string): { name: string; packages: string[] } | null => {
+    const spec = serverSpecs().find(server => server.id === id)
+    if (!spec?.install || spec.install.kind === 'manual') return null
+    const name = spec.command[0]
+    if (!name || !installedCommand(spec.command)) return null
+    return { name, packages: spec.install.kind === 'npm' ? spec.install.packages : [name] }
+  }
+
+  /**
+   * Delete druk's copy of a server. The client goes first: on Windows a running
+   * process holds its own executable open, and everywhere else a server left
+   * running against deleted files is a crash report nobody can read.
+   */
+  const uninstall = async (id: string): Promise<void> => {
+    const spec = serverSpecs().find(server => server.id === id)
+    if (!spec?.install) return void status.say(`${id}: druk did not install it`, 'warn')
+    const name = spec.command[0] ?? id
+    clients.get(id)?.dispose()
+    clients.delete(id)
+    setServers(id, { state: 'stopped', error: null, docs: [] })
+    status.say(`Removing ${name}…`)
+    const error = await removeServer(spec.install, name)
+    if (error) return void status.say(`Could not remove ${name}: ${error}`, 'error')
+    // The documents it held are open in the other servers still; this only makes
+    // the next matching file try to spawn it again — and be offered the install.
+    setGeneration(generation() + 1)
+    offered.delete(id)
+    status.say(`Removed ${name} from ${SERVER_ROOT}`)
   }
 
   /**
@@ -338,10 +427,14 @@ export function createLsp(deps: {
     col: number,
   ): Promise<CompletionReply | null> => {
     if (!settings.config.lsp || !settings.config.lspCompletion) return null
-    const client = clientFor(path)
-    if (!client?.ready()) return null
+    const ready = readyClients(path)
+    if (ready.length === 0) return null
     flushEdits?.(path)
-    return normalizeCompletion(await client.complete(path, { line, character: col }))
+    for (const client of ready) {
+      const reply = normalizeCompletion(await client.complete(path, { line, character: col }))
+      if (reply && reply.items.length > 0) return reply
+    }
+    return null
   }
 
   /**
@@ -351,10 +444,14 @@ export function createLsp(deps: {
    */
   const definition = async (path: string, line: number, col: number): Promise<Target | null> => {
     if (!settings.config.lsp) return null
-    const client = clientFor(path)
-    if (!client?.ready()) return null
+    const ready = readyClients(path)
+    if (ready.length === 0) return null
     flushEdits?.(path)
-    return normalizeDefinition(await client.definition(path, { line, character: col }))
+    for (const client of ready) {
+      const target = normalizeDefinition(await client.definition(path, { line, character: col }))
+      if (target) return target
+    }
+    return null
   }
 
   /**
@@ -367,8 +464,10 @@ export function createLsp(deps: {
     item: CompletionItem,
   ): Promise<CompletionItem | null> => {
     if (!settings.config.lsp || !settings.config.lspCompletion) return Promise.resolve(null)
-    const client = clientFor(path)
-    if (!client?.ready()) return Promise.resolve(null)
+    // The first ready server, not each in turn: the item came from whichever
+    // answered `complete`, and only that one holds the handle it resolves.
+    const client = readyClients(path)[0]
+    if (!client) return Promise.resolve(null)
     return client.resolveCompletion(item)
   }
 
@@ -376,13 +475,16 @@ export function createLsp(deps: {
     problems,
     servers,
     clearProblems,
-    clientFor,
+    clientsFor,
     complete,
     definition,
     resolveCompletion,
     onFlushNeeded,
+    onDiagnosticsRefresh,
     onMissingServer,
     install,
+    removable,
+    uninstall,
     generation,
     restart,
     restarts,
@@ -403,7 +505,8 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
   const { lsp, settings, workspace } = deps
 
   interface Synced {
-    client: LspClient
+    /** Every server the document is open in — a linter and a language server both. */
+    clients: LspClient[]
     /** Text and dirty flag as last reported, to tell edits and saves apart. */
     text: string
     dirty: boolean
@@ -417,14 +520,27 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
     const edit = pendingEdits.get(path)
     if (!edit) return
     pendingEdits.delete(path)
-    edit.entry.client.changeDocument(path, edit.text)
+    for (const client of edit.entry.clients) {
+      client.changeDocument(path, edit.text)
+      // Pull servers report nothing on their own: every sync is followed by the
+      // question, or the marks would stay on the text they were computed for.
+      client.pullDiagnostics(path)
+    }
     edit.entry.text = edit.text
-    // Pull servers report nothing on their own: every sync is followed by the
-    // question, or the marks would stay on the text they were computed for.
-    edit.entry.client.pullDiagnostics(path)
   }
 
   lsp.onFlushNeeded(flushEdit)
+
+  // A server that says its answers went stale gets them asked again, for every
+  // document it holds — it is the only signal a pull server gives when a file it
+  // watches, rather than one druk synced, is what changed.
+  lsp.onDiagnosticsRefresh(serverId => {
+    for (const [path, entry] of synced) {
+      for (const client of entry.clients) {
+        if (client.id === serverId) client.pullDiagnostics(path)
+      }
+    }
+  })
 
   const flushAll = () => {
     flushTimer = null
@@ -461,7 +577,7 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
     for (const [path, entry] of synced) {
       if (openSet.has(path)) continue
       pendingEdits.delete(path)
-      entry.client.closeDocument(path)
+      for (const client of entry.clients) client.closeDocument(path)
       synced.delete(path)
       // Not every server publishes an empty set on didClose; without this a
       // reopened file would show diagnostics from a buffer long gone.
@@ -476,23 +592,27 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
       const dirty = buffer.dirty
       let known = synced.get(path)
 
-      // The entry's server is gone — it failed to spawn, or crashed. Forgetting
-      // it is what lets the document reach a replacement: the very file whose
-      // opening triggered the install offer is synced to the *dead* client, so
-      // without this the generation bump after an install re-opens every
-      // document except the one that asked for the server.
-      if (known?.client.dead()) {
+      // Any of the entry's servers gone — one failed to spawn, or crashed — and
+      // the whole entry is forgotten. Forgetting it is what lets the document
+      // reach a replacement: the very file whose opening triggered the install
+      // offer is synced to the *dead* client, so without this the generation
+      // bump after an install re-opens every document except the one that asked
+      // for the server.
+      if (known?.clients.some(client => client.dead())) {
         pendingEdits.delete(path)
         synced.delete(path)
         known = undefined
       }
 
       if (!known) {
-        const client = lsp.clientFor(path)
-        if (!client) continue
-        client.openDocument(path, filetypeForPath(path) ?? 'plaintext', text)
-        client.pullDiagnostics(path)
-        synced.set(path, { client, text, dirty })
+        const clients = lsp.clientsFor(path)
+        if (clients.length === 0) continue
+        const filetype = filetypeForPath(path) ?? 'plaintext'
+        for (const client of clients) {
+          client.openDocument(path, filetype, text)
+          client.pullDiagnostics(path)
+        }
+        synced.set(path, { clients, text, dirty })
         continue
       }
 
@@ -504,10 +624,12 @@ export function wireLspEffects(deps: { lsp: Lsp; settings: Settings; workspace: 
         // dirty fell: this run is a save. The pending edit goes first so the
         // didSave refers to the text that was actually written.
         flushEdit(path)
-        known.client.saveDocument(path)
-        // A formatter may have rewritten the file, and a save is when a pull
-        // server's project-wide errors are worth asking about again.
-        known.client.pullDiagnostics(path)
+        for (const client of known.clients) {
+          client.saveDocument(path)
+          // A formatter may have rewritten the file, and a save is when a pull
+          // server's project-wide errors are worth asking about again.
+          client.pullDiagnostics(path)
+        }
       }
       known.dirty = dirty
     }

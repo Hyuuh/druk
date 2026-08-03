@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
@@ -22,7 +22,16 @@ import { languageFor } from '../src/languages'
 import { filetypeForPath } from '../src/languages/highlight'
 import { resolveServer } from '../src/lsp/servers'
 import { isThemeName, themeFor, themeNames } from '../src/themes'
-import { fixture, launch, openPalette, press, runCommand, settle } from './helpers'
+import {
+  fixture,
+  launch,
+  openPalette,
+  press,
+  pressEscape,
+  runCommand,
+  settle,
+  until,
+} from './helpers'
 
 /** The smallest theme a manifest can carry: every ui color, one syntax group. */
 const themeColors = (color: string) =>
@@ -131,6 +140,21 @@ test('a language manifest contributes the language and its server', () => {
   const server = resolveServer('nim', {})
   expect(server?.command).toEqual(['nimlangserver'])
   expect(server?.install).toEqual({ kind: 'manual', command: 'nimble install nimlangserver' })
+})
+
+test('what an extension is comes from what it contributes, never from a field', () => {
+  // Derived, so a manifest cannot claim to be a theme pack and ship a server.
+  const appearance = parseManifest({ ...MANIFEST, categories: ['lsp'] }, '/p.json')
+  expect(appearance.extension?.categories).toEqual(['theme', 'icons'])
+
+  const language = parseManifest(LANGUAGE, '/l.json')
+  expect(language.extension?.categories).toEqual(['language', 'lsp'])
+
+  // Markdown ships no server, so `lsp` is not one of its words — the whole point
+  // of keeping the categories apart from the filetypes.
+  const { extensions: loaded } = loadExtensions(fixture({}))
+  const markdown = loaded.find(extension => extension.id === 'markdown')
+  expect(markdown?.categories).toEqual(['language'])
 })
 
 test('a manifest that is both a theme pack and a language is refused', () => {
@@ -317,39 +341,80 @@ test('an extension theme is in the palette and the settings page', async () => {
   expect(t.captureCharFrame()).toContain('Neon')
 })
 
-test('the extensions page lists what is installed and turns one off', async () => {
+test('the sidebar panel lists what is installed and turns one off', async () => {
   install(MANIFEST)
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   loadExtensions(dir)
-  const t = await launch(dir, {}, { height: 60 })
+  const t = await launch(dir, {}, { height: 40 })
 
-  await runCommand(t, 'Extensions')
+  await runCommand(t, 'Extensions panel')
   await settle(t)
   expect(t.captureCharFrame()).toContain('Test Pack')
-  expect(t.captureCharFrame()).toContain('✓ 2.1.0')
+  expect(t.captureCharFrame()).toContain('✓ Test Pack')
 
-  // The filter is how a test reaches one row without counting the preinstalled
-  // ones, which adding a shipped extension would silently change.
+  // The search is how a test reaches one row without counting the preinstalled
+  // ones, which adding a shipped extension would silently change — and it lands
+  // the cursor on the hit, so the Enter after it is the toggle.
   await press(t, input => void input.typeText('/'))
   await press(t, input => void input.typeText('Test Pack'))
   await press(t, input => input.pressEnter())
   await settle(t)
-  expect(t.captureCharFrame()).toContain('✗ 2.1.0')
+  expect(t.captureCharFrame()).toContain('✗ Test Pack')
 })
 
-test('the extensions page offers the market what it has not installed', async () => {
+test('Backspace asks before it deletes an extension, and deleting is what it does', async () => {
+  const folder = install(MANIFEST)
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
-  const t = await launch(dir, {}, { height: 60 })
+  loadExtensions(dir)
+  const t = await launch(dir, {}, { height: 40 })
 
-  await runCommand(t, 'Extensions')
+  await runCommand(t, 'Extensions panel')
   await settle(t)
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('Test Pack'))
+  // Esc leaves the field but keeps the row it found — Backspace is the field's
+  // while it is up, so this is the only way to reach the row with it.
+  await pressEscape(t)
+  await press(t, input => input.pressBackspace())
+  // Asked, not done: the folder is still there while the question is up.
+  expect(t.captureCharFrame()).toContain('Uninstall extension')
+  expect(existsSync(folder)).toBe(true)
+
+  await press(t, input => input.pressEnter())
+  await until(t, () => !existsSync(folder))
+})
+
+test('a built-in has no folder to delete, so Backspace says so instead', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const t = await launch(dir, {}, { height: 40 })
+
+  await runCommand(t, 'Extensions panel')
+  await settle(t)
+  await press(t, input => void input.typeText('/'))
+  await press(t, input => void input.typeText('TypeScript'))
+  await pressEscape(t)
+  await press(t, input => input.pressBackspace())
   const frame = t.captureCharFrame()
-  expect(frame).toContain('Installed')
-  expect(frame).toContain('Available')
-  expect(frame).toContain('Market')
-  // Nothing has been fetched in a test, so the market section says so rather
-  // than looking like an empty catalog.
-  expect(frame).toContain('Nothing fetched yet')
+  expect(frame).not.toContain('Uninstall extension')
+  expect(frame).toContain('ships with druk')
+})
+
+test("the panel is the sidebar's third view, beside files and git", async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\n' })
+  const t = await launch(dir, {}, { height: 40 })
+
+  const tabs = t.captureCharFrame()
+  expect(tabs).toContain('Files')
+  expect(tabs).toContain('Git')
+  expect(tabs).toContain('Ext')
+
+  await runCommand(t, 'Extensions panel')
+  await settle(t)
+  const panel = t.captureCharFrame()
+  expect(panel).toContain('extensions')
+  expect(panel).toContain('INSTALLED')
+  // The market is not a heading either: it arrives only once something is typed.
+  expect(panel).not.toContain('AVAILABLE')
 })
 
 test('every icon glyph druk ships is one cell wide', () => {

@@ -854,6 +854,31 @@ export function createSettings(deps: {
         pick: at => bindingEdit(BINDABLE[at]!),
       },
     },
+    {
+      // The sidebar's extensions panel is where they are installed and turned
+      // off; what is left here is the two that are settings — a switch and a
+      // URL, neither of which belongs in a sidebar column.
+      section: 'Extensions',
+      key: 'extensionUpdates',
+      label: 'Check the market at startup',
+      value: onOff(view().extensionUpdates),
+      cycle: toggleMarket,
+    },
+    {
+      // Free text: a registry is a URL nobody would pick from a list, and the
+      // only two answers that matter are druk's own and a fork's.
+      section: 'Extensions',
+      key: 'extensionRegistry',
+      label: 'Registry',
+      value: view().extensionRegistry === MARKET_URL ? 'druk' : view().extensionRegistry,
+      cycle: () => status.say('Enter sets the market URL'),
+      edit: {
+        title: 'Extension registry',
+        fields: [{ initial: view().extensionRegistry, placeholder: MARKET_URL }],
+        hint: ['An https folder holding index.json and <id>/extension.json', 'Empty: druk’s own'],
+        apply: values => applyRegistry(values[0] ?? ''),
+      },
+    },
   ]
 
   /**

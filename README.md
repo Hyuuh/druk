@@ -236,12 +236,34 @@ Bash and about fifteen more are one install away, each bringing its language ser
 with it.
 Themes beyond the GitHub pair and the Nerd Font icons are there too.
 
-`F1` → `Extensions` opens a page of its own, the way `Settings` does. **Installed**
-lists every extension with what it contributes — `Enter` turns one off and back on,
-`Backspace` uninstalls one. **Available** is the market minus what you already have;
-`Enter` installs one after showing what it adds and, for a language server, the command
-druk would run. **Market** holds the update check, the startup-check switch and the
-registry URL. `/` filters the rows.
+A language may have more than one server, and druk runs all of them — so the
+**ESLint** extension reports beside whichever language server is already serving the
+file, the way eslint sits beside tsserver in VS Code. It uses the project's own
+`node_modules` copy when there is one.
+
+`Ctrl+Opt+X` opens the extensions panel — the sidebar's third view, beside Files and
+Git. `INSTALLED` lists what you have: `Enter` turns one off and back on, `Backspace`
+uninstalls one — after a confirm naming the language servers druk fetched for it,
+which are deleted with it.
+
+Servers themselves are removable too: `d` on the language-server status page
+(`F1` → `Problems` → `Language server status`) deletes druk's copy of the selected
+one. Only ever druk's — a server on your `PATH` or in the project's `node_modules`
+is not druk's to delete, and it says so instead.
+
+The market is not listed. Search for it: the box at the top of the panel (`/`, or
+click it) covers what you have and what the market offers alike, and an `AVAILABLE`
+section appears with the matches. Every extension has **categories** — `language`,
+`lsp`, `theme`, `icons` — and the search matches those as well as names and
+language ids (`go`, `rust`), so you can find one by what it does rather than what
+it is called. The categories are drawn beside the name when the sidebar is wide
+enough for them — capped at fifty, with a row saying how many were
+left out. The cursor lands on the first hit, so `Enter` installs, after showing what
+the extension adds and, for a language server, the command druk would run. `u`
+updates everything; `r` re-reads the manifests.
+
+The two that are settings rather than extensions — whether to check the market at
+startup, and the registry URL — are on the settings page.
 
 druk also offers on its own: open a Go file with no Go extension and it says so, and a
 config naming a theme you no longer have is offered the extension that carries it. When
@@ -253,8 +275,8 @@ Contributing one is a JSON file and a pull request: see
 [`extensions/README.md`](https://github.com/letstri/druk/tree/main/extensions).
 
 An extension is a JSON file, so you can also just write one. Drop it in
-`~/.config/druk/extensions/` — either `<name>.json`, or `<name>/extension.json` — and use
-the extensions page's `Reload from disk` row. A project can carry its own in
+`~/.config/druk/extensions/` — either `<name>.json`, or `<name>/extension.json` — and
+press `r` in the extensions panel. A project can carry its own in
 `<project>/.druk/extensions/`.
 
 An appearance extension:
@@ -329,7 +351,7 @@ languages that project uses.
 
 Manifests are data, never code: installing an extension runs nothing — though a language
 server it declares is a program druk starts when a matching file opens, which is why
-the install prompt names that command. They are read at startup — the extensions page's
-`Reload from disk` row picks up a change without restarting. Its Installed section turns
-one off (`disabledExtensions` in the config), and a manifest with a mistake in it says so
-in the status bar rather than failing quietly.
+the install prompt names that command. They are read at startup — `r` in the extensions
+panel picks up a change without restarting. Its `INSTALLED` section turns one off
+(`disabledExtensions` in the config), and a manifest with a mistake in it says so in the
+status bar rather than failing quietly.

@@ -1,6 +1,7 @@
 import type { Branches } from './branches'
 import type { Comparison } from './comparison'
 import type { EditorBridge } from './editor'
+import type { ExtensionsPanel } from './extensionsPanel'
 import type { FileOps } from './fileOps'
 import type { Git, GitOp } from './git'
 import type { Lsp } from './lsp'
@@ -17,6 +18,8 @@ import type { Workspace } from './workspace'
 /** Every controller, assembled once in App and handed to the wiring that spans them. */
 export interface AppContext {
   rootDir: string
+  /** A page or viewer covers the editor's slot, so its textarea takes no keys. */
+  editorCovered: () => boolean
   status: Status
   settings: Settings
   tree: Tree
@@ -26,6 +29,7 @@ export interface AppContext {
   gitOp: GitOp
   lsp: Lsp
   market: Market
+  extensions: ExtensionsPanel
   branches: Branches
   comparison: Comparison
   workspace: Workspace

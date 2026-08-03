@@ -13,7 +13,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "bash",
@@ -26,7 +29,11 @@
         "filetypes": [
           "bash"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "c",
@@ -39,7 +46,11 @@
         "filetypes": [
           "c"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "catppuccin",
@@ -55,7 +66,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "cpp",
@@ -68,7 +82,11 @@
         "filetypes": [
           "cpp"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "csharp",
@@ -81,7 +99,10 @@
         "filetypes": [
           "csharp"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "css",
@@ -97,7 +118,11 @@
           "sass",
           "less"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "dart",
@@ -110,7 +135,10 @@
         "filetypes": [
           "dart"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "dotenv",
@@ -123,7 +151,10 @@
         "filetypes": [
           "dotenv"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "dracula",
@@ -136,7 +167,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "elixir",
@@ -149,7 +183,32 @@
         "filetypes": [
           "elixir"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
+    },
+    {
+      "id": "eslint",
+      "name": "ESLint",
+      "version": "1.0.0",
+      "description": "ESLint diagnostics from the project's own eslint, beside whatever language server is already serving the file.",
+      "provides": {
+        "themes": [],
+        "icons": [],
+        "filetypes": [
+          "typescript",
+          "typescriptreact",
+          "javascript",
+          "javascriptreact",
+          "vue",
+          "svelte"
+        ]
+      },
+      "categories": [
+        "lsp"
+      ]
     },
     {
       "id": "everforest",
@@ -163,7 +222,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "go",
@@ -176,7 +238,11 @@
         "filetypes": [
           "go"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "gruvbox",
@@ -190,7 +256,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "hcl",
@@ -204,7 +273,10 @@
           "terraform",
           "hcl"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "html",
@@ -217,7 +289,11 @@
         "filetypes": [
           "html"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "ini",
@@ -230,7 +306,10 @@
         "filetypes": [
           "ini"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "java",
@@ -243,7 +322,10 @@
         "filetypes": [
           "java"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "json",
@@ -256,7 +338,11 @@
         "filetypes": [
           "json"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "kanagawa",
@@ -271,7 +357,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "kotlin",
@@ -284,7 +373,10 @@
         "filetypes": [
           "kotlin"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "liquid",
@@ -297,7 +389,10 @@
         "filetypes": [
           "liquid"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "lua",
@@ -310,7 +405,11 @@
         "filetypes": [
           "lua"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "markdown",
@@ -323,7 +422,10 @@
         "filetypes": [
           "markdown"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "nerd-icons",
@@ -336,7 +438,10 @@
           "nerd"
         ],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "icons"
+      ]
     },
     {
       "id": "nord",
@@ -349,7 +454,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "one-dark",
@@ -362,7 +470,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "php",
@@ -375,7 +486,11 @@
         "filetypes": [
           "php"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "python",
@@ -388,7 +503,11 @@
         "filetypes": [
           "python"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "rose-pine",
@@ -403,7 +522,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "ruby",
@@ -416,7 +538,11 @@
         "filetypes": [
           "ruby"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "rust",
@@ -429,7 +555,11 @@
         "filetypes": [
           "rust"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "scala",
@@ -442,7 +572,10 @@
         "filetypes": [
           "scala"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "solarized",
@@ -456,7 +589,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "sql",
@@ -469,7 +605,10 @@
         "filetypes": [
           "sql"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "svelte",
@@ -482,7 +621,10 @@
         "filetypes": [
           "svelte"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "swift",
@@ -495,7 +637,11 @@
         "filetypes": [
           "swift"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "tokyo-night",
@@ -508,7 +654,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "toml",
@@ -521,7 +670,10 @@
         "filetypes": [
           "toml"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "tsrx",
@@ -534,7 +686,10 @@
         "filetypes": [
           "tsrx"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "typescript",
@@ -550,7 +705,11 @@
           "typescriptreact",
           "javascriptreact"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     },
     {
       "id": "vesper",
@@ -563,7 +722,10 @@
         ],
         "icons": [],
         "filetypes": []
-      }
+      },
+      "categories": [
+        "theme"
+      ]
     },
     {
       "id": "vue",
@@ -576,7 +738,10 @@
         "filetypes": [
           "vue"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "yaml",
@@ -589,7 +754,10 @@
         "filetypes": [
           "yaml"
         ]
-      }
+      },
+      "categories": [
+        "language"
+      ]
     },
     {
       "id": "zig",
@@ -602,7 +770,11 @@
         "filetypes": [
           "zig"
         ]
-      }
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
     }
   ]
 }

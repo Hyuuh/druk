@@ -6,6 +6,7 @@ import type { ComparisonCommitDetail, ComparisonContent, ComparisonFile } from '
 import { ui } from '../themes'
 import { DiffView, diffStatusColor } from './DiffView'
 import type { DiffMode } from './DiffView'
+import { cut } from './text'
 import { useKeys } from './useKeys'
 
 export interface ComparisonViewProps {
@@ -47,8 +48,11 @@ export function ComparisonView(props: ComparisonViewProps) {
     key.preventDefault()
   })
 
+  /** Columns a header row has, after the pane's own left padding. */
+  const room = () => Math.max(8, props.width - 1)
+
   const fileHeader = (file: ComparisonFile) =>
-    `${file.status} ${file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}`
+    cut(`${file.status} ${file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}`, room())
 
   return (
     <box
@@ -63,18 +67,26 @@ export function ComparisonView(props: ComparisonViewProps) {
           const commit = () => detail().commit
           const parents = () => commit().parents.length
           return (
+            // Three rows and three texts: a subject or an address allowed to wrap
+            // pushes the rows under it past the fixed height, where they are gone.
             <box height={3} flexDirection="column" backgroundColor={ui.solidBarBg} paddingLeft={1}>
               <text
+                wrapMode="none"
                 fg={ui.text}
                 bg={ui.solidBarBg}
-                content={`${commit().shortOid} ${commit().subject}`}
+                content={cut(`${commit().shortOid} ${commit().subject}`, room())}
               />
               <text
+                wrapMode="none"
                 fg={ui.dim}
                 bg={ui.solidBarBg}
-                content={`${commit().authorName} <${commit().authorEmail}> · ${commit().authoredAt}`}
+                content={cut(
+                  `${commit().authorName} <${commit().authorEmail}> · ${commit().authoredAt}`,
+                  room(),
+                )}
               />
               <text
+                wrapMode="none"
                 fg={ui.faint}
                 bg={ui.solidBarBg}
                 content={`${detail().stats.files} files · ${parents()} parent${parents() === 1 ? '' : 's'} · ←→ files · Esc back`}
@@ -91,6 +103,7 @@ export function ComparisonView(props: ComparisonViewProps) {
               <box flexGrow={1} flexDirection="column" backgroundColor={ui.solidBg}>
                 <box backgroundColor={ui.solidBarBg} paddingLeft={1}>
                   <text
+                    wrapMode="none"
                     fg={diffStatusColor(file().status)}
                     bg={ui.solidBarBg}
                     content={fileHeader(file())}

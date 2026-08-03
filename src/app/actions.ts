@@ -271,6 +271,21 @@ export function createCommands(ctx: AppContext) {
     },
     problemsNext: () => jumpProblem(1),
     problemsPrev: () => jumpProblem(-1),
+    /**
+     * Delete druk's own copy of a server. Only ever druk's: one on PATH or in
+     * the project is not druk's to remove, and the row says so rather than
+     * offering a confirm that would do nothing.
+     */
+    uninstallServer: (id: string) => {
+      const target = ctx.lsp.removable(id)
+      if (!target) return say(`${id}: druk did not install it — nothing to remove`, 'warn')
+      ctx.prompts.setPrompt({
+        kind: 'uninstallServer',
+        id,
+        name: target.name,
+        packages: target.packages,
+      })
+    },
     restartLsp: () => {
       if (!settings.config.lsp) return say('LSP is off', 'warn')
       ctx.lsp.restart()
@@ -386,13 +401,10 @@ export function createCommands(ctx: AppContext) {
     gitRenameBranch: () => ctx.branches.open('rename'),
     gitDeleteBranch: () => ctx.branches.open('delete'),
     gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
-    openExtensions: () => {
-      // One page at a time: the slot under this one is the editor's.
-      ctx.workspace.setDiff(null)
-      ctx.workspace.setPage('extensions')
-      panes.setFocus('editor')
-    },
-    checkExtensionUpdates: () => void ctx.market.checkNow(),
+    openExtensions: panes.toggleExtensionsView,
+    reloadExtensions: ctx.extensions.reload,
+    updateExtensions: ctx.extensions.updateAll,
+    checkExtensionUpdates: ctx.extensions.checkNow,
     showHelp: () => ctx.overlays.setHelp(true),
     quit: ctx.prompts.quit,
   }
