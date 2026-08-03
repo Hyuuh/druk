@@ -1,9 +1,10 @@
 import type { KeyEvent, ScrollBoxRenderable, TreeSitterClient } from '@opentui/core'
-import { useTerminalDimensions } from '@opentui/solid'
+import { useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, on, onMount } from 'solid-js'
 
 import { getSyntaxStyle, highlightClient } from '../languages/highlight'
 import { paintedTheme, ui } from '../themes'
+import { mermaidRenderer } from './mermaidBlock'
 import { useKeys } from './useKeys'
 
 export interface MarkdownViewProps {
@@ -50,6 +51,17 @@ export function MarkdownView(props: MarkdownViewProps) {
     on(
       () => paintedTheme(),
       () => getSyntaxStyle(),
+    ),
+  )
+
+  // Keyed on the painted theme like the syntax style beside it: the diagram's
+  // colours are baked into its cells when it is built, so a palette change has
+  // to hand the renderable a new renderer rather than repaint the old one.
+  const renderer = useRenderer()
+  const renderNode = createMemo(
+    on(
+      () => paintedTheme(),
+      () => mermaidRenderer(renderer, ui),
     ),
   )
 
@@ -122,6 +134,7 @@ export function MarkdownView(props: MarkdownViewProps) {
         <markdown
           content={props.content}
           syntaxStyle={style()}
+          renderNode={renderNode()}
           treeSitterClient={client() ?? undefined}
           fg={ui.text}
           bg={ui.solidBg}

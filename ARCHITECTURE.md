@@ -56,6 +56,9 @@ scripts/
     search.ts        in-file/project search, fuzzy matching, replace
     image.ts         PNG/JPEG decode + scaling onto half-block cells, for the viewer
     pdf.ts           embedded PDFium WASM, serialized document/page rendering, fit and pan geometry
+    mermaid/         mermaid fences drawn into terminal cells: parse.ts reads the
+                     dialects, graph.ts lays out anything that is boxes and edges,
+                     sequence.ts and pie.ts render their own, canvas.ts is the cell grid
     git.ts           queries, mutations, and async branch-comparison metadata/blob reads
     repos.ts         which repositories the opened folder holds, and which one a path
                      is in — filesystem-only, so the tree may ask per row
