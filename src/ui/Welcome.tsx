@@ -40,8 +40,11 @@ export function Welcome(props: WelcomeProps) {
       justifyContent="center"
     >
       {/* One left-aligned block, centred as a whole: centring each row on its own
-          is what made the key column stagger. */}
-      <box flexDirection="column" backgroundColor={ui.bg} alignItems="flex-start">
+          is what made the key column stagger. The block is sized by its widest
+          row, so it needs the cap — a folder and a branch both named after a
+          whole issue title made it wider than the pane, and it drew over the
+          sidebar rather than being clipped at the pane's edge. */}
+      <box flexDirection="column" backgroundColor={ui.bg} alignItems="flex-start" maxWidth="100%">
         <text
           fg={ui.accent}
           bg={ui.bg}
@@ -49,6 +52,7 @@ export function Welcome(props: WelcomeProps) {
           attributes={TextAttributes.BOLD}
         />
         <text
+          wrapMode="none"
           fg={ui.dim}
           bg={ui.bg}
           content={props.branch ? `${props.rootName} · ${props.branch}` : props.rootName}

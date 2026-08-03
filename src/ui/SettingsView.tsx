@@ -2,37 +2,19 @@ import { homedir } from 'node:os'
 
 import type { KeyEvent } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 
 import type { ConfigScope } from '../core/config'
 import { fuzzyScore } from '../core/search'
 import { ui } from '../themes'
-import { listRows, modalWidth, PAD } from './modal'
-import { ModalPanel } from './Overlay'
+import { SettingEditor } from './SettingEditor'
+import type { SettingEdit } from './SettingEditor'
+import { SettingPicker } from './SettingPicker'
+import { cut } from './text'
 import { TextInput } from './TextInput'
 import { useKeys } from './useKeys'
 
-/** One input inside an edit. A lone field needs no label; several do. */
-export interface SettingField {
-  label?: string
-  /** What the field opens holding — the value in force, or '' when adding. */
-  initial: string
-  placeholder?: string
-}
-
-/** A free-text edit floating over the page — the values no list can hold. */
-export interface SettingEdit {
-  title: string
-  /** Drawn top to bottom; Tab moves between them, and `apply` gets them in order. */
-  fields: SettingField[]
-  /**
-   * Lines under the fields, explaining what the values have to be. Worth
-   * spelling out here rather than in docs: this modal *is* the documentation for
-   * anything the page cannot offer as a list of values.
-   */
-  hint?: string[]
-  apply: (values: string[]) => void
-}
+export type { SettingEdit, SettingField } from './SettingEditor'
 
 export interface SettingRow {
   /** Heading the row is grouped under; consecutive rows share one heading. */
@@ -223,6 +205,13 @@ export function SettingsView(props: SettingsViewProps) {
   }
 
   /**
+   * Columns a row's value may take. Half the pane: every label is fixed text and
+   * shorter than that, so the split costs nothing readable — and the value is
+   * the half that carries paths and commands somebody typed.
+   */
+  const valueRoom = () => Math.max(8, Math.floor(props.width / 2) - 4)
+
+  /**
    * The file the changes land in, plus what the ◆ rows mean — which is not the
    * same thing in the two scopes: here it is "set in this file", on the user's
    * page it is "and the project overrides it anyway".
@@ -318,16 +307,26 @@ export function SettingsView(props: SettingsViewProps) {
                 }}
               >
                 <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
-                <text fg={active() ? ui.text : ui.dim} bg={bg()} content={row.label} />
+                <text
+                  wrapMode="none"
+                  fg={active() ? ui.text : ui.dim}
+                  bg={bg()}
+                  content={row.label}
+                />
                 <box flexGrow={1} backgroundColor={bg()} />
                 <Show when={row.local}>
                   <text fg={ui.accent} bg={bg()} flexShrink={0} content="◆ " />
                 </Show>
+                {/* The value column cannot shrink, and half of what it shows is
+                    typed by the user — a formatter command, a tsdk path. Left
+                    whole, one of those wraps into a column of single characters
+                    and the page's row window stops matching what is drawn. */}
                 <text
+                  wrapMode="none"
                   fg={active() ? ui.accent : ui.text}
                   bg={bg()}
                   flexShrink={0}
-                  content={row.value}
+                  content={cut(row.value, valueRoom())}
                 />
                 <text fg={bg()} bg={bg()} flexShrink={0} content=" " />
               </box>
@@ -377,197 +376,5 @@ export function SettingsView(props: SettingsViewProps) {
         )}
       </Show>
     </box>
-  )
-}
-
-/** A form over the page: Enter applies what the fields hold, Esc walks away. */
-function SettingEditor(props: {
-  edit: SettingEdit
-  /** The overlay is confined to the settings pane, so the modal sizes to it. */
-  paneWidth: number
-  /** The typed values, in field order, or null for Esc. */
-  onDone: (values: string[] | null) => void
-}) {
-  const [values, setValues] = createSignal(props.edit.fields.map(field => field.initial))
-  const [focus, setFocus] = createSignal(0)
-  const width = () => modalWidth(props.paneWidth, 0.7, 30, 60)
-  const count = () => props.edit.fields.length
-
-  useKeys((key: KeyEvent) => {
-    if (key.defaultPrevented) return
-    const k = key.name
-    if (k === 'return' || k === 'enter') {
-      key.preventDefault()
-      props.onDone(values())
-    } else if (k === 'escape') {
-      key.preventDefault()
-      props.onDone(null)
-    } else if (count() > 1 && (k === 'tab' || k === 'up' || k === 'down')) {
-      key.preventDefault()
-      const dir = k === 'up' || (k === 'tab' && key.shift) ? -1 : 1
-      setFocus(at => (at + dir + count()) % count())
-    }
-  })
-
-  const setField = (at: number, value: string) =>
-    setValues(previous => previous.map((old, i) => (i === at ? value : old)))
-
-  return (
-    <ModalPanel zIndex={150} width={width()} title={` ${props.edit.title} `}>
-      <For each={props.edit.fields}>
-        {(field, at) => (
-          <>
-            <Show when={field.label}>
-              <text
-                fg={at() === focus() ? ui.text : ui.dim}
-                bg={ui.panelBg}
-                content={field.label!}
-              />
-            </Show>
-            {/* Two focused inputs would split the typing between them, so the
-                  field without the cursor is drawn as plain text. */}
-            <Show
-              when={at() === focus()}
-              fallback={
-                <text
-                  fg={values()[at()] ? ui.dim : ui.faint}
-                  bg={ui.panelBg}
-                  content={values()[at()] || field.placeholder || ''}
-                />
-              }
-            >
-              <TextInput
-                value={values()[at()]!}
-                placeholder={field.placeholder}
-                onInput={value => setField(at(), value)}
-              />
-            </Show>
-          </>
-        )}
-      </For>
-      <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-      <For each={props.edit.hint ?? []}>
-        {line => <text fg={ui.faint} bg={ui.panelBg} content={line} />}
-      </For>
-      <text
-        fg={ui.dim}
-        bg={ui.panelBg}
-        content={
-          count() > 1 ? 'Tab next field · Enter apply · Esc cancel' : 'Enter apply · Esc cancel'
-        }
-      />
-    </ModalPanel>
-  )
-}
-
-/**
- * Fuzzy pick between a setting's values — the long lists (26 themes) that ←→
- * would take a dozen presses to cross. The value in force starts selected, so
- * a bare Enter keeps things as they are.
- */
-function SettingPicker(props: {
-  title: string
-  options: string[]
-  /** Index of the value in force, marked and selected first. */
-  activeIndex: number
-  /** The overlay is confined to the settings pane, so the modal sizes to it. */
-  paneWidth: number
-  onPick: (index: number) => void
-  onClose: () => void
-  onPreview?: (index: number) => void
-  onRestore?: () => void
-}) {
-  const dimensions = useTerminalDimensions()
-  const [query, setQuery] = createSignal('')
-  const [index, setIndex] = createSignal(Math.max(0, props.activeIndex))
-
-  const width = () => modalWidth(props.paneWidth, 0.7, 30, 60)
-  const visibleRows = () => listRows(dimensions().height, 8, 18)
-
-  const matches = createMemo(() => {
-    const q = query().trim()
-    const scored: { at: number; score: number }[] = []
-    for (let at = 0; at < props.options.length; at++) {
-      const score = fuzzyScore(props.options[at]!, q)
-      if (score !== null) scored.push({ at, score })
-    }
-    return scored.toSorted((a, b) => a.score - b.score)
-  })
-
-  const selected = () => Math.min(index(), Math.max(0, matches().length - 1))
-
-  let lastPreviewed: number | undefined
-  createEffect(() => {
-    const match = matches()[selected()]
-    if (match && props.onPreview && match.at !== lastPreviewed) {
-      lastPreviewed = match.at
-      props.onPreview(match.at)
-    }
-  })
-
-  // On the way out, not on Escape: `onPick` closes the list before it applies the
-  // value, so the restore lands first and a pick that paints nothing itself — the
-  // light and dark theme rows, which only take effect when the OS appearance
-  // flips — is left showing the theme in force rather than the one it previewed.
-  onCleanup(() => props.onRestore?.())
-
-  /** First row shown: slides so the selection stays inside the window. */
-  const windowStart = () => Math.max(0, selected() - visibleRows() + 1)
-
-  useKeys((key: KeyEvent) => {
-    if (key.defaultPrevented) return
-    const k = key.name
-    const count = Math.max(1, matches().length)
-    if (k === 'up') {
-      key.preventDefault()
-      setIndex((selected() - 1 + count) % count)
-    } else if (k === 'down') {
-      key.preventDefault()
-      setIndex((selected() + 1) % count)
-    } else if (k === 'return' || k === 'enter') {
-      key.preventDefault()
-      const match = matches()[selected()]
-      if (match) props.onPick(match.at)
-    } else if (k === 'escape' || k === 'left') {
-      key.preventDefault()
-      props.onClose()
-    }
-  })
-
-  return (
-    <ModalPanel zIndex={150} width={width()} title={` ${props.title} `}>
-      <TextInput
-        value={query()}
-        placeholder="Type to filter…"
-        onInput={value => {
-          setQuery(value)
-          setIndex(0)
-        }}
-      />
-      <text fg={ui.panelBg} bg={ui.panelBg} content="" />
-      <Show
-        when={matches().length > 0}
-        fallback={<text fg={ui.dim} bg={ui.panelBg} content="No matches" />}
-      >
-        <For each={matches().slice(windowStart(), windowStart() + visibleRows())}>
-          {(match, i) => {
-            const active = () => windowStart() + i() === selected()
-            const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-            return (
-              <box flexDirection="row" backgroundColor={bg()}>
-                <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
-                <text
-                  fg={match.at === props.activeIndex ? ui.accent : active() ? ui.text : ui.dim}
-                  bg={bg()}
-                  content={props.options[match.at]!.slice(0, width() - PAD * 2 - 2)}
-                />
-                <box flexGrow={1} backgroundColor={bg()} />
-              </box>
-            )
-          }}
-        </For>
-      </Show>
-      <text fg={ui.dim} bg={ui.panelBg} content="↑↓ move · Enter pick · Esc back" />
-    </ModalPanel>
   )
 }

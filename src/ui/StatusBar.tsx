@@ -6,6 +6,7 @@ import { MODE_LABELS } from '../editor/vim'
 import type { VimMode } from '../editor/vim'
 import { ui } from '../themes'
 import { hintsFor } from './keys'
+import { cut } from './text'
 
 export type Tone = 'info' | 'warn' | 'error'
 
@@ -70,11 +71,23 @@ export function StatusBar(props: StatusBarProps) {
     return `${SPINNER[frame()]} ${busy.label}${count}`
   }
 
-  const gitText = () => {
+  /**
+   * The branch is the one group here made of somebody's own words, and its box
+   * cannot shrink: a branch named after a whole issue title filled the bar on
+   * its own and pushed the message, the hints and the cursor off the right edge.
+   * A quarter of the row, so a wide terminal still shows most names whole.
+   */
+  const branchText = () => {
     if (!props.branch) return ''
     // `repo/branch` where several are open: "main" on its own would be whichever
     // of them the editor happens to be in, with nothing saying which.
-    const parts = [`⎇ ${props.repo ? `${props.repo}/` : ''}${props.branch}`]
+    const label = `${props.repo ? `${props.repo}/` : ''}${props.branch}`
+    return cut(label, Math.max(12, Math.round(dimensions().width * 0.25)))
+  }
+
+  const gitText = () => {
+    if (!props.branch) return ''
+    const parts = [`⎇ ${branchText()}`]
     if (props.ahead > 0) parts.push(`↑${props.ahead}`)
     if (props.behind > 0) parts.push(`↓${props.behind}`)
     if (props.changed > 0) parts.push(`~${props.changed}`)

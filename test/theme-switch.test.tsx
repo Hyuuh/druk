@@ -2,7 +2,7 @@ import { afterAll, expect, test } from 'bun:test'
 
 import { getSyntaxStyle, invalidateSyntaxStyle } from '../src/languages/highlight'
 import { setTheme, syntaxTheme, themeFor, themeNames, THEMES } from '../src/themes'
-import { fixture, launch, loadMarketPlugins, openPalette, press } from './helpers'
+import { fixture, launch, loadMarketExtensions, openPalette, press } from './helpers'
 import type { Harness } from './helpers'
 import { allSegments } from './syntax'
 
@@ -31,9 +31,9 @@ function colors(t: Harness) {
 
 // These tests drive the module-global theme; leaving it changed would make every
 // later test file depend on the order bun happened to run them in.
-// Every palette druk offers is a market plugin now, and these tests are about
+// Every palette druk offers is a market extension now, and these tests are about
 // all of them, not the two that ship.
-loadMarketPlugins()
+loadMarketExtensions()
 
 afterAll(() => {
   setTheme('dark')

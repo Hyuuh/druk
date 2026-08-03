@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import {
   fixture,
   launch,
-  loadMarketPlugins,
+  loadMarketExtensions,
   press,
   pressEscape,
   runCommand,
@@ -13,8 +13,8 @@ import {
 } from './helpers'
 
 // druk ships no language servers: the specs these tests override live in the
-// market, so the plugin that carries them has to be registered first.
-loadMarketPlugins()
+// market, so the extension that carries them has to be registered first.
+loadMarketExtensions()
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
 
@@ -24,7 +24,12 @@ const LSP_WAIT = 15_000
 /** A file whose diagnostic doubles as the "server is up" signal. */
 const READY_FILE = { 'a.ts': 'oops\n' }
 
-const lspConfig = { lsp: true, lspServers: { typescript: [process.execPath, FAKE] } }
+const lspConfig = {
+  lsp: true,
+  // The market's eslint extension serves typescript too; these tests are about
+  // the one server they name, so the other is turned off rather than spawned.
+  lspServers: { typescript: [process.execPath, FAKE], eslint: [] },
+}
 
 async function readyEditor(files = READY_FILE) {
   const dir = fixture(files)

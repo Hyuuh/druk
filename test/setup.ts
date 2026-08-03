@@ -25,7 +25,7 @@ process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), 'druk-test-config-'))
 process.env.XDG_DATA_HOME = mkdtempSync(join(tmpdir(), 'druk-test-data-'))
 
 /**
- * And the cache home, where `src/core/market.ts` keeps the plugin catalog. A
+ * And the cache home, where `src/core/market.ts` keeps the extension catalog. A
  * developer who has run druk would otherwise have a real catalog on disk, and
  * the market tests would be asserting against whatever the registry published
  * that day.
@@ -33,24 +33,24 @@ process.env.XDG_DATA_HOME = mkdtempSync(join(tmpdir(), 'druk-test-data-'))
 process.env.XDG_CACHE_HOME = mkdtempSync(join(tmpdir(), 'druk-test-cache-'))
 
 /**
- * Register the plugins druk ships inside the binary — its languages, and so the
+ * Register the extensions druk ships inside the binary — its languages, and so the
  * highlighting almost every test depends on.
  *
  * `main.tsx` does this before rendering; a test that mounts `<App/>` never goes
  * through it, so without this a test process starts with an empty language
- * registry and every file renders plain. A market plugin is a test's own to
- * install (`loadMarketPlugins`, or a manifest written into the plugins folder).
+ * registry and every file renders plain. A market extension is a test's own to
+ * install (`loadMarketExtensions`, or a manifest written into the extensions folder).
  *
  * Dynamically imported on purpose: a static import hoists above the environment
  * assignments up there, and `src/core/config` captures `CONFIG_FILE` when it is
  * first evaluated.
  */
-const { loadPlugins } = await import('../src/plugins')
-// The config home, not a directory of its own: `loadPlugins` only reads
-// `<rootDir>/.druk/plugins` off this argument, and the suite already leaves
+const { loadExtensions } = await import('../src/extensions')
+// The config home, not a directory of its own: `loadExtensions` only reads
+// `<rootDir>/.druk/extensions` off this argument, and the suite already leaves
 // enough behind in the temp folder — a stray directory per test process is how
 // a run ends up walking tens of thousands of them.
-loadPlugins(process.env.XDG_CONFIG_HOME!)
+loadExtensions(process.env.XDG_CONFIG_HOME!)
 
 /**
  * Destroy every harness a test `launch()`ed and didn't clean up itself.

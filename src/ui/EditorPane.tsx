@@ -7,6 +7,7 @@ import { copyToClipboard, readClipboard } from '../core/clipboard'
 import type { CursorStyle } from '../core/config'
 import type { LineChange } from '../core/git'
 import { changeRows } from '../editor/changes'
+import { inCells } from '../editor/columns'
 import { History } from '../editor/history'
 import { duplicateLines, moveLines, toggleComment } from '../editor/lines'
 import { problemRows } from '../editor/problems'
@@ -36,6 +37,7 @@ import type { CompletionReply } from '../lsp/completion'
 import type { CompletionItem, ProblemSeverity } from '../lsp/protocol'
 import { paintedTheme, ui } from '../themes'
 import { CompletionMenu, MENU_ROWS, menuWidth } from './CompletionMenu'
+import { cut } from './text'
 import { useKeys } from './useKeys'
 import { Welcome } from './Welcome'
 
@@ -63,6 +65,8 @@ export interface EditorPaneProps {
   vim: boolean
   /** Caret shape, for as long as vim is off — see the `cursorStyle` config key. */
   cursorStyle: CursorStyle
+  /** Soft-wrap long lines — see the `wrap` config key. */
+  wrap: boolean
   tabSize: number
   /** True while a modal owns the keyboard; the editor must ignore all keys. */
   blocked: boolean
@@ -419,8 +423,7 @@ export function EditorPane(props: EditorPaneProps) {
       const left = el.x - host.x + 1 + (widths[lastRow] ?? 0) + 2
       const room = host.width - left - 2
       if (room < 8) continue
-      const message = problem.message.replaceAll(/\s+/g, ' ')
-      const text = message.length > room ? `${message.slice(0, room - 1)}…` : message
+      const text = cut(problem.message.replaceAll(/\s+/g, ' '), room)
       notes.push({
         top: el.y - host.y + (lastRow - top),
         left,
@@ -665,6 +668,19 @@ export function EditorPane(props: EditorPaneProps) {
   }
 
   /**
+   * Text of logical line `line` as the parse holds it — what a segment's columns
+   * index. Null until a file's first parse lands, which is the only state in
+   * which a line can be marked without having been segmented.
+   */
+  const parsedLine = (line: number): string | null => {
+    const doc = parsed
+    const at = doc?.starts[line]
+    if (!doc || at === undefined) return null
+    const next = doc.starts[line + 1]
+    return next === undefined ? doc.content.slice(at) : doc.content.slice(at, next - 1)
+  }
+
+  /**
    * The spans, bucketed by the line they start on. `applyWindow` marks one line
    * at a time, so a flat scan meant every line of the window walked every
    * diagnostic in the file — a file with hundreds of them paid that on each
@@ -688,15 +704,19 @@ export function EditorPane(props: EditorPaneProps) {
    * continuation line costs more than it says.
    */
   const markProblems = (line: number) => {
-    if (!editor) return
-    for (const problem of problemsByLine().get(line) ?? []) {
+    const problems = problemsByLine().get(line)
+    if (!editor || !problems) return
+    // Only now: without a parse this walks the buffer to find the line, and most
+    // lines of a window carry no diagnostic at all.
+    const text = parsedLine(line) ?? lineTextAt(line)
+    for (const problem of problems) {
       const group = problem.unnecessary ? 'unnecessary' : problem.severity
       const styleId = styleIdForGroup(`druk.problem.${group}`)
       if (styleId == null) continue
       const sameLine = problem.endLine === problem.line
       // A zero-width or line-crossing span still marks something visible.
       const end = sameLine ? Math.max(problem.endCol, problem.col + 1) : problem.col + 1
-      editor.addHighlight(line, { start: problem.col, end, styleId, priority: 100 })
+      editor.addHighlight(line, inCells({ start: problem.col, end, styleId, priority: 100 }, text))
     }
   }
 
@@ -720,7 +740,11 @@ export function EditorPane(props: EditorPaneProps) {
     for (let line = from; line <= to; line++) {
       if (appliedLines.has(line)) continue
       appliedLines.add(line)
-      for (const segment of byLine.get(line) ?? []) editor.addHighlight(line, segment)
+      const segments = byLine.get(line)
+      if (segments) {
+        const text = parsedLine(line) ?? ''
+        for (const segment of segments) editor.addHighlight(line, inCells(segment, text))
+      }
       markProblems(line)
     }
   }
@@ -1502,10 +1526,11 @@ export function EditorPane(props: EditorPaneProps) {
                 style: props.vim ? (vimMode() === 'insert' ? 'line' : 'block') : props.cursorStyle,
                 blinking: true,
               }}
-              // Always wrapping: OpenTUI's textarea scrolls sideways only by
-              // dragging the caret along, so unwrapped long lines have no way to be
-              // read that does not move the cursor.
-              wrapMode="word"
+              // Wrapped by default: OpenTUI's textarea scrolls sideways only by
+              // dragging the caret along, so with `wrap` off a long line's tail is
+              // reached by moving the cursor into it — the trade that setting makes
+              // for one buffer line per screen row.
+              wrapMode={props.wrap ? 'word' : 'none'}
               // OpenTUI takes a glyph, not a width: the number it accepts is a code
               // point, so passing a tab size painted control characters into the first
               // cell of every tab. A terminal drops those, leaving whatever the cell

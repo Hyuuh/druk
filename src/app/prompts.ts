@@ -144,8 +144,19 @@ export function createPromptHandlers(deps: {
         })
       case 'installServer':
         return void lsp.install(p.id, p.name, p.install)
-      case 'installPlugin':
+      case 'uninstallServer':
+        return void lsp.uninstall(p.id)
+      case 'installExtension':
         return market.accept(p.id)
+      case 'uninstallExtension': {
+        // The servers go first: removing the extension reloads the manifests,
+        // and `lsp.uninstall` reads the spec it is about out of that registry —
+        // after the reload there is nothing left to tell it what to delete.
+        return void (async () => {
+          for (const server of p.servers) await lsp.uninstall(server.id)
+          market.remove(p.id)
+        })()
+      }
     }
   }
 
@@ -163,7 +174,7 @@ export function createPromptHandlers(deps: {
     if (p?.kind === 'pullPush') say(PUSH_REJECTED, 'error')
     // Nothing to say — the offer was druk's idea — but the fetched manifest has
     // to be dropped, and the decline remembered for the session.
-    if (p?.kind === 'installPlugin') market.decline(p.id)
+    if (p?.kind === 'installExtension') market.decline(p.id)
   }
 
   const promptTitle = () => {
@@ -246,6 +257,25 @@ export function createPromptHandlers(deps: {
           danger: false,
           message: `origin/${p.branch} has commits you don't. Merge them in and push again?`,
         }
+      case 'uninstallServer':
+        return {
+          title: 'Remove language server',
+          verb: 'remove it',
+          danger: true,
+          // Naming the packages is the point: an npm server is a tree of them,
+          // and `npm uninstall` takes what came with it as well.
+          message: `Delete druk's copy of ${p.name} from ${SERVER_ROOT}? This removes ${p.packages.join(', ')}.`,
+        }
+      case 'uninstallExtension':
+        return {
+          title: 'Uninstall extension',
+          verb: 'uninstall it',
+          danger: true,
+          message:
+            p.servers.length > 0
+              ? `Delete ${p.name} and druk's copy of ${p.servers.map(server => server.name).join(', ')}?`
+              : `Delete ${p.name}? Its folder in the extensions directory goes with it.`,
+        }
       case 'installServer':
         return {
           title: 'Language server missing',
@@ -258,9 +288,9 @@ export function createPromptHandlers(deps: {
               ? `${p.name} is not installed. Fetch it with npm into ${SERVER_ROOT}?`
               : `${p.name} is not installed. Download it into ${SERVER_ROOT}?`,
         }
-      case 'installPlugin':
+      case 'installExtension':
         return {
-          title: p.current ? 'Plugin update' : 'Plugin available',
+          title: p.current ? 'Extension update' : 'Extension available',
           verb: p.current ? 'update it' : 'install it',
           danger: false,
           // The commands are the part worth reading before agreeing: a manifest

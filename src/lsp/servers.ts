@@ -1,8 +1,8 @@
 /**
  * Which language server serves which filetype.
  *
- * druk knows about no server until a plugin names one: the specs live in the
- * market (`plugins/<language>/plugin.json` in this repository), so a server for
+ * druk knows about no server until an extension names one: the specs live in the
+ * market (`extensions/<language>/extension.json` in this repository), so a server for
  * a new language reaches users the moment its pull request merges rather than at
  * the next release. What a spec holds is still only a command looked up on the
  * user's PATH — a missing one means no diagnostics for that language, though
@@ -35,26 +35,35 @@ export interface ServerSpec {
   /** OpenTUI filetype ids (see src/languages) this server is spawned for. */
   filetypes: string[]
   install?: ServerInstall
+  /**
+   * The configuration object this server is given: answered to every
+   * `workspace/configuration` item and pushed once as `didChangeConfiguration`.
+   *
+   * Opaque on purpose — it is the server's own settings shape, not druk's, and
+   * a manifest is the only place that knows it. eslint's server is why this
+   * exists: it lints nothing at all until it has been told `validate: "on"`.
+   */
+  settings?: unknown
 }
 
-/** Contributed by a plugin, and dropped again when plugins reload. */
-let fromPlugins: ServerSpec[] = []
+/** Contributed by an extension, and dropped again when extensions reload. */
+let fromExtensions: ServerSpec[] = []
 
 export function registerServer(spec: ServerSpec): void {
-  fromPlugins = [...fromPlugins.filter(server => server.id !== spec.id), spec]
+  fromExtensions = [...fromExtensions.filter(server => server.id !== spec.id), spec]
 }
 
-export function clearPluginServers(): void {
-  fromPlugins = []
+export function clearExtensionServers(): void {
+  fromExtensions = []
 }
 
 /**
- * Every server on offer — whatever the installed plugins registered, in load
- * order. A later plugin claiming an id replaces the earlier one's spec, which is
- * how a project's own plugin folder overrides a market plugin for that language.
+ * Every server on offer — whatever the installed extensions registered, in load
+ * order. A later extension claiming an id replaces the earlier one's spec, which is
+ * how a project's own extension folder overrides a market extension for that language.
  */
 export function servers(): ServerSpec[] {
-  return fromPlugins
+  return fromExtensions
 }
 
 /** The line that tells a user how to install `spec` themselves. */
@@ -69,15 +78,51 @@ export function installHint(install: ServerInstall): string {
  * dropped for an overridden command — it describes the default's package, and
  * would send the user to install something they deliberately replaced.
  */
-export function resolveServer(
-  filetype: string | undefined,
+export interface ResolvedServer {
+  id: string
+  command: string[]
+  install?: ServerInstall
+  settings?: unknown
+}
+
+const resolveOne = (
+  spec: ServerSpec,
   overrides: Record<string, string[]>,
-): { id: string; command: string[]; install?: ServerInstall } | null {
-  if (!filetype) return null
-  const spec = servers().find(server => server.filetypes.includes(filetype))
-  if (!spec) return null
+): ResolvedServer | null => {
   const override = overrides[spec.id]
   const command = override ?? spec.command
   if (command.length === 0) return null
-  return { id: spec.id, command, install: override ? undefined : spec.install }
+  return {
+    id: spec.id,
+    command,
+    install: override ? undefined : spec.install,
+    settings: spec.settings,
+  }
+}
+
+/**
+ * Every server registered for `filetype`, in extension load order.
+ *
+ * More than one is the normal case, not an edge: a linter and a language server
+ * both serve TypeScript, the way eslint and tsserver do in VS Code, and neither
+ * is a substitute for the other. All of them are spawned and synced; which one
+ * answers a *feature* request is `app/lsp.ts`'s business.
+ */
+export function resolveServers(
+  filetype: string | undefined,
+  overrides: Record<string, string[]>,
+): ResolvedServer[] {
+  if (!filetype) return []
+  return servers()
+    .filter(server => server.filetypes.includes(filetype))
+    .map(spec => resolveOne(spec, overrides))
+    .filter(resolved => resolved !== null)
+}
+
+/** The first server for `filetype` — what the settings page and its tests ask about. */
+export function resolveServer(
+  filetype: string | undefined,
+  overrides: Record<string, string[]>,
+): ResolvedServer | null {
+  return resolveServers(filetype, overrides)[0] ?? null
 }

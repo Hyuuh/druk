@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
 import { filetypeForPath, segmentsIn, styleIdForGroup } from '../src/languages/highlight'
-import { loadMarketPlugins } from './helpers'
+import { loadMarketExtensions } from './helpers'
 import { parseHighlights, WHOLE } from './syntax'
 
 // Vue and php are market plugins; the languages they inject — typescript, css,
 // html — are preinstalled.
-loadMarketPlugins()
+loadMarketExtensions()
 
 /** Text painted with `group`'s style, anywhere in the document. */
 function painter(source: string, filetype: string) {

@@ -26,28 +26,3 @@ export function modalWidth(terminal: number, share: number, min: number, max: nu
 export function listRows(terminal: number, chrome: number, max: number): number {
   return Math.max(3, Math.min(max, terminal - chrome))
 }
-
-/**
- * Break `text` onto lines of at most `width`. A `<text>` does not wrap, so a message
- * longer than its modal simply ran off the edge and out of the border.
- */
-export function wrapText(text: string, width: number): string[] {
-  const lines: string[] = []
-  let line = ''
-  for (const word of text.split(/\s+/).filter(Boolean)) {
-    if (line && line.length + 1 + word.length > width) {
-      lines.push(line)
-      line = ''
-    }
-    // A single word longer than the width has to be cut; there is nowhere to break it.
-    if (word.length > width) {
-      if (line) lines.push(line)
-      for (let at = 0; at < word.length; at += width) lines.push(word.slice(at, at + width))
-      line = ''
-      continue
-    }
-    line = line ? `${line} ${word}` : word
-  }
-  if (line) lines.push(line)
-  return lines.length > 0 ? lines : ['']
-}

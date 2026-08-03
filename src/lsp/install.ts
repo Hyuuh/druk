@@ -19,6 +19,7 @@ import os from 'node:os'
 import { join } from 'node:path'
 
 import { firstLine, notInstalled, run } from '../core/process'
+import type { ServerInstall } from './servers'
 
 /** Long enough for a slow link; short enough to not hang. */
 const INSTALL_TIMEOUT_MS = 180_000
@@ -59,6 +60,51 @@ function runsClean(bin: string, args: string[]): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * Delete druk's own copy of a server. Resolves to an error message, or null when
+ * there is nothing of it left.
+ *
+ * Driven by the manifest's `install` rather than by scanning the directory: an
+ * npm server's executable is a link into a package whose name only the manifest
+ * knows, and `npm uninstall` is the one thing that also takes the dependencies
+ * that came with it. A `manual` install is druk's to remove in no sense — it was
+ * never druk's to put there.
+ */
+export async function removeServer(
+  install: ServerInstall,
+  executable: string,
+  root = SERVER_ROOT,
+): Promise<string | null> {
+  if (install.kind === 'download') {
+    const target = join(
+      root,
+      'bin',
+      process.platform === 'win32' ? `${executable}.exe` : executable,
+    )
+    try {
+      rmSync(target, { force: true })
+      return null
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+  if (install.kind !== 'npm') return 'druk did not install it'
+  const result = await run(
+    'npm',
+    ['uninstall', '--prefix', root, '--no-audit', '--no-fund', ...install.packages],
+    { timeout: INSTALL_TIMEOUT_MS },
+  )
+  if (result.error) {
+    return notInstalled(result) ? 'npm is not installed, or not on PATH' : result.error.message
+  }
+  if (result.timedOut) return 'npm timed out'
+  if (result.status !== 0)
+    return firstLine(result.stderr) || `npm exited with code ${result.status}`
+  // npm exits 0 for a package that was not there; what the caller promised the
+  // user is that the executable is gone, so that is what is checked.
+  return installedCommand([executable], root) ? `${executable} is still in ${root}` : null
 }
 
 /**

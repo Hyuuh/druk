@@ -103,7 +103,7 @@ test('the palette opens the panel too', async () => {
   expect(frame(t)).toContain('source control')
 })
 
-test('Shift+Tab walks the sidebar tab strip: Files → Git → Files', async () => {
+test('Shift+Tab walks the sidebar tab strip: Files → Git → Ext → Files', async () => {
   const t = await launch(repo())
   expect(frame(t)).toContain('explorer')
 
@@ -111,6 +111,9 @@ test('Shift+Tab walks the sidebar tab strip: Files → Git → Files', async () 
   const open = frame(t)
   expect(open).toContain('source control')
   expect(open).toContain('a.ts')
+
+  await press(t, i => i.pressTab({ shift: true }))
+  expect(frame(t)).toContain('INSTALLED')
 
   await press(t, i => i.pressTab({ shift: true }))
   expect(frame(t)).toContain('explorer')

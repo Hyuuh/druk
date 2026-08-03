@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import {
   fixture,
   launch,
-  loadMarketPlugins,
+  loadMarketExtensions,
   openFile,
   press,
   pressEscape,
@@ -17,13 +17,14 @@ import {
 } from './helpers'
 
 // druk ships no language servers: the specs these tests override live in the
-// market, so the plugin that carries them has to be registered first.
-loadMarketPlugins()
+// market, so the extension that carries them has to be registered first.
+loadMarketExtensions()
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
 const MARKER = join(import.meta.dir, 'fixtures', 'marker-lsp.ts')
 const INIT = join(import.meta.dir, 'fixtures', 'init-lsp.ts')
 const PULL = join(import.meta.dir, 'fixtures', 'pull-lsp.ts')
+const CONFIG = join(import.meta.dir, 'fixtures', 'config-lsp.ts')
 
 /** Diagnostics cross a process boundary; give the fake server room to start. */
 const LSP_WAIT = 15_000
@@ -32,7 +33,7 @@ test('diagnostics reach the status bar, the problems list, and next-problem', as
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   const t = await launch(
     dir,
-    { lsp: true, lspServers: { typescript: [process.execPath, FAKE] } },
+    { lsp: true, lspServers: { typescript: [process.execPath, FAKE], eslint: [] } },
     {},
     { openFile: join(dir, 'a.ts') },
   )
@@ -105,7 +106,7 @@ test('a missing server druk cannot install just says so', async () => {
   // Wide enough for the whole sentence: the status bar truncates at 80 columns.
   const t = await launch(
     dir,
-    { lsp: true, lspServers: { typescript: ['druk-no-such-language-server'] } },
+    { lsp: true, lspServers: { typescript: ['druk-no-such-language-server'], eslint: [] } },
     { width: 110 },
     { openFile: join(dir, 'a.ts') },
   )
@@ -117,7 +118,7 @@ test('a missing server druk cannot install just says so', async () => {
 test('the chosen TypeScript is handed to the server, and no choice sends nothing', async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   const dump = join(dir, 'init.json')
-  const server = { typescript: [process.execPath, INIT, dump] }
+  const server = { typescript: [process.execPath, INIT, dump], eslint: [] }
 
   const chosen = await launch(
     dir,
@@ -148,7 +149,7 @@ test('a server spawns only once a file of its language opens', async () => {
   const marker = join(dir, 'spawn-marker')
   const t = await launch(dir, {
     lsp: true,
-    lspServers: { typescript: [process.execPath, MARKER, marker] },
+    lspServers: { typescript: [process.execPath, MARKER, marker], eslint: [] },
   })
 
   // No file open: nothing may spawn, however long the editor sits there.
@@ -168,7 +169,11 @@ test('inline text hides when the setting is off, the gutter dot stays', async ()
   const dir = fixture({ 'a.ts': 'const oops = 1\n' })
   const t = await launch(
     dir,
-    { lsp: true, lspInline: false, lspServers: { typescript: [process.execPath, FAKE] } },
+    {
+      lsp: true,
+      lspInline: false,
+      lspServers: { typescript: [process.execPath, FAKE], eslint: [] },
+    },
     {},
     { openFile: join(dir, 'a.ts') },
   )
@@ -183,7 +188,7 @@ test('a problem far below the viewport is marked on the track', async () => {
   const dir = fixture({ 'big.ts': `${lines.join('\n')}\n` })
   const t = await launch(
     dir,
-    { lsp: true, lspServers: { typescript: [process.execPath, FAKE] } },
+    { lsp: true, lspServers: { typescript: [process.execPath, FAKE], eslint: [] } },
     { width: 100, height: 24 },
     { openFile: join(dir, 'big.ts') },
   )
@@ -207,7 +212,7 @@ test('the restart command spawns the servers again and re-opens the documents', 
   const marker = join(dir, 'spawn-marker')
   const t = await launch(
     dir,
-    { lsp: true, lspServers: { typescript: [process.execPath, MARKER, marker] } },
+    { lsp: true, lspServers: { typescript: [process.execPath, MARKER, marker], eslint: [] } },
     {},
     { openFile: join(dir, 'a.ts') },
   )
@@ -228,7 +233,7 @@ test('installing dependencies restarts the servers by itself', async () => {
   const marker = join(dir, 'spawn-marker')
   const t = await launch(
     dir,
-    { lsp: true, lspServers: { typescript: [process.execPath, MARKER, marker] } },
+    { lsp: true, lspServers: { typescript: [process.execPath, MARKER, marker], eslint: [] } },
     {},
     { openFile: join(dir, 'a.ts') },
   )
@@ -247,7 +252,7 @@ test('a server that only answers pulls still fills the gutter and the list', asy
   const dir = fixture({ 'a.ts': 'const oops = 1\n' })
   const t = await launch(
     dir,
-    { lsp: true, lspServers: { typescript: [process.execPath, PULL] } },
+    { lsp: true, lspServers: { typescript: [process.execPath, PULL], eslint: [] } },
     {},
     { openFile: join(dir, 'a.ts') },
   )
@@ -260,4 +265,36 @@ test('a server that only answers pulls still fills the gutter and the list', asy
   // And it asks again after an edit, or the marks would describe older text.
   await press(t, input => void input.typeText('oops '))
   await untilFrame(t, '● 2', LSP_WAIT)
+}, 30_000)
+
+test('a file is served by every server for its language, and their marks merge', async () => {
+  const dir = fixture({ 'a.ts': 'const oops = 1\n' })
+  const t = await launch(
+    dir,
+    {
+      lsp: true,
+      // Both serve `typescript` — the market's eslint extension is what makes
+      // the second one resolve at all, and this only swaps its command.
+      lspServers: {
+        typescript: [process.execPath, FAKE],
+        eslint: [process.execPath, CONFIG],
+      },
+    },
+    { height: 30 },
+    { openFile: join(dir, 'a.ts') },
+  )
+
+  // One from each server, and neither replaced the other: a publish carries the
+  // sender's marks alone.
+  await untilFrame(t, 'found oops', LSP_WAIT)
+  // Two warnings, one per way the settings can arrive: the request the server
+  // makes after the handshake, and the push druk sends unasked. Counted rather
+  // than read off the line — only one message is drawn inline per line, and
+  // both of these land on the first.
+  await untilFrame(t, '▲ 2', LSP_WAIT)
+  await runCommand(t, 'List problems')
+  const list = t.captureCharFrame()
+  expect(list).toContain('found oops')
+  expect(list).toContain('configured by request')
+  expect(list).toContain('configured by push')
 }, 30_000)

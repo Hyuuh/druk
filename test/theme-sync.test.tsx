@@ -6,15 +6,15 @@ import { CONFIG_FILE, DEFAULTS } from '../src/core/config'
 import {
   fixture,
   launch,
-  loadMarketPlugins,
+  loadMarketExtensions,
   runCommand,
   settle,
   toggleSetting,
   untilFrame,
 } from './helpers'
 
-// The themes these tests name are market plugins now.
-loadMarketPlugins()
+// The themes these tests name are market extensions now.
+loadMarketExtensions()
 
 afterEach(() => {
   delete process.env[APPEARANCE_ENV]

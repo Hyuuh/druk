@@ -1,13 +1,13 @@
 /**
- * Theme registry — the two themes druk ships, and the table plugins add to.
+ * Theme registry — the two themes druk ships, and the table extensions add to.
  *
  * Only the defaults are built in: `theme`, `themeLight` and `themeDark` all
- * name one of these, so they have to exist before any plugin is read. Every
- * other palette druk once carried is a plugin in the market (`plugins/` in this
- * repository), installed through the palette's Plugins menu — which is what
+ * name one of these, so they have to exist before any extension is read. Every
+ * other palette druk once carried is an extension in the market (`extensions/` in this
+ * repository), installed through the palette's Extensions menu — which is what
  * lets a new theme reach users without a druk release.
  *
- * A plugin registers one at runtime through `registerTheme`, so every lookup
+ * An extension registers one at runtime through `registerTheme`, so every lookup
  * goes through `registry` rather than through `THEMES` itself — `THEMES` is the
  * built-in table, `registry` is what is actually on offer.
  */
@@ -27,7 +27,7 @@ export const THEMES = {
 }
 
 /**
- * A theme id. Not `keyof typeof THEMES`: a plugin's theme is as real as a
+ * A theme id. Not `keyof typeof THEMES`: an extension's theme is as real as a
  * built-in one and its id is not known at compile time. `isThemeName` is what
  * says an id is registered, and the config validator runs it.
  */
@@ -35,36 +35,36 @@ export type ThemeName = string
 
 /**
  * The shipped themes, keyed loosely so an id computed at runtime can reach them.
- * Kept beside the registry because a plugin may register *over* a built-in id —
- * dropping that plugin has to put the shipped theme back rather than leave a
+ * Kept beside the registry because an extension may register *over* a built-in id —
+ * dropping that extension has to put the shipped theme back rather than leave a
  * hole where `dark` used to be.
  */
 const BUILTIN: Record<string, Theme> = { ...THEMES }
 
-/** Every theme on offer — the built-ins, plus whatever plugins registered. */
+/** Every theme on offer — the built-ins, plus whatever extensions registered. */
 const registry: Record<string, Theme> = { ...THEMES }
 
-/** Registered by a plugin, and dropped again when plugins reload. */
-const fromPlugins = new Set<string>()
+/** Registered by an extension, and dropped again when extensions reload. */
+const fromExtensions = new Set<string>()
 
 // A signal, not `Object.keys(registry)` on demand: the palette's command tree and
-// the settings page's theme lists are built inside reactive scopes, and a plugin
+// the settings page's theme lists are built inside reactive scopes, and an extension
 // reload that only mutated the object would leave both showing the old set.
 const [names, setNames] = createSignal<ThemeName[]>(Object.keys(registry))
 
 export function registerTheme(id: string, theme: Theme): void {
   registry[id] = theme
-  fromPlugins.add(id)
+  fromExtensions.add(id)
   setNames(Object.keys(registry))
 }
 
-export function clearPluginThemes(): void {
-  for (const id of fromPlugins) {
+export function clearExtensionThemes(): void {
+  for (const id of fromExtensions) {
     const shipped = BUILTIN[id]
     if (shipped) registry[id] = shipped
     else delete registry[id]
   }
-  fromPlugins.clear()
+  fromExtensions.clear()
   setNames(Object.keys(registry))
 }
 
@@ -73,7 +73,7 @@ export const themeNames = (): ThemeName[] => names()
 const DEFAULT: ThemeName = 'dark'
 
 /**
- * The theme `name` stands for, falling back to the default: a plugin can be
+ * The theme `name` stands for, falling back to the default: an extension can be
  * uninstalled while the config still names one of its themes, and every reader
  * here has to end up with colors rather than with a hole.
  */
@@ -136,7 +136,7 @@ export function isThemeName(value: unknown): value is ThemeName {
 
 export function setTheme(name: ThemeName): void {
   // What is really on screen, which is the default when the config names a
-  // theme no plugin is registering any more.
+  // theme no extension is registering any more.
   const painted = name in registry ? name : DEFAULT
   // Replace, never merge: a group the new theme omits would otherwise keep the
   // previous theme's color and render invisible when light/dark flips.

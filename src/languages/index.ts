@@ -1,15 +1,15 @@
 /**
  * Language registry — what druk knows how to highlight, and how to name it.
  *
- * Nothing is listed here any more: a language is a plugin contribution, the way
+ * Nothing is listed here any more: a language is an extension contribution, the way
  * a theme or a language server is. The grammars themselves still ship inside the
  * binary (`./grammars.ts`, imported statically because that is the only form
- * `bun build --compile` can embed) — what a plugin decides is whether a language
+ * `bun build --compile` can embed) — what an extension decides is whether a language
  * is *registered*, and with which query, patterns, label and comment prefix.
  *
- * So the table below starts empty and `loadPlugins` fills it. Every reader has
+ * So the table below starts empty and `loadExtensions` fills it. Every reader has
  * to go through a function for that reason: the modules that show languages are
- * evaluated before any plugin has been read.
+ * evaluated before any extension has been read.
  */
 import { createSignal } from 'solid-js'
 
@@ -27,7 +27,7 @@ export interface Language {
    * Bundled today: javascript, typescript, markdown, zig.
    */
   bundled?: boolean
-  /** Path to the grammar wasm, when the grammar is vendored or a plugin's own. */
+  /** Path to the grammar wasm, when the grammar is vendored or an extension's own. */
   wasm?: string
   /** Path to the highlight query, beside the wasm. */
   query?: string
@@ -51,17 +51,17 @@ export interface Language {
   lineComment?: string
 }
 
-/** Registered by plugins, in load order. A later entry replaces an earlier id. */
+/** Registered by extensions, in load order. A later entry replaces an earlier id. */
 const registry = new Map<string, Language>()
 
 /**
  * Bumped on every change — and a signal, not a counter, because every lookup
  * below reads it.
  *
- * That is what makes installing a language plugin show up without a restart: the
+ * That is what makes installing a language extension show up without a restart: the
  * status bar's filetype and the editor's highlight window are computed in
  * reactive scopes, and a plain Map would leave both showing what they resolved
- * to before the plugin existed. `highlight.ts` reads it untracked, to know when
+ * to before the extension existed. `highlight.ts` reads it untracked, to know when
  * the tree-sitter worker needs telling about a new grammar.
  */
 const [generation, bump] = createSignal(0)
@@ -71,7 +71,7 @@ export function registerLanguage(language: Language): void {
   bump(generation() + 1)
 }
 
-export function clearPluginLanguages(): void {
+export function clearExtensionLanguages(): void {
   registry.clear()
   bump(generation() + 1)
 }

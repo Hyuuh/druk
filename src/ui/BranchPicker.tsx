@@ -7,6 +7,7 @@ import { ui } from '../themes'
 import { useListKeys } from './list'
 import { listRows, modalWidth, PAD } from './modal'
 import { ModalPanel } from './Overlay'
+import { cut } from './text'
 import { TextInput } from './TextInput'
 
 export interface BranchPickerProps {
@@ -71,9 +72,20 @@ export function BranchPicker(props: BranchPickerProps) {
               const branch = match.branch
               const active = () => i() === selected()
               const bg = () => (active() ? ui.treeSelectedBg : ui.panelBg)
-              /** The name is what is picked; everything else has to give way. */
-              const name = () => branch.name.slice(0, Math.max(8, width() - PAD * 2 - 24))
-              const note = () => (branch.remote ? 'remote' : (branch.upstream ?? ''))
+              /** Columns inside the border, less the bar and the current-branch mark. */
+              const room = () => width() - PAD * 2 - 4
+              /**
+               * The name is what is picked, so the upstream gives way first — but it
+               * has to give way at all. An upstream is a branch name too, and an
+               * untruncated one left the name's flexible box a column wide and wrapped
+               * a long branch straight down the modal.
+               */
+              const note = () =>
+                cut(branch.remote ? 'remote' : (branch.upstream ?? ''), Math.floor(room() / 3))
+              const name = () => cut(branch.name, room() - note().length - 1)
+              /** The gap is the note's, not slack in the name's box: at the widths
+                  where both are cut there is no slack left to space them apart. */
+              const noteText = () => (note() ? ` ${note()}` : '')
               return (
                 <box flexDirection="row" backgroundColor={bg()}>
                   <text fg={ui.accent} bg={bg()} flexShrink={0} content={active() ? '▌ ' : '  '} />
@@ -84,9 +96,20 @@ export function BranchPicker(props: BranchPickerProps) {
                     content={branch.current ? '* ' : '  '}
                   />
                   <box flexGrow={1} backgroundColor={bg()}>
-                    <text fg={active() ? ui.text : ui.dim} bg={bg()} content={name()} />
+                    <text
+                      wrapMode="none"
+                      fg={active() ? ui.text : ui.dim}
+                      bg={bg()}
+                      content={name()}
+                    />
                   </box>
-                  <text fg={ui.faint} bg={bg()} flexShrink={0} content={note()} />
+                  <text
+                    wrapMode="none"
+                    fg={ui.faint}
+                    bg={bg()}
+                    flexShrink={0}
+                    content={noteText()}
+                  />
                 </box>
               )
             }}

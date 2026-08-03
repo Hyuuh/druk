@@ -1,11 +1,18 @@
 import { test } from 'bun:test'
 import { join } from 'node:path'
 
-import { fixture, launch, loadMarketPlugins, pressTimes, runCommand, untilFrame } from './helpers'
+import {
+  fixture,
+  launch,
+  loadMarketExtensions,
+  pressTimes,
+  runCommand,
+  untilFrame,
+} from './helpers'
 
 // druk ships no language servers: the specs these tests override live in the
-// market, so the plugin that carries them has to be registered first.
-loadMarketPlugins()
+// market, so the extension that carries them has to be registered first.
+loadMarketExtensions()
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-lsp.ts')
 
@@ -59,7 +66,7 @@ test('go to definition opens where the server points', async () => {
   })
   const t = await launch(
     dir,
-    { lsp: true, lspServers: { typescript: [process.execPath, FAKE] } },
+    { lsp: true, lspServers: { typescript: [process.execPath, FAKE], eslint: [] } },
     {},
     { openFile: join(dir, 'a.ts') },
   )

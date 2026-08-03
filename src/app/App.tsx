@@ -12,17 +12,18 @@ import { isImagePath } from '../core/image'
 import { isMarkdownPath } from '../core/markdown'
 import { isPdfPath } from '../core/pdf'
 import { checkForUpdate, currentVersion } from '../core/update'
+import { extensionProblems } from '../extensions'
 import { languageLabel } from '../languages'
 import { filetypeForPath } from '../languages/highlight'
 import { SEVERITY_RANK } from '../lsp/protocol'
 import type { ProblemSeverity } from '../lsp/protocol'
-import { pluginProblems } from '../plugins'
 import { ui } from '../themes'
 import { ComparePanel } from '../ui/ComparePanel'
 import { ComparisonView } from '../ui/ComparisonView'
 import { DiffView } from '../ui/DiffView'
 import type { DiffFile } from '../ui/DiffView'
 import { EditorPane } from '../ui/EditorPane'
+import { ExtensionsPanel } from '../ui/ExtensionsPanel'
 import { FileTree } from '../ui/FileTree'
 import { GitPanel } from '../ui/GitPanel'
 import { ImageView } from '../ui/ImageView'
@@ -38,6 +39,7 @@ import { createBranches } from './branches'
 import { createComparison } from './comparison'
 import type { AppContext } from './context'
 import { createEditorBridge } from './editor'
+import { createExtensionsPanel } from './extensionsPanel'
 import { createFileOps } from './fileOps'
 import { createGit, createGitOp, wireGitEffects } from './git'
 import { installKeyboard } from './keyboard'
@@ -81,7 +83,7 @@ export function App(props: {
    */
   initialProject?: Partial<Config>
   /**
-   * The startup checks — druk's own version, and the plugin market — are
+   * The startup checks — druk's own version, and the extension market — are
    * unconditional for users. This switch exists so the test harness can keep
    * hundreds of launches off the npm registry and off the market.
    */
@@ -123,7 +125,8 @@ export function App(props: {
   const promptState = createPromptState()
   const lsp = createLsp({ rootDir, settings, status, prompts: promptState })
   const market = createMarket({ rootDir, settings, status, prompts: promptState })
-  // A file whose language no installed plugin serves is the market's cue.
+
+  // A file whose language no installed extension serves is the market's cue.
   lsp.onMissingServer(market.suggestForFiletype)
   // Also on the quit path: the renderer tears the root down before exiting, and
   // a leaked server would outlive the editor (tests leak them per launch).
@@ -139,6 +142,13 @@ export function App(props: {
     editor,
     git,
     setPrompt: promptState.setPrompt,
+  })
+  const extensionsPanel = createExtensionsPanel({
+    settings,
+    market,
+    status,
+    lsp,
+    prompts: promptState,
   })
   const navigation = createNavigation({ workspace, editor, panes, status })
   const fileOps = createFileOps({ rootDir, status, tree, workspace })
@@ -169,8 +179,34 @@ export function App(props: {
     editor,
   })
 
+  /** The active tab when it is an image — a viewer page covers the editor slot. */
+  const activeImage = () => {
+    const path = workspace.activePath()
+    return path && isImagePath(path) ? path : null
+  }
+
+  const activePdf = () => {
+    const path = workspace.activePath()
+    return path && isPdfPath(path) ? path : null
+  }
+
+  /**
+   * A page or a viewer is drawn over the editor's slot, so the textarea is neither
+   * focused nor taking keys. Read in three places that must agree: EditorPane's
+   * `focused` and `blocked`, and the Ctrl+C owner in `keyboard.ts` — where a
+   * disagreement left the key belonging to a textarea that had stopped listening.
+   */
+  const editorCovered = () =>
+    workspace.diff() !== null ||
+    workspace.page() !== null ||
+    comparison.detailOpen() ||
+    activeImage() !== null ||
+    activePdf() !== null ||
+    workspace.renderedPath() !== null
+
   const ctx: AppContext = {
     rootDir,
+    editorCovered,
     status,
     settings,
     tree,
@@ -180,6 +216,7 @@ export function App(props: {
     gitOp,
     lsp,
     market,
+    extensions: extensionsPanel,
     branches,
     comparison,
     workspace,
@@ -276,17 +313,6 @@ export function App(props: {
     Object.values(lsp.servers).toSorted((a, b) => a.id.localeCompare(b.id)),
   )
 
-  /** The active tab when it is an image — a viewer page covers the editor slot. */
-  const activeImage = () => {
-    const path = workspace.activePath()
-    return path && isImagePath(path) ? path : null
-  }
-
-  const activePdf = () => {
-    const path = workspace.activePath()
-    return path && isPdfPath(path) ? path : null
-  }
-
   /** The state of the strip's rendered-markdown button, or null when it has none.
    * Keyed on the view rather than the path: the diff tab of a .md file is a diff,
    * and its own page has nothing to render. */
@@ -311,17 +337,17 @@ export function App(props: {
     const { invalid, conflicts } = settings.keymap()
     const bad = invalid[0]
     const clash = conflicts.find(entry => entry.rejected)
-    // Same reason as the two above: a plugin that contributes nothing because
+    // Same reason as the two above: an extension that contributes nothing because
     // its manifest is wrong looks exactly like one that is not installed.
-    const badPlugin = pluginProblems()[0]
+    const badExtension = extensionProblems()[0]
     if (bad) say(`Shortcut "${bad.value}" for ${bad.label}: ${bad.reason}`, 'warn')
     else if (clash) {
       say(
         `${clash.key} is bound twice — ${clash.winner} keeps it, ${clash.loser} has no key`,
         'warn',
       )
-    } else if (badPlugin) {
-      say(`Plugin ${basename(dirname(badPlugin.source))}: ${badPlugin.reason}`, 'warn')
+    } else if (badExtension) {
+      say(`Extension ${basename(dirname(badExtension.source))}: ${badExtension.reason}`, 'warn')
     }
     // Same refusal `druk file.ts` deserves as opening one from the tree, and for the
     // same reason: an empty editor with a status line under it looks like a bug.
@@ -476,36 +502,49 @@ export function App(props: {
             <SidebarTabs
               view={panes.view()}
               focused={panes.focus() === 'tree'}
+              width={settings.treeWidth()}
               onSelect={view => panes.showView(view)}
             />
-            <Show
-              when={panes.view() === 'git'}
-              fallback={
-                <FileTree
-                  rootName={basename(rootDir) || rootDir}
-                  nodes={tree.nodes()}
-                  selectedPath={tree.selectedPath()}
-                  expanded={tree.expanded()}
-                  focused={panes.focus() === 'tree'}
-                  width={settings.treeWidth()}
-                  gitStatus={git.gitStatus()}
-                  gitIgnored={git.gitIgnored()}
-                  cutPaths={fileOps.cut()}
-                  markedPaths={tree.marked()}
-                  iconTheme={config.iconTheme}
-                  onActivate={node => {
-                    // Landing in a file is how a page closes — the tree stays
-                    // interactive while one is up, like any other editor page.
-                    workspace.setDiff(null)
-                    workspace.setPage(null)
-                    workspace.activateNode(node)
-                  }}
-                  onPin={node => workspace.pinTab(node.path)}
-                  onFocus={() => panes.setFocus('tree')}
-                  onCollapseAll={tree.collapseAll}
-                />
-              }
-            >
+            <Show when={panes.view() === 'extensions'}>
+              <ExtensionsPanel
+                rows={extensionsPanel.rows()}
+                cursor={extensionsPanel.cursor()}
+                installedCount={extensionsPanel.installedCount()}
+                query={extensionsPanel.query()}
+                focused={panes.focus() === 'tree'}
+                width={settings.treeWidth()}
+                onFocus={() => panes.setFocus('tree')}
+                onSearch={extensionsPanel.search}
+                onOpenSearch={extensionsPanel.openSearch}
+                onActivate={extensionsPanel.activate}
+              />
+            </Show>
+            <Show when={panes.view() === 'files'}>
+              <FileTree
+                rootName={basename(rootDir) || rootDir}
+                nodes={tree.nodes()}
+                selectedPath={tree.selectedPath()}
+                expanded={tree.expanded()}
+                focused={panes.focus() === 'tree'}
+                width={settings.treeWidth()}
+                gitStatus={git.gitStatus()}
+                gitIgnored={git.gitIgnored()}
+                cutPaths={fileOps.cut()}
+                markedPaths={tree.marked()}
+                iconTheme={config.iconTheme}
+                onActivate={node => {
+                  // Landing in a file is how a page closes — the tree stays
+                  // interactive while one is up, like any other editor page.
+                  workspace.setDiff(null)
+                  workspace.setPage(null)
+                  workspace.activateNode(node)
+                }}
+                onPin={node => workspace.pinTab(node.path)}
+                onFocus={() => panes.setFocus('tree')}
+                onCollapseAll={tree.collapseAll}
+              />
+            </Show>
+            <Show when={panes.view() === 'git'}>
               <Show
                 when={comparison.active()}
                 fallback={
@@ -595,15 +634,7 @@ export function App(props: {
             // terminal's own cursor tracks the focused textarea and is drawn
             // over everything, so a focused editor bleeds a phantom block into
             // whatever page sits on top.
-            focused={
-              panes.focus() === 'editor' &&
-              !workspace.diff() &&
-              !workspace.page() &&
-              !comparison.detailOpen() &&
-              !activeImage() &&
-              !activePdf() &&
-              !workspace.renderedPath()
-            }
+            focused={panes.focus() === 'editor' && !editorCovered()}
             reloadKey={editor.reloadKey()}
             goto={editor.goto()}
             history={editor.history()}
@@ -611,6 +642,7 @@ export function App(props: {
             lineOp={editor.lineOp()}
             vim={config.vim}
             cursorStyle={config.cursorStyle}
+            wrap={config.wrap}
             tabSize={config.tabSize}
             gitLines={git.gitLines()}
             problems={problemLines()}
@@ -637,15 +669,7 @@ export function App(props: {
             notice={workspace.notice()}
             // The diff is a page over this pane, not an overlay — but the hidden
             // textarea must still not eat keys meant for it.
-            blocked={
-              overlays.overlay() ||
-              workspace.diff() !== null ||
-              workspace.page() !== null ||
-              comparison.detailOpen() ||
-              activeImage() !== null ||
-              activePdf() !== null ||
-              workspace.renderedPath() !== null
-            }
+            blocked={overlays.overlay() || editorCovered()}
             onChange={workspace.onEditorChange}
             onCursor={editor.setCursor}
             onFocus={() => panes.setFocus('editor')}
@@ -719,6 +743,7 @@ export function App(props: {
                 blocked={overlays.overlay()}
                 onFocus={() => panes.setFocus('editor')}
                 onRestart={actions.restartLsp}
+                onUninstall={actions.uninstallServer}
                 onClose={() => workspace.setPage(null)}
               />
             </box>

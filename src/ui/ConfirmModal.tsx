@@ -3,8 +3,9 @@ import { useTerminalDimensions } from '@opentui/solid'
 import { For } from 'solid-js'
 
 import { ui } from '../themes'
-import { modalWidth, PAD, wrapText } from './modal'
+import { modalWidth, PAD } from './modal'
 import { ModalPanel } from './Overlay'
+import { wrapText } from './text'
 import { useKeys } from './useKeys'
 
 export interface ConfirmModalProps {

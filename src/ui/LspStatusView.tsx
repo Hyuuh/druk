@@ -16,6 +16,8 @@ export interface LspStatusViewProps {
   onFocus: () => void
   /** The palette's "Restart language servers", one key away from the evidence. */
   onRestart: () => void
+  /** Delete druk's own copy of a server. Ignored for one druk did not install. */
+  onUninstall: (id: string) => void
   onClose: () => void
 }
 
@@ -73,7 +75,13 @@ export function LspStatusView(props: LspStatusViewProps) {
     else if (k === 'end' || (k === 'g' && key.shift)) scrollTo(Number.MAX_SAFE_INTEGER)
     else if (k === 'home' || k === 'g') scrollTo(0)
     else if (k === 'r') props.onRestart()
-    else if (k === 'escape' || k === 'q') props.onClose()
+    // Not Backspace, which the tree and the extensions panel spend on the same
+    // idea: this page's list is the one place a *server* can be removed, and a
+    // key that deletes wants to be the one that is typed on purpose.
+    else if (k === 'd') {
+      const server = selected()
+      if (server) props.onUninstall(server.id)
+    } else if (k === 'escape' || k === 'q') props.onClose()
     else return
     key.preventDefault()
   })
@@ -85,7 +93,7 @@ export function LspStatusView(props: LspStatusViewProps) {
     server.error ? `${server.state} — ${server.error}` : server.state
 
   const hints = () => {
-    const full = ' ↑↓ server · PgUp/PgDn log · r restart · Esc close '
+    const full = ' ↑↓ server · PgUp/PgDn log · r restart · d remove · Esc close '
     return full.length + 18 <= props.width ? full : ' Esc close '
   }
 
@@ -134,7 +142,10 @@ export function LspStatusView(props: LspStatusViewProps) {
                   flexShrink={0}
                   content={`${server.id} · ${stateLabel(server)}`}
                 />
+                {/* A row each: a server command is a path somebody configured,
+                    and wrapping one pushes the log below it down the page. */}
                 <text
+                  wrapMode="none"
                   fg={ui.dim}
                   content={` · ${server.docs.length} open · ${server.command.join(' ')}`}
                 />

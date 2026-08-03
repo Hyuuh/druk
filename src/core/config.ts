@@ -88,7 +88,7 @@ export interface Config {
   transparent: boolean
   /**
    * Which glyphs the file tree draws in place of the expansion arrow —
-   * `'none'`, the shipped `unicode`, or one a plugin contributes (`nerd-icons`
+   * `'none'`, the shipped `unicode`, or one an extension contributes (`nerd-icons`
    * is the market's). `'none'` is the default because nothing can ask the
    * terminal whether its font has the glyphs a set needs.
    */
@@ -100,6 +100,12 @@ export interface Config {
    * normal from insert and the mode has to win.
    */
   cursorStyle: CursorStyle
+  /**
+   * Soft-wrap long lines at the window's edge. Off, a line past the edge is read
+   * by moving the caret into it — OpenTUI scrolls the view sideways only with
+   * the cursor, which is the trade for one buffer line per screen row.
+   */
+  wrap: boolean
   /**
    * Columns per indent level for space indentation — the Tab key and the guides.
    * A literal tab is two columns whatever this says: OpenTUI's renderer fixes that
@@ -165,7 +171,7 @@ export interface Config {
   typescriptTsdk: string
   /**
    * Per-server command override, keyed by server id — the ids are the ones the
-   * installed plugins declare, since druk ships no servers of its own. An empty
+   * installed extensions declare, since druk ships no servers of its own. An empty
    * array disables that server.
    */
   lspServers: Record<string, string[]>
@@ -177,25 +183,25 @@ export interface Config {
    */
   keybindings: Record<string, string>
   /**
-   * Plugin ids to read but not register — the settings page's off switch, so a
-   * plugin can be shelved without deleting it. Read by `readDisabledPlugins`
-   * before the rest of this file is parsed: plugins have to be loaded before a
+   * Extension ids to read but not register — the settings page's off switch, so a
+   * extension can be shelved without deleting it. Read by `readDisabledExtensions`
+   * before the rest of this file is parsed: extensions have to be loaded before a
    * theme id can be validated, and this is the one setting that decides which.
    */
-  disabledPlugins: string[]
+  disabledExtensions: string[]
   /**
-   * Read the plugin market at startup: notice a newer version of an installed
-   * plugin, and offer the plugin for a language or a theme that is missing. Off
+   * Read the extension market at startup: notice a newer version of an installed
+   * extension, and offer the extension for a language or a theme that is missing. Off
    * means druk never asks the registry anything.
    */
-  pluginUpdates: boolean
+  extensionUpdates: boolean
   /**
    * Where the market is served from — an https *directory* URL, under which each
-   * plugin is `<id>/plugin.json` and the catalog is `index.json`. A fork's raw
-   * URL belongs here; a plugin being written is tested by dropping it straight
-   * into the plugins folder instead, which needs no registry at all.
+   * extension is `<id>/extension.json` and the catalog is `index.json`. A fork's raw
+   * URL belongs here; an extension being written is tested by dropping it straight
+   * into the extensions folder instead, which needs no registry at all.
    */
-  pluginRegistry: string
+  extensionRegistry: string
 }
 
 export const DEFAULTS: Config = {
@@ -208,6 +214,8 @@ export const DEFAULTS: Config = {
   vim: false,
   // OpenTUI's own default, so an unset key keeps the caret druk has always drawn.
   cursorStyle: 'block',
+  // On, because it always was: druk wrapped unconditionally before this was a key.
+  wrap: true,
   tabSize: 2,
   sidebarWidth: 'auto',
   skipUpdate: '',
@@ -227,9 +235,9 @@ export const DEFAULTS: Config = {
   typescriptTsdk: '',
   lspServers: {},
   keybindings: {},
-  disabledPlugins: [],
-  pluginUpdates: true,
-  pluginRegistry: MARKET_URL,
+  disabledExtensions: [],
+  extensionUpdates: true,
+  extensionRegistry: MARKET_URL,
 }
 
 /** Reads one setting out of parsed JSON; `undefined` for absent or invalid. */
@@ -258,7 +266,7 @@ const commands = (raw: unknown): Record<string, string[]> | undefined => {
   return parsed
 }
 
-/** A list of ids (`disabledPlugins`). Anything that is not a string is dropped. */
+/** A list of ids (`disabledExtensions`). Anything that is not a string is dropped. */
 const ids = (raw: unknown): string[] | undefined =>
   Array.isArray(raw) ? raw.filter(value => typeof value === 'string') : undefined
 
@@ -278,11 +286,12 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   themeLight: theme,
   themeDark: theme,
   transparent: bool,
-  // A registry check, like the theme above it: an icon theme a plugin has since
+  // A registry check, like the theme above it: an icon theme an extension has since
   // been uninstalled with falls back to the default rather than drawing nothing.
   iconTheme: raw => (isIconThemeName(raw) ? raw : undefined),
   vim: bool,
   cursorStyle: among(...CURSOR_STYLES),
+  wrap: bool,
   tabSize: raw => (typeof raw === 'number' && raw >= 1 && raw <= 16 ? Math.floor(raw) : undefined),
   sidebarWidth: raw => {
     if (raw === 'auto') return 'auto'
@@ -308,11 +317,12 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   typescriptTsdk: text,
   lspServers: commands,
   keybindings: strings,
-  disabledPlugins: ids,
-  pluginUpdates: bool,
+  disabledExtensions: ids,
+  extensionUpdates: bool,
   // https only. The registry is the one place druk reads a file someone else
   // wrote, and a plaintext one could be rewritten between here and the machine.
-  pluginRegistry: raw => (typeof raw === 'string' && raw.startsWith('https://') ? raw : undefined),
+  extensionRegistry: raw =>
+    typeof raw === 'string' && raw.startsWith('https://') ? raw : undefined,
 }
 
 const isConfigKey = (key: string): key is keyof Config => key in VALIDATORS
@@ -364,16 +374,16 @@ export function loadProjectConfig(rootDir: string): Partial<Config> {
 }
 
 /**
- * The one setting that has to be read before the others: plugins register the
+ * The one setting that has to be read before the others: extensions register the
  * themes and icon themes `parsePartial` then validates against, so which
- * plugins to skip cannot itself wait for a parsed config. Both layers, project
+ * extensions to skip cannot itself wait for a parsed config. Both layers, project
  * over user, as `resolveConfig` would have merged them.
  */
-export function readDisabledPlugins(rootDir: string): string[] {
+export function readDisabledExtensions(rootDir: string): string[] {
   const layer = (file: string): string[] | undefined => {
     try {
       return ids(
-        (JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>).disabledPlugins,
+        (JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>).disabledExtensions,
       )
     } catch {
       return undefined
@@ -385,11 +395,11 @@ export function readDisabledPlugins(rootDir: string): string[] {
 /**
  * Theme and icon-theme ids the config asks for that nothing has registered.
  *
- * Read from the raw files for the same reason `readDisabledPlugins` is: by the
+ * Read from the raw files for the same reason `readDisabledExtensions` is: by the
  * time anything holds a `Config`, `VALIDATORS` has replaced an unknown id with
  * the default, and what the user actually wrote is gone. That id is exactly what
- * the market needs to offer the plugin back — a config naming `dracula` after
- * the palettes moved out of druk is a plugin recommendation, not a broken value.
+ * the market needs to offer the extension back — a config naming `dracula` after
+ * the palettes moved out of druk is an extension recommendation, not a broken value.
  */
 export function unregisteredNames(rootDir: string): { themes: string[]; icons: string[] } {
   const themes = new Set<string>()

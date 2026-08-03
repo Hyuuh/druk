@@ -1,12 +1,12 @@
 /**
  * File icons — the glyph the tree draws where the expansion arrow otherwise
- * goes, and the registry plugins add icon themes to.
+ * goes, and the registry extensions add icon themes to.
  *
  * One ships with druk: `unicode`, whose glyphs are geometric shapes every font
  * has. It is not the default — `iconTheme: 'none'` is, because a terminal cannot
  * be asked what its font holds and a row of tofu is worse than no icons at all,
  * and a set that needs a patched font (`material-icons`, `nerd-icons`) is a
- * market plugin for that same reason.
+ * market extension for that same reason.
  *
  * A theme replaces the arrow rather than sitting beside it: the folder glyph
  * has an open and a closed form, so expansion is still readable and the row
@@ -123,13 +123,13 @@ const unicode: IconTheme = {
 
 export const BUILTIN_ICON_THEMES: IconTheme[] = [unicode]
 
-/** Every theme by id, built-ins and whatever plugins registered. */
+/** Every theme by id, built-ins and whatever extensions registered. */
 const registry: Record<string, IconTheme> = Object.fromEntries(
   BUILTIN_ICON_THEMES.map(theme => [theme.id, theme]),
 )
 
-/** Registered by a plugin, and dropped again when plugins reload. */
-const fromPlugins = new Set<string>()
+/** Registered by an extension, and dropped again when extensions reload. */
+const fromExtensions = new Set<string>()
 
 // A signal for the same reason the theme registry has one: the settings page's
 // list is built in a reactive scope, and a mutated object repaints nothing.
@@ -137,19 +137,19 @@ const [names, setNames] = createSignal<string[]>(Object.keys(registry))
 
 export function registerIconTheme(theme: IconTheme): void {
   registry[theme.id] = theme
-  fromPlugins.add(theme.id)
+  fromExtensions.add(theme.id)
   setNames(Object.keys(registry))
 }
 
-export function clearPluginIconThemes(): void {
-  for (const id of fromPlugins) {
-    // A plugin may have registered over a shipped id; dropping it has to put the
+export function clearExtensionIconThemes(): void {
+  for (const id of fromExtensions) {
+    // An extension may have registered over a shipped id; dropping it has to put the
     // shipped theme back rather than leave the setting naming nothing.
     const shipped = BUILTIN_ICON_THEMES.find(theme => theme.id === id)
     if (shipped) registry[id] = shipped
     else delete registry[id]
   }
-  fromPlugins.clear()
+  fromExtensions.clear()
   setNames(Object.keys(registry))
 }
 
@@ -175,7 +175,7 @@ const folderKey = (name: string): string => name.replace(/^__(.+)__$/, '$1').rep
 
 /**
  * The glyph for one tree row, or null when icons are off or the theme is gone —
- * a plugin can be uninstalled while its id is still in the config.
+ * an extension can be uninstalled while its id is still in the config.
  */
 export function iconFor(
   themeId: string,

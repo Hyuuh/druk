@@ -29,10 +29,17 @@ test('on a short terminal the table windows instead of clipping the footer', asy
 test('a tall terminal shows every section with the plain footer', async () => {
   // Exactly the height the whole table needs: the overlay draws a window of
   // `height - 7` lines, so a row added to `KEYS` costs a row here too.
-  const t = await openHelp(64)
+  const t = await openHelp(70)
   const frame = t.captureCharFrame()
 
-  for (const section of ['General', 'Editing', 'Search & replace', 'File tree', 'View']) {
+  for (const section of [
+    'General',
+    'Editing',
+    'Search & replace',
+    'File tree',
+    'View',
+    'Extensions',
+  ]) {
     expect(frame).toContain(section)
   }
   expect(frame).toContain('Editor → tree')

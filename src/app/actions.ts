@@ -1,4 +1,4 @@
-import { basename, dirname, relative } from 'node:path'
+import { dirname, relative } from 'node:path'
 
 import { createMemo } from 'solid-js'
 
@@ -19,7 +19,6 @@ import {
 } from '../core/git'
 import type { FileStatus } from '../core/git'
 import { pathTokenAt, resolveImportPath } from '../core/imports'
-import { contributionSummary, plugins, PLUGINS_DIR } from '../plugins'
 import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
@@ -251,6 +250,7 @@ export function createCommands(ctx: AppContext) {
     setTheme: settings.applyTheme,
     previewTheme: settings.previewTheme,
     restoreTheme: settings.restoreTheme,
+    toggleWrap: settings.toggleWrap,
     lineOp: editor.requestLineOp,
     triggerCompletion: editor.requestCompletion,
     openSettings: () => {
@@ -278,6 +278,21 @@ export function createCommands(ctx: AppContext) {
     },
     problemsNext: () => jumpProblem(1),
     problemsPrev: () => jumpProblem(-1),
+    /**
+     * Delete druk's own copy of a server. Only ever druk's: one on PATH or in
+     * the project is not druk's to remove, and the row says so rather than
+     * offering a confirm that would do nothing.
+     */
+    uninstallServer: (id: string) => {
+      const target = ctx.lsp.removable(id)
+      if (!target) return say(`${id}: druk did not install it — nothing to remove`, 'warn')
+      ctx.prompts.setPrompt({
+        kind: 'uninstallServer',
+        id,
+        name: target.name,
+        packages: target.packages,
+      })
+    },
     restartLsp: () => {
       if (!settings.config.lsp) return say('LSP is off', 'warn')
       ctx.lsp.restart()
@@ -399,53 +414,16 @@ export function createCommands(ctx: AppContext) {
     gitRenameBranch: () => ctx.branches.open('rename'),
     gitDeleteBranch: () => ctx.branches.open('delete'),
     gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
-    listPlugins: () => {
-      // The ones druk ships are a count, not a list: they outnumber everything
-      // else and naming them would push what the user actually installed off the
-      // end of a status line. The settings page is where all of them are shown.
-      const shipped = plugins().filter(plugin => plugin.builtin).length
-      const installed = plugins().filter(plugin => !plugin.builtin)
-      const named = installed.map(
-        plugin =>
-          `${plugin.name} ${plugin.version} (${contributionSummary(plugin)})${plugin.disabled ? ' — off' : ''}`,
-      )
-      if (named.length === 0) {
-        return say(`${shipped} built in, none installed — manifests go in ${PLUGINS_DIR}`)
-      }
-      say([`${shipped} built in`, ...named].join(' · '))
-    },
-    reloadPlugins: () => {
-      const load = settings.reloadPlugins()
-      const problem = load.problems[0]
-      if (problem) {
-        return say(`${basename(dirname(problem.source))}: ${problem.reason}`, 'warn')
-      }
-      say(
-        load.plugins.length === 0
-          ? `No plugins — manifests go in ${PLUGINS_DIR}`
-          : `${load.plugins.length} plugin${load.plugins.length === 1 ? '' : 's'} reloaded`,
-      )
-    },
-    installPlugin: (id: string) => ctx.market.install(id),
-    uninstallPlugin: (id: string) => ctx.market.remove(id),
-    updatePlugins: () => void ctx.market.updateAll(),
-    checkPluginUpdates: () => void ctx.market.checkNow(),
+    openExtensions: panes.toggleExtensionsView,
+    reloadExtensions: ctx.extensions.reload,
+    updateExtensions: ctx.extensions.updateAll,
+    checkExtensionUpdates: ctx.extensions.checkNow,
     showHelp: () => ctx.overlays.setHelp(true),
     quit: ctx.prompts.quit,
   }
 
-  // `market.catalog()` and `plugins()` are signals, so the market rows repaint
-  // after a fetch or an install without the palette knowing either happened.
   const commands = createMemo<Command[]>(() =>
-    buildCommands(actions, {
-      activeTheme: config.theme,
-      market: ctx.market.catalog(),
-      installed: plugins().map(plugin => ({
-        id: plugin.id,
-        version: plugin.version,
-        builtin: plugin.builtin,
-      })),
-    }),
+    buildCommands(actions, { activeTheme: config.theme }),
   )
 
   return { commands, actions }

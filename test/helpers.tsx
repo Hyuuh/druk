@@ -5,27 +5,27 @@ import { join } from 'node:path'
 
 import { testRender } from '@opentui/solid'
 
-import { MARKET_DIR } from '../scripts/plugins'
+import { MARKET_DIR } from '../scripts/extensions'
 import { App } from '../src/app/App'
 import { DEFAULTS } from '../src/core/config'
 import type { Config } from '../src/core/config'
-import { loadPlugins } from '../src/plugins'
+import { loadExtensions } from '../src/extensions'
 
 export type Harness = Awaited<ReturnType<typeof launch>>
 
 /**
- * Register every plugin in this repository's market folder — the themes, icon
+ * Register every extension in this repository's market folder — the themes, icon
  * sets and language servers druk used to ship in `src/`. The market folder has
- * the same shape as a plugins folder, so the loader reads it as one.
+ * the same shape as an extensions folder, so the loader reads it as one.
  *
  * Call it at the top of a file whose subject is one of those themes; it is
  * module state, so it lasts for that file's process and no further.
  */
-export function loadMarketPlugins(): void {
-  // The config home stands in for a project root: only `<rootDir>/.druk/plugins`
+export function loadMarketExtensions(): void {
+  // The config home stands in for a project root: only `<rootDir>/.druk/extensions`
   // is read off it, and a temp directory per call is litter the suite does not
   // need — it already leaves one per fixture.
-  loadPlugins(process.env.XDG_CONFIG_HOME!, [], MARKET_DIR)
+  loadExtensions(process.env.XDG_CONFIG_HOME!, [], MARKET_DIR)
 }
 
 /**
@@ -96,9 +96,9 @@ export async function launch(
           lspAutoInstall: false,
           themeSync: false,
           // Off for the same reason as the install offer above: on, a file whose
-          // language has no plugin would reach for the market — a real request,
+          // language has no extension would reach for the market — a real request,
           // and then a modal over whatever the test was doing.
-          pluginUpdates: false,
+          extensionUpdates: false,
           ...config,
         },
         // Off by default: the real check is unconditional, and without this every

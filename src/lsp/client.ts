@@ -55,6 +55,8 @@ function trackChild(child: ChildProcess) {
 }
 
 export interface LspClientOptions {
+  /** The server's id, as its manifest declares it. Carried for the caller's sake. */
+  id: string
   command: string[]
   rootDir: string
   onDiagnostics: (uri: string, diagnostics: Diagnostic[]) => void
@@ -73,6 +75,22 @@ export interface LspClientOptions {
   onLog?: (entry: Omit<ServerLogLine, 'time'>) => void
   /** Server-specific `initialize` options, when the caller has any to send. */
   initializationOptions?: unknown
+  /**
+   * The server's own configuration object, from its extension manifest.
+   *
+   * Answered to every `workspace/configuration` item and pushed once as a
+   * `didChangeConfiguration` after the handshake. Undefined means "no opinion",
+   * which is answered as `null` — the reply a server reads as "use your
+   * defaults". Both halves matter: eslint asks per document and does nothing
+   * with a null answer, and other servers only ever read the push.
+   */
+  settings?: unknown
+  /**
+   * The server asked for every open document's diagnostics to be re-pulled
+   * (`workspace/diagnostic/refresh`) — it has learnt something the last answers
+   * did not account for, a config file it watches most of all.
+   */
+  onRefreshDiagnostics?: () => void
 }
 
 /** window/logMessage's MessageType, spelled out. Anything unknown reads as "log". */
@@ -177,8 +195,14 @@ export function spawnLspClient(options: LspClientOptions) {
       // Server → client requests. druk implements none, but a request left
       // unanswered stalls some servers — so each gets the emptiest legal reply.
       if (message.method === 'workspace/configuration') {
+        // The same object for every item: the requests are per document (eslint
+        // asks with a `scopeUri`), and a manifest has one answer for the server,
+        // not one per file.
         const items = (message.params as { items?: unknown[] } | undefined)?.items ?? []
-        send({ jsonrpc: '2.0', id: message.id, result: items.map(() => null) })
+        send({ jsonrpc: '2.0', id: message.id, result: items.map(() => options.settings ?? null) })
+      } else if (message.method === 'workspace/diagnostic/refresh') {
+        send({ jsonrpc: '2.0', id: message.id, result: null })
+        options.onRefreshDiagnostics?.()
       } else if (
         message.method === 'client/registerCapability' ||
         message.method === 'client/unregisterCapability' ||
@@ -239,6 +263,16 @@ export function spawnLspClient(options: LspClientOptions) {
     processId: process.pid,
     rootUri,
     capabilities: {
+      // Declared even though druk has no settings UI per server: without
+      // `configuration` a server never asks, and one whose whole behaviour is
+      // configured — eslint — silently does nothing. `refreshSupport` is the
+      // other half: it is how such a server says its answers went stale.
+      workspace: {
+        configuration: true,
+        workspaceFolders: true,
+        didChangeConfiguration: { dynamicRegistration: true },
+        diagnostics: { refreshSupport: true },
+      },
       textDocument: {
         synchronization: { didSave: true },
         publishDiagnostics: {},
@@ -281,6 +315,16 @@ export function spawnLspClient(options: LspClientOptions) {
       resolveProvider = capabilities?.completionProvider?.resolveProvider === true
       pullProvider = capabilities?.diagnosticProvider != null
       send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+      // After `initialized`, as the protocol requires, and before the queued
+      // didOpens below — a server that reads only the push would otherwise
+      // decide what to do with the first document before it had the settings.
+      if (options.settings !== undefined) {
+        send({
+          jsonrpc: '2.0',
+          method: 'workspace/didChangeConfiguration',
+          params: { settings: options.settings },
+        })
+      }
       state = 'ready'
       log('event', `initialized — diagnostics ${pullProvider ? 'pulled' : 'published'}`)
       for (const message of queued) send(message)
@@ -299,6 +343,8 @@ export function spawnLspClient(options: LspClientOptions) {
     .finally(() => clearTimeout(initTimeout))
 
   return {
+    id: options.id,
+
     /** True once the handshake finished and false again when the server dies. */
     ready: () => state === 'ready',
 

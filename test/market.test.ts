@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import {
   fetchCatalog,
-  fetchPlugin,
+  fetchExtension,
   isStale,
   MARKET_URL,
   parseCatalog,
@@ -13,13 +13,13 @@ import {
   removeFromDisk,
   updatesFor,
   writeCachedCatalog,
-  writePlugin,
+  writeExtension,
 } from '../src/core/market'
 import type { Fetcher, MarketEntry } from '../src/core/market'
 import { isNewer } from '../src/core/update'
-import { loadPlugins } from '../src/plugins'
+import { loadExtensions } from '../src/extensions'
 
-const REGISTRY = 'https://example.test/plugins/'
+const REGISTRY = 'https://example.test/extensions/'
 
 const MANIFEST = {
   id: 'nim',
@@ -30,13 +30,14 @@ const MANIFEST = {
 }
 
 const INDEX = {
-  plugins: [
+  extensions: [
     {
       id: 'nim',
       name: 'Nim',
       version: '1.2.0',
       description: 'nimlangserver',
       provides: { themes: [], icons: [], filetypes: ['nim'] },
+      categories: ['language', 'lsp'],
     },
   ],
 }
@@ -57,7 +58,7 @@ const temp = (name: string) => mkdtempSync(join(tmpdir(), `druk-${name}-`))
 
 test('a malformed catalog row is dropped, not fatal', () => {
   const parsed = parseCatalog({
-    plugins: [
+    extensions: [
       { id: 'ok', version: '1.0.0' },
       { id: 'no version' },
       { id: 'sp ace', version: '1.0.0' },
@@ -72,6 +73,7 @@ test('a malformed catalog row is dropped, not fatal', () => {
     version: '1.0.0',
     description: '',
     provides: { themes: [], icons: [], filetypes: [] },
+    categories: [],
   })
 })
 
@@ -94,14 +96,14 @@ test("druk's own registry is the default, and it is https", () => {
   expect(MARKET_URL.endsWith('/')).toBe(true)
 })
 
-test('a manifest is fetched from <registry><id>/plugin.json and validated', async () => {
+test('a manifest is fetched from <registry><id>/extension.json and validated', async () => {
   const seen: string[] = []
-  const result = await fetchPlugin('nim', {
+  const result = await fetchExtension('nim', {
     registry: REGISTRY,
-    fetcher: serving({ [`${REGISTRY}nim/plugin.json`]: MANIFEST }, seen),
+    fetcher: serving({ [`${REGISTRY}nim/extension.json`]: MANIFEST }, seen),
   })
-  expect(seen).toEqual([`${REGISTRY}nim/plugin.json`])
-  expect(result.ok && result.plugin.servers[0]?.command).toEqual(['nimlangserver'])
+  expect(seen).toEqual([`${REGISTRY}nim/extension.json`])
+  expect(result.ok && result.extension.servers[0]?.command).toEqual(['nimlangserver'])
 })
 
 test('a manifest druk would reject is refused before anything is written', async () => {
@@ -110,36 +112,38 @@ test('a manifest druk would reject is refused before anything is written', async
     { id: 'other', languageServers: [{ id: 'nim', command: ['x'], filetypes: ['nim'] }] }, // wrong id
     'not json at all',
   ]) {
-    const result = await fetchPlugin('nim', {
+    const result = await fetchExtension('nim', {
       registry: REGISTRY,
-      fetcher: serving({ [`${REGISTRY}nim/plugin.json`]: body }),
+      fetcher: serving({ [`${REGISTRY}nim/extension.json`]: body }),
     })
     expect(result.ok).toBe(false)
   }
 })
 
-/** `fetchPlugin`'s answer for a manifest, without going through a fetch. */
+/** `fetchExtension`'s answer for a manifest, without going through a fetch. */
 async function fetchedOk(manifest: unknown, id = 'nim') {
-  const result = await fetchPlugin(id, {
+  const result = await fetchExtension(id, {
     registry: REGISTRY,
-    fetcher: serving({ [`${REGISTRY}${id}/plugin.json`]: manifest }),
+    fetcher: serving({ [`${REGISTRY}${id}/extension.json`]: manifest }),
   })
   if (!result.ok) throw new Error(result.error)
   return result
 }
 
-test('a fetched manifest is written where loadPlugins finds it', async () => {
-  const root = temp('plugins')
+test('a fetched manifest is written where loadExtensions finds it', async () => {
+  const root = temp('extensions')
   const project = temp('project')
-  expect(await writePlugin('nim', await fetchedOk(MANIFEST), root)).toBeNull()
-  expect(JSON.parse(readFileSync(join(root, 'nim', 'plugin.json'), 'utf8'))).toEqual(MANIFEST)
+  expect(await writeExtension('nim', await fetchedOk(MANIFEST), root)).toBeNull()
+  expect(JSON.parse(readFileSync(join(root, 'nim', 'extension.json'), 'utf8'))).toEqual(MANIFEST)
 
   // The folder shape is the one the loader walks — that is the whole contract
   // between an install and the next startup.
-  const load = loadPlugins(project, [], root)
+  const load = loadExtensions(project, [], root)
   expect(load.problems).toEqual([])
-  // Beside the plugins druk ships inside the binary, which are always loaded.
-  expect(load.plugins.filter(plugin => !plugin.builtin).map(plugin => plugin.id)).toEqual(['nim'])
+  // Beside the extensions druk ships inside the binary, which are always loaded.
+  expect(
+    load.extensions.filter(extension => !extension.builtin).map(extension => extension.id),
+  ).toEqual(['nim'])
 
   expect(removeFromDisk('nim', root)).toBeNull()
   expect(existsSync(join(root, 'nim'))).toBe(false)
@@ -153,15 +157,15 @@ test('the cache survives a round trip and knows when it is old', () => {
   expect(readCachedCatalog(file)).toBeNull()
   expect(isStale(null, 1000)).toBe(true)
 
-  writeCachedCatalog(INDEX.plugins as MarketEntry[], 1000, file)
+  writeCachedCatalog(INDEX.extensions as MarketEntry[], 1000, file)
   const cached = readCachedCatalog(file)
-  expect(cached?.plugins.map(entry => entry.id)).toEqual(['nim'])
+  expect(cached?.extensions.map(entry => entry.id)).toEqual(['nim'])
   expect(isStale(cached, 1000 + 60_000)).toBe(false)
   expect(isStale(cached, 1000 + 7 * 60 * 60 * 1000)).toBe(true)
 })
 
-test('only an installed plugin with a lower version is an update', () => {
-  const catalog = INDEX.plugins as MarketEntry[]
+test('only an installed extension with a lower version is an update', () => {
+  const catalog = INDEX.extensions as MarketEntry[]
   expect(updatesFor([{ id: 'nim', version: '1.1.0' }], catalog, isNewer)).toHaveLength(1)
   expect(updatesFor([{ id: 'nim', version: '1.2.0' }], catalog, isNewer)).toEqual([])
   expect(updatesFor([{ id: 'nim', version: '2.0.0' }], catalog, isNewer)).toEqual([])
