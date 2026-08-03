@@ -100,6 +100,12 @@ export interface Config {
    */
   cursorStyle: CursorStyle
   /**
+   * Soft-wrap long lines at the window's edge. Off, a line past the edge is read
+   * by moving the caret into it — OpenTUI scrolls the view sideways only with
+   * the cursor, which is the trade for one buffer line per screen row.
+   */
+  wrap: boolean
+  /**
    * Columns per indent level for space indentation — the Tab key and the guides.
    * A literal tab is two columns whatever this says: OpenTUI's renderer fixes that
    * width and exposes no setting for it.
@@ -199,6 +205,8 @@ export const DEFAULTS: Config = {
   vim: false,
   // OpenTUI's own default, so an unset key keeps the caret druk has always drawn.
   cursorStyle: 'block',
+  // On, because it always was: druk wrapped unconditionally before this was a key.
+  wrap: true,
   tabSize: 2,
   sidebarWidth: 'auto',
   skipUpdate: '',
@@ -273,6 +281,7 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   iconTheme: raw => (isIconThemeName(raw) ? raw : undefined),
   vim: bool,
   cursorStyle: among(...CURSOR_STYLES),
+  wrap: bool,
   tabSize: raw => (typeof raw === 'number' && raw >= 1 && raw <= 16 ? Math.floor(raw) : undefined),
   sidebarWidth: raw => {
     if (raw === 'auto') return 'auto'

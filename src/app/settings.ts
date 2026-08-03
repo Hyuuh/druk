@@ -196,6 +196,11 @@ export function createSettings(deps: {
     status.say(`Transparent background ${onOff(config.transparent)}`)
   }
 
+  const toggleWrap = () => {
+    patchConfig({ wrap: !view().wrap })
+    status.say(`Word wrap ${onOff(config.wrap)}`)
+  }
+
   const applyIconTheme = (id: string) => {
     patchConfig({ iconTheme: id })
     status.say(
@@ -656,6 +661,13 @@ export function createSettings(deps: {
     },
     {
       section: 'Editor',
+      key: 'wrap',
+      label: 'Word wrap',
+      value: onOff(view().wrap),
+      cycle: toggleWrap,
+    },
+    {
+      section: 'Editor',
       key: 'tabSize',
       label: 'Tab size',
       value: String(view().tabSize),
@@ -887,6 +899,7 @@ export function createSettings(deps: {
     restoreTheme,
     toggleThemeSync,
     toggleTransparent,
+    toggleWrap,
     applyTabSize,
     applyVim,
     toggleTrim,

@@ -1,0 +1,45 @@
+import { expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { CONFIG_FILE } from '../src/core/config'
+import { fixture, launch, runCommand, settle } from './helpers'
+
+// Wide enough to open with the sidebar, narrow enough that the marker is past
+// the editor's right edge — only a wrapped continuation row can show it.
+const TAIL = 'TAIL_MARKER'
+const PROJECT = { 'a.ts': `const line = "${'x'.repeat(80)}" // ${TAIL}\n` }
+
+const SIZE = { width: 60, height: 20 }
+
+const savedWrap = () => JSON.parse(readFileSync(CONFIG_FILE, 'utf8')).wrap
+
+test('long lines wrap by default, as they always have', async () => {
+  const dir = fixture(PROJECT)
+  const t = await launch(dir, {}, SIZE, { openFile: join(dir, 'a.ts') })
+
+  expect(t.captureCharFrame()).toContain(TAIL)
+})
+
+test('wrap: false keeps one buffer line per row, tail past the edge', async () => {
+  const dir = fixture(PROJECT)
+  const t = await launch(dir, { wrap: false }, SIZE, { openFile: join(dir, 'a.ts') })
+
+  expect(t.captureCharFrame()).not.toContain(TAIL)
+})
+
+test('the palette command toggles wrap live, and it persists', async () => {
+  const dir = fixture(PROJECT)
+  const t = await launch(dir, {}, SIZE, { openFile: join(dir, 'a.ts') })
+  expect(t.captureCharFrame()).toContain(TAIL)
+
+  await runCommand(t, 'Toggle word wrap')
+  await settle(t)
+  expect(t.captureCharFrame()).not.toContain(TAIL)
+  expect(savedWrap()).toBe(false)
+
+  await runCommand(t, 'Toggle word wrap')
+  await settle(t)
+  expect(t.captureCharFrame()).toContain(TAIL)
+  expect(savedWrap()).toBe(true)
+})

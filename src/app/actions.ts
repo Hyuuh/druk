@@ -244,6 +244,7 @@ export function createCommands(ctx: AppContext) {
     setTheme: settings.applyTheme,
     previewTheme: settings.previewTheme,
     restoreTheme: settings.restoreTheme,
+    toggleWrap: settings.toggleWrap,
     lineOp: editor.requestLineOp,
     triggerCompletion: editor.requestCompletion,
     openSettings: () => {

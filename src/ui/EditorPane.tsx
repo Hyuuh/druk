@@ -63,6 +63,8 @@ export interface EditorPaneProps {
   vim: boolean
   /** Caret shape, for as long as vim is off — see the `cursorStyle` config key. */
   cursorStyle: CursorStyle
+  /** Soft-wrap long lines — see the `wrap` config key. */
+  wrap: boolean
   tabSize: number
   /** True while a modal owns the keyboard; the editor must ignore all keys. */
   blocked: boolean
@@ -1502,10 +1504,11 @@ export function EditorPane(props: EditorPaneProps) {
                 style: props.vim ? (vimMode() === 'insert' ? 'line' : 'block') : props.cursorStyle,
                 blinking: true,
               }}
-              // Always wrapping: OpenTUI's textarea scrolls sideways only by
-              // dragging the caret along, so unwrapped long lines have no way to be
-              // read that does not move the cursor.
-              wrapMode="word"
+              // Wrapped by default: OpenTUI's textarea scrolls sideways only by
+              // dragging the caret along, so with `wrap` off a long line's tail is
+              // reached by moving the cursor into it — the trade that setting makes
+              // for one buffer line per screen row.
+              wrapMode={props.wrap ? 'word' : 'none'}
               // OpenTUI takes a glyph, not a width: the number it accepts is a code
               // point, so passing a tab size painted control characters into the first
               // cell of every tab. A terminal drops those, leaving whatever the cell
