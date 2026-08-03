@@ -185,7 +185,9 @@ export function createLsp(deps: {
     const name = resolved.command[0]!
     const spec = resolved.install
     if (!spec) return status.say(`LSP: ${name} is not installed, or not on PATH`, 'warn')
-    // npm-compatible managers need node; Bun can install without it.
+    // An npm server is a node script whatever fetches it, so an empty manager
+    // list is `availablePackageManagers` saying the install could not be run —
+    // node is missing, or the prefix is pinned to a manager that has gone.
     if (
       (spec.kind === 'npm' || spec.kind === 'download') &&
       settings.config.lspAutoInstall &&

@@ -154,9 +154,12 @@ export function createMarket(deps: {
       })
       if (error) return void status.say(`Could not install ${id}: ${error}`, 'error')
       const load = settings.reloadExtensions()
-      if (result.extension.servers.length > 0) onServersReload?.()
       const installed = load.extensions.find(extension => extension.id === id)
       status.say(`Installed ${installed?.name ?? id} ${installed?.version ?? ''}`.trim())
+      // After the confirmation, not before: the restart re-syncs the open
+      // documents, and what the new server has to say about them would
+      // otherwise overwrite the line saying the install worked.
+      if (result.extension.servers.length > 0) onServersReload?.()
     })()
   }
 

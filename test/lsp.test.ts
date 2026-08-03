@@ -9,7 +9,13 @@ import type { Problem } from '../src/app/lsp'
 import { loadExtensions } from '../src/extensions'
 import { styleIdForGroup } from '../src/languages/highlight'
 import { spawnLspClient } from '../src/lsp/client'
-import { downloadServer, installServer, installedCommand, removeServer } from '../src/lsp/install'
+import {
+  availablePackageManagers,
+  downloadServer,
+  installServer,
+  installedCommand,
+  removeServer,
+} from '../src/lsp/install'
 import { projectCommand, typescriptMajor } from '../src/lsp/project'
 import type { Diagnostic, RpcMessage } from '../src/lsp/protocol'
 import { isUnnecessary, severityOf } from '../src/lsp/protocol'
@@ -244,6 +250,27 @@ describe('installed servers', () => {
       process.env.PATH = path
     }
   }, 20_000)
+
+  test('no node leaves no manager to offer, whatever else is on PATH', () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    const path = process.env.PATH
+    process.env.PATH = ''
+    try {
+      // bun is still installed and could fetch the packages; what it cannot do
+      // is run them, the servers being `#!/usr/bin/env node` scripts.
+      expect(availablePackageManagers(root)).toEqual([])
+    } finally {
+      process.env.PATH = path
+    }
+  })
+
+  test('a prefix keeps the manager that filled it, so the removal matches the install', () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    writeFileSync(join(root, '.manager'), 'bun')
+    // Both are a given here: bun runs this suite, and node is what the servers
+    // the list exists for are run by.
+    expect(availablePackageManagers(root)).toEqual(['bun'])
+  })
 
   test('an install with no npm to run it fails instead of hanging', async () => {
     const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))

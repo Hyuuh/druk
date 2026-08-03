@@ -85,13 +85,21 @@ version *picks the server*: 7.x is the Go port, which ships no `tsserver.js` for
 typescript-language-server to drive and speaks LSP itself, so a 7 project is
 served by `tsc --lsp --stdio` and a 5/6 project by typescript-language-server; a
 server that is not on PATH and has an npm package offers to install
-itself — a confirm prompt, never a silent fetch, into `$XDG_DATA_HOME/druk/lsp`
-rather than a global prefix, gated by `lspAutoInstall`; one that ships a
+itself — a prompt, never a silent fetch, naming the package managers on PATH so
+the fetch goes through whichever of npm, bun or pnpm the user keeps (not yarn:
+Berry resolves through Plug'n'Play and writes no `node_modules` for druk to find
+the binary in), into `$XDG_DATA_HOME/druk/lsp`
+rather than a global prefix, gated by `lspAutoInstall`; the answer is asked for
+once and recorded in the prefix, since a `node_modules` written half by one
+manager and half by another is a tree neither can take apart, and node has to be
+there whatever fetched them, the servers being `#!/usr/bin/env node` scripts;
+one that ships a
 release binary instead (elixir's expert) is fetched the same way; and the
 servers that come with a language toolchain print their install line instead; `typescriptTsdk`
 picks which TypeScript typescript-language-server drives, empty leaving it to the
 server — which prefers the open project's own copy; the servers restart on
-demand, palette → Problems → Restart language servers, and by themselves once a
+demand, palette → Problems → Restart language servers, once an installed
+extension brings servers of its own, and by themselves once a
 dependency directory settles after an install, since druk registers no watched
 files and a server otherwise resolves imports against the `node_modules` it saw
 at startup forever), a language-server status page (palette →

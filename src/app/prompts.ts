@@ -5,7 +5,6 @@ import { createMemo, createSignal } from 'solid-js'
 import { createDir, createFile, isDirectory } from '../core/fs'
 import { commitPaths, pullAndPush, PUSH_REJECTED, undoLastCommit } from '../core/git'
 import { SERVER_ROOT } from '../lsp/install'
-import type { PackageManager } from '../lsp/install'
 import { installHint } from '../lsp/servers'
 import type { Branches } from './branches'
 import type { EditorBridge } from './editor'
@@ -117,14 +116,20 @@ export function createPromptHandlers(deps: {
     }
   }
 
-  /** Install a missing server with the selected package manager. */
-  const chooseInstallServer = (manager: PackageManager) => {
+  /**
+   * Install a missing server with the manager picked from the choice modal.
+   * Takes the id as the string the modal deals in and narrows it here, so the
+   * row a `ChoiceModal` hands back needs no cast on the way through.
+   */
+  const chooseInstallServer = (manager: string) => {
     const p = prompt()
     setPrompt(null)
-    if (p?.kind !== 'installServer' || !p.managers.includes(manager)) return
-    void lsp.install(p.id, p.name, p.install, manager)
+    if (p?.kind !== 'installServer') return
+    const chosen = p.managers.find(candidate => candidate === manager)
+    if (chosen) void lsp.install(p.id, p.name, p.install, chosen)
   }
 
+  /** Carry out whatever the open confirm prompt was asking about. */
   const confirmPrompt = () => {
     const p = prompt()
     setPrompt(null)
@@ -153,9 +158,10 @@ export function createPromptHandlers(deps: {
         })
       case 'replaceProject':
         return workspace.applyProjectReplace(p.paths, p.query, p.replacement, p.options)
+      // An npm server is answered by the manager choice instead, and never
+      // reaches this modal — `confirmation` returns null for it.
       case 'installServer':
-        if (p.install.kind === 'download') return void lsp.install(p.id, p.name, p.install)
-        return
+        return p.install.kind === 'download' ? void lsp.install(p.id, p.name, p.install) : undefined
       case 'uninstallServer':
         return void lsp.uninstall(p.id)
       case 'installExtension':
@@ -165,11 +171,9 @@ export function createPromptHandlers(deps: {
         // and `lsp.uninstall` reads the spec it is about out of that registry —
         // after the reload there is nothing left to tell it what to delete.
         return void (async () => {
-          // Uninstall sequentially: package managers share the LSP prefix.
-          for (const server of p.servers) {
-            // oxlint-disable-next-line no-await-in-loop
-            await lsp.uninstall(server.id)
-          }
+          // One at a time: the servers share one prefix, and two runs of a
+          // package manager writing that tree at once is one neither can read.
+          for (const server of p.servers) await lsp.uninstall(server.id)
           market.remove(p.id)
         })()
       }

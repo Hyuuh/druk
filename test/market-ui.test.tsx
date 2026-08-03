@@ -120,6 +120,11 @@ test('a file whose language has no server offers the extension, and installs it'
 
   await settle(t)
   t.mockInput.pressEnter()
+  // The servers the extension brought are restarted, which is what makes the
+  // open file try the new one without a relaunch. "Installed Go 1.1.0" is said
+  // first and is not what is waited for: a server the extension brought and the
+  // machine lacks is the more useful thing to leave on the status bar, so with
+  // this fixture the install line is replaced before a frame carries it.
   await untilFrame(t, 'druk-no-such-gopls is not installed, or not on PATH')
   expect(JSON.parse(readFileSync(join(EXTENSIONS_DIR, 'go', 'extension.json'), 'utf8'))).toEqual(
     GO_EXTENSION,

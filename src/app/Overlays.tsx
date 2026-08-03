@@ -7,7 +7,6 @@ import type { Branch } from '../core/git'
 import { buildQuery, planProjectReplace, replaceAll, replaceMatch } from '../core/search'
 import type { Match, SearchOptions } from '../core/search'
 import type { UpdateInfo } from '../core/update'
-import type { PackageManager } from '../lsp/install'
 import { BranchPicker } from '../ui/BranchPicker'
 import { ChoiceModal } from '../ui/ChoiceModal'
 import { CommandPalette } from '../ui/CommandPalette'
@@ -30,8 +29,10 @@ import type { EditorBridge } from './editor'
 import type { Git } from './git'
 import type { Panes } from './panes'
 import type { PromptState } from './prompts'
-import type { Confirmation, Conflict } from './types'
+import type { Confirmation, Conflict, Prompt } from './types'
 import type { Workspace } from './workspace'
+
+type InstallServerPrompt = Extract<Prompt, { kind: 'installServer' }>
 
 /** The active search toggles, named in the confirm so what runs is what was agreed to. */
 const searchFlags = (options: SearchOptions) => {
@@ -177,6 +178,13 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
     if (overlays.problemsOpen() && problemRows().length === 0) overlays.setProblemsOpen(false)
   })
 
+  // A download answers the confirm modal below; only an npm install has a
+  // manager to pick, so the narrowing happens once and `Show` keys the child on it.
+  const managerChoice = createMemo<InstallServerPrompt | null>(() => {
+    const ask = prompts.prompt()
+    return ask?.kind === 'installServer' && ask.install.kind === 'npm' ? ask : null
+  })
+
   return (
     <>
       <Show when={prompts.promptTitle()}>
@@ -189,25 +197,16 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
           />
         )}
       </Show>
-      <Show
-        when={() => {
-          const prompt = prompts.prompt()
-          return prompt?.kind === 'installServer' && prompt.install.kind === 'npm'
-        }}
-      >
-        {() => {
-          const prompt = prompts.prompt()
-          if (prompt?.kind !== 'installServer' || prompt.install.kind !== 'npm') return null
-          return (
-            <ChoiceModal
-              title="Language server missing"
-              message={`${prompt.name} is not installed. Choose a package manager:`}
-              choices={prompt.managers.map(manager => ({ id: manager, label: manager }))}
-              onPick={id => prompts.chooseInstallServer(id as PackageManager)}
-              onCancel={prompts.cancelPrompt}
-            />
-          )
-        }}
+      <Show when={managerChoice()}>
+        {(ask: () => InstallServerPrompt) => (
+          <ChoiceModal
+            title="Language server missing"
+            message={`${ask().name} is not installed. Choose a package manager:`}
+            choices={ask().managers.map(manager => ({ id: manager, label: manager }))}
+            onPick={prompts.chooseInstallServer}
+            onCancel={prompts.cancelPrompt}
+          />
+        )}
       </Show>
       <Show when={prompts.confirmation()}>
         {(ask: () => Confirmation) => (
