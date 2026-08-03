@@ -57,20 +57,6 @@ export function installedCommand(command: string[], root = SERVER_ROOT): string[
   return existsSync(downloaded) ? [downloaded, ...args] : null
 }
 
-/** Whether the servers druk installs could run at all. */
-export function hasNodeRuntime(): boolean {
-  return runsClean('node', ['--version'])
-}
-
-function runsClean(bin: string, args: string[]): boolean {
-  try {
-    const child = Bun.spawnSync([bin, ...args], { stdout: 'ignore', stderr: 'ignore' })
-    return child.exitCode === 0
-  } catch {
-    return false
-  }
-}
-
 /**
  * Delete druk's own copy of a server. Resolves to an error message, or null when
  * there is nothing of it left.

@@ -20,7 +20,6 @@ import {
   pressTimes,
   runCommand,
   settle,
-  until,
   untilFrame,
 } from './helpers'
 import type { Harness } from './helpers'
@@ -30,7 +29,7 @@ const GO_EXTENSION = {
   name: 'Go',
   version: '1.1.0',
   description: 'gopls, the Go language server',
-  languageServers: [{ id: 'go', command: ['gopls'], filetypes: ['go'] }],
+  languageServers: [{ id: 'go', command: ['druk-no-such-gopls'], filetypes: ['go'] }],
 }
 
 /** A language druk knows nothing about: no grammar, no extension, no server. */
@@ -116,16 +115,15 @@ test('a file whose language has no server offers the extension, and installs it'
   const frame = t.captureCharFrame()
   // The command is on the modal because it is the part that is not inert: a
   // manifest runs nothing, but this is what druk will spawn once it is there.
-  expect(frame).toContain('gopls')
+  expect(frame).toContain('druk-no-such-gopls')
   expect(frame).toContain('Extension available')
 
   await settle(t)
   t.mockInput.pressEnter()
-  await until(t, () => existsSyncSafe(join(EXTENSIONS_DIR, 'go', 'extension.json')))
+  await untilFrame(t, 'druk-no-such-gopls is not installed, or not on PATH')
   expect(JSON.parse(readFileSync(join(EXTENSIONS_DIR, 'go', 'extension.json'), 'utf8'))).toEqual(
     GO_EXTENSION,
   )
-  await untilFrame(t, 'Installed Go 1.1.0')
 })
 
 test('declining is remembered, and asks again for no other file of that language', async () => {
@@ -263,15 +261,6 @@ test('installing a language extension teaches druk the language, extension and a
   await openFile(t, 'a.nim')
   await untilFrame(t, ' nim ')
 })
-
-function existsSyncSafe(path: string): boolean {
-  try {
-    readFileSync(path)
-    return true
-  } catch {
-    return false
-  }
-}
 
 test('the search answers a kind, not only a name', async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n' })

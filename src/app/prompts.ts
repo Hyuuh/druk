@@ -117,13 +117,12 @@ export function createPromptHandlers(deps: {
     }
   }
 
-  /** Carry out whatever the open confirm prompt was asking about. */
-  const chooseInstallServer = (choice: PackageManager | 'download') => {
+  /** Install a missing server with the selected package manager. */
+  const chooseInstallServer = (manager: PackageManager) => {
     const p = prompt()
     setPrompt(null)
-    if (p?.kind !== 'installServer') return
-    if (choice !== 'download' && !p.managers.includes(choice)) return
-    void lsp.install(p.id, p.name, p.install, choice === 'download' ? undefined : choice)
+    if (p?.kind !== 'installServer' || !p.managers.includes(manager)) return
+    void lsp.install(p.id, p.name, p.install, manager)
   }
 
   const confirmPrompt = () => {
@@ -164,7 +163,11 @@ export function createPromptHandlers(deps: {
         // and `lsp.uninstall` reads the spec it is about out of that registry —
         // after the reload there is nothing left to tell it what to delete.
         return void (async () => {
-          for (const server of p.servers) await lsp.uninstall(server.id)
+          // Uninstall sequentially: package managers share the LSP prefix.
+          for (const server of p.servers) {
+            // oxlint-disable-next-line no-await-in-loop
+            await lsp.uninstall(server.id)
+          }
           market.remove(p.id)
         })()
       }

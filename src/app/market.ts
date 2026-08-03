@@ -48,10 +48,12 @@ export function createMarket(deps: {
   settings: Settings
   status: Status
   prompts: PromptState
+  /** Re-run open documents when an installed extension contributes servers. */
+  onServersReload?: () => void
   /** Injected by tests; production uses the global `fetch`. */
   fetcher?: Fetcher
 }) {
-  const { rootDir, settings, status, prompts, fetcher } = deps
+  const { rootDir, settings, status, prompts, onServersReload, fetcher } = deps
 
   // Seeded from the cache so the palette has a market to show before — and
   // without — any network round trip.
@@ -152,6 +154,7 @@ export function createMarket(deps: {
       })
       if (error) return void status.say(`Could not install ${id}: ${error}`, 'error')
       const load = settings.reloadExtensions()
+      if (result.extension.servers.length > 0) onServersReload?.()
       const installed = load.extensions.find(extension => extension.id === id)
       status.say(`Installed ${installed?.name ?? id} ${installed?.version ?? ''}`.trim())
     })()
