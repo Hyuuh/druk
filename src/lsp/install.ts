@@ -125,6 +125,7 @@ export async function installServer(
   root = SERVER_ROOT,
   manager: PackageManager = 'npm',
 ): Promise<string | null> {
+  mkdirSync(root, { recursive: true })
   const args =
     manager === 'npm'
       ? ['install', '--prefix', root, '--no-save', '--no-audit', '--no-fund', ...packages]

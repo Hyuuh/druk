@@ -231,6 +231,20 @@ describe('installed servers', () => {
     )
   })
 
+  test('an install creates the manager working directory', async () => {
+    const root = join(mkdtempSync(join(tmpdir(), 'druk-lsp-root-')), 'lsp')
+    const path = process.env.PATH
+    process.env.PATH = ''
+    try {
+      expect(await installServer(['druk-no-such-package'], root, 'bun')).toBe(
+        'bun is not installed, or not on PATH',
+      )
+      expect(existsSync(root)).toBe(true)
+    } finally {
+      process.env.PATH = path
+    }
+  }, 20_000)
+
   test('an install with no npm to run it fails instead of hanging', async () => {
     const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
     // PATH is what `spawn` searches, so emptying it is how npm goes missing.
