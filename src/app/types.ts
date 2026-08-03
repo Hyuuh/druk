@@ -1,5 +1,6 @@
 import type { TextEncoding } from '../core/fs'
 import type { SearchOptions } from '../core/search'
+import type { PackageManager } from '../lsp/install'
 import type { FetchableInstall } from '../lsp/servers'
 
 /** Which pane owns the keyboard when no overlay is open. */
@@ -65,7 +66,13 @@ export type Prompt =
       flags: string
     }
   /** A language server is missing and druk can fetch it; `id` is the server id. */
-  | { kind: 'installServer'; id: string; name: string; install: FetchableInstall }
+  | {
+      kind: 'installServer'
+      id: string
+      name: string
+      install: FetchableInstall
+      managers: PackageManager[]
+    }
   /** Delete druk's own copy of a server. `packages` is what goes with it. */
   | { kind: 'uninstallServer'; id: string; name: string; packages: string[] }
   /**

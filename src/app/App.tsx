@@ -117,7 +117,13 @@ export function App(props: {
   const comparison = createComparison({ rootDir, git, status })
   const promptState = createPromptState()
   const lsp = createLsp({ rootDir, settings, status, prompts: promptState })
-  const market = createMarket({ rootDir, settings, status, prompts: promptState })
+  const market = createMarket({
+    rootDir,
+    settings,
+    status,
+    prompts: promptState,
+    onServersReload: lsp.restart,
+  })
 
   // A file whose language no installed extension serves is the market's cue.
   lsp.onMissingServer(market.suggestForFiletype)
