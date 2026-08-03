@@ -29,6 +29,7 @@ export interface Command {
 
 export interface CommandActions {
   save: () => void
+  saveAll: () => void
   openFile: () => void
   switchTab: () => void
   closeOthers: () => void
@@ -124,6 +125,7 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
   return [
     { id: 'open', label: 'Open file…', hint: 'Ctrl+P', run: actions.openFile },
     { id: 'save', label: 'Save file', hint: 'Ctrl+S', run: actions.save },
+    { id: 'saveAll', label: 'Save all', run: actions.saveAll },
     { id: 'goto', label: 'Go to line…', hint: 'Ctrl+G', run: actions.gotoLine },
     { id: 'undo', label: 'Undo', hint: 'Ctrl+Z', run: actions.undo },
     { id: 'redo', label: 'Redo', hint: 'Ctrl+Y', run: actions.redo },

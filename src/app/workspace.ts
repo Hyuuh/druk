@@ -473,7 +473,8 @@ export function createWorkspace(deps: {
     return writeBuffer(path, buffer.content) ? 'saved' : 'failed'
   }
 
-  const saveDirtyOnBlur = () => {
+  /** Every dirty buffer through the clash-safe autoSave; the callers pick the voice. */
+  const saveDirty = () => {
     const skipped: string[] = []
     const failed: string[] = []
     let saved = 0
@@ -484,7 +485,21 @@ export function createWorkspace(deps: {
       else if (result === 'skipped') skipped.push(basename(path))
       else failed.push(basename(path))
     }
+    return { saved, skipped, failed }
+  }
+
+  const saveDirtyOnBlur = () => {
+    const { saved, skipped, failed } = saveDirty()
     // One file keeps writeBuffer's own message; several get a count instead.
+    if (saved > 1) say(`Saved ${saved} files`)
+    if (skipped.length > 0) say(`${CLASH_CHANGED}${skipped.join(', ')}`, 'warn')
+    if (failed.length > 0) say(`Save failed: ${failed.join(', ')}`, 'error')
+  }
+
+  const saveAll = () => {
+    const { saved, skipped, failed } = saveDirty()
+    if (saved === 0 && skipped.length === 0 && failed.length === 0) return say('Nothing to save')
+    // As on blur: one file keeps writeBuffer's own named message.
     if (saved > 1) say(`Saved ${saved} files`)
     if (skipped.length > 0) say(`${CLASH_CHANGED}${skipped.join(', ')}`, 'warn')
     if (failed.length > 0) say(`Save failed: ${failed.join(', ')}`, 'error')
@@ -740,6 +755,7 @@ export function createWorkspace(deps: {
     applyProjectReplace,
     writeBuffer,
     saveActive,
+    saveAll,
     saveDirtyOnBlur,
     resolveConflict,
     syncFromDisk,

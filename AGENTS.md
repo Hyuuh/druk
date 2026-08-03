@@ -201,7 +201,8 @@ catalog is reported in the status bar at startup, a file whose language no
 installed extension serves offers the extension that does, and a config naming a theme
 nothing registers is offered its extension back (`extensionUpdates` turns the whole of
 that off, `extensionRegistry` points it at a fork),
-file watching with conflict prompts,
+file watching with conflict prompts, a save-all palette command (every unsaved tab
+through the same clash-safe path the blur autosave uses, skips and failures named),
 per-project session restore, and a startup update check.
 
 **Everything extensible is an extension now, and most of them live in `extensions/`.**

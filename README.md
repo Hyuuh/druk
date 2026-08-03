@@ -76,7 +76,8 @@ status bar with the branch, unsaved state and cursor position.
   the palette has it as *View → Collapse folders in sidebar*.
 - Opening a file from the tree previews it: the tab is *italic* and the next file you
   open takes its place. Double-click it, or start editing, and the tab stays for good.
-- `Ctrl+S` saves. Closing a tab with unsaved edits asks first.
+- `Ctrl+S` saves; *File → Save all* in the palette writes every unsaved tab at once.
+  Closing a tab with unsaved edits asks first.
 - `F1` (or `Ctrl+Shift+P` where the terminal can send it) opens the command palette —
   every feature is in there, and typing filters it, so you never have to remember a
   shortcut. `F1` → `Keyboard shortcuts` shows them all.

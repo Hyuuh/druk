@@ -40,6 +40,7 @@ export const BINDABLE: Bindable[] = [
   { id: 'peek', label: 'Peek at every key', defaults: ['Ctrl+K'] },
   { id: 'open', label: 'Open file…', defaults: ['Ctrl+P', 'Ctrl+O'] },
   { id: 'save', label: 'Save file', defaults: ['Ctrl+S'] },
+  { id: 'saveAll', label: 'Save all', defaults: [] },
   { id: 'goto', label: 'Go to line…', defaults: ['Ctrl+G'] },
   { id: 'goto.definition', label: 'Go to definition', defaults: ['F12'] },
   { id: 'goto.file', label: 'Open file under cursor', defaults: [`Ctrl+${ALT}+O`] },

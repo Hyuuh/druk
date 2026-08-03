@@ -191,6 +191,7 @@ export function createCommands(ctx: AppContext) {
 
   const actions = {
     save: workspace.saveActive,
+    saveAll: workspace.saveAll,
     openFile: () => ctx.overlays.setPicker('files'),
     switchTab: () => ctx.overlays.setPicker('tabs'),
     closeOthers: () => {
