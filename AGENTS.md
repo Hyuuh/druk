@@ -46,7 +46,9 @@ repository's default branch or any selected base (palette → Git → Compare br
 an image viewer (PNG/JPEG as half-block cells), a PDF viewer (page, zoom and pan controls
 rendered into terminal cells), a rendered view for markdown files (`Ctrl+Opt+M`, palette → View — OpenTUI's
 `<markdown>` renderable over the editor slot, per path so each tab keeps the view it
-was left in, rendering the buffer rather than the file so unsaved edits show), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
+was left in, rendering the buffer rather than the file so unsaved edits show, and reached
+from a `¶ preview` / `¶ source` button at the right of the tab strip that is drawn only
+while a markdown tab is up — the command alone is one nobody finds), themes that follow the OS light/dark appearance (`themeSync`, on by default, with
 `themeLight` / `themeDark` picked separately and defaulting to the GitHub pair —
 polled, since no OS offers a portable subscription; `DRUK_OS_APPEARANCE=dark|light`
 forces the answer on a desktop none of the probes can read), themes previewed live

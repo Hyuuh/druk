@@ -9,6 +9,7 @@ import { loadProjectConfig, resolveConfig } from '../core/config'
 import type { Config } from '../core/config'
 import { watchGitRefs, watchTree } from '../core/fs'
 import { isImagePath } from '../core/image'
+import { isMarkdownPath } from '../core/markdown'
 import { isPdfPath } from '../core/pdf'
 import { checkForUpdate, currentVersion } from '../core/update'
 import { languageLabel } from '../languages'
@@ -286,6 +287,15 @@ export function App(props: {
     return path && isPdfPath(path) ? path : null
   }
 
+  /** The state of the strip's rendered-markdown button, or null when it has none.
+   * Keyed on the view rather than the path: the diff tab of a .md file is a diff,
+   * and its own page has nothing to render. */
+  const markdownTab = () => {
+    const view = workspace.activeView()
+    if (!view || workspace.isDiffView(view) || !isMarkdownPath(view)) return null
+    return { rendered: view === workspace.renderedPath() }
+  }
+
   const closeComparisonDetail = () => {
     comparison.closeDetail()
     panes.focusTree()
@@ -441,6 +451,8 @@ export function App(props: {
         onBack={navigation.back}
         onForward={navigation.forward}
         onOverflow={() => overlays.setPicker('tabs')}
+        markdown={markdownTab()}
+        onToggleMarkdown={workspace.toggleRendered}
       />
       {/* Drag capture lives on the row, not the divider: the pointer leaves a
           one-column target immediately, and each drag event is delivered to
