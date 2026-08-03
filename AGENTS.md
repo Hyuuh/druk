@@ -26,7 +26,13 @@ themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, whi
 overrides while it is on, since there the shape is what tells normal from insert),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
-→ / ←, or all of them from the header's `▴`) and palette commands for commit/undo/stash/push/fetch/pull — a push origin
+→ / ←, or all of them from the header's `▴`), for however many repositories the
+opened folder holds: a folder that only *contains* checkouts (`~/code`, a folder of
+worktrees) is scanned `gitScanDepth` levels down and every repository found is queried
+in its own root, with the status bar and the panel header naming it (`beta/main`)
+and each command acting on the *active* one — the repository of the change under the
+panel's cursor, else of the open file, else the only one there is;
+and palette commands for commit/undo/stash/push/fetch/pull — a push origin
 rejects offers to merge origin in and push again, VS Code's prompt, rather than
 naming the two commands and stopping — and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
@@ -298,6 +304,7 @@ dependency rule, and recipes for the extension points:
 | git error message | a row in `KNOWN` in `src/core/git.ts`, with the git output it matches pinned in `test/git.test.tsx` |
 | market plugin | a folder under `plugins/` holding `plugin.json`, then `bun run plugins` to regenerate `plugins/index.json` — `test/plugins-repo.test.ts` fails when the committed index is stale, and bumping the manifest `version` is what makes installed copies see an update |
 | branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
+| git command | run it in `git.activeRepo()`, never in `rootDir` — the opened folder may hold several repositories and be none itself. A mutation goes through `gitOp`, which refuses when no repository is picked and *hands the chosen one to the callback*; a query asks `git.repoFor(path)` for the repository of the path it is about. Which repositories exist is `discoverRepos` (`src/core/repos.ts`), refreshed in `wireGitEffects` |
 
 Key handlers subscribe through `useKeys` (`src/ui/useKeys.ts`), never OpenTUI's
 `useKeyboard` directly: it renames a Ctrl chord to the US key the character sits on, so

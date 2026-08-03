@@ -46,7 +46,6 @@ export type PromptState = ReturnType<typeof createPromptState>
 
 /** Answering prompts: what each one asks, and what saying yes actually does. */
 export function createPromptHandlers(deps: {
-  rootDir: string
   renderer: { destroy: () => void }
   state: PromptState
   status: Status
@@ -60,7 +59,7 @@ export function createPromptHandlers(deps: {
   lsp: Lsp
   market: Market
 }) {
-  const { rootDir, renderer, state, status, tree, panes, editor, workspace } = deps
+  const { renderer, state, status, tree, panes, editor, workspace } = deps
   const { fileOps, gitOp, branches, lsp, market } = deps
   const { prompt, setPrompt } = state
   const { say } = status
@@ -108,7 +107,7 @@ export function createPromptHandlers(deps: {
       if (err) return say(err, 'error')
       say(`Renamed to ${name}`)
     } else if (p.kind === 'commit') {
-      gitOp('Committing', () => commitPaths(rootDir, name, p.paths))
+      gitOp('Committing', repo => commitPaths(repo, name, p.paths))
     } else if (p.kind === 'newBranch') {
       branches.create(name, p.from)
     } else if (p.kind === 'renameBranch') {
@@ -130,7 +129,7 @@ export function createPromptHandlers(deps: {
       case 'quitDirty':
         return quit(true)
       case 'undoCommit':
-        return gitOp('Undoing commit', () => undoLastCommit(rootDir), {
+        return gitOp('Undoing commit', repo => undoLastCommit(repo), {
           done: () => `Undid "${p.subject}" — its changes are staged`,
         })
       case 'deleteBranch':
@@ -139,7 +138,7 @@ export function createPromptHandlers(deps: {
         return branches.merge(p.name)
       case 'pullPush':
         // touchesTree: the pull half rewrites files under open buffers.
-        return gitOp('Pulling and pushing', () => pullAndPush(rootDir, p.branch, p.hasUpstream), {
+        return gitOp('Pulling and pushing', repo => pullAndPush(repo, p.branch, p.hasUpstream), {
           touchesTree: true,
           done: () => `Pulled and pushed ${p.branch}`,
         })

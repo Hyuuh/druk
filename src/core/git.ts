@@ -594,13 +594,9 @@ const STATUS_BY_CODE: Record<string, FileStatus> = {
 /**
  * Directory git-relative paths are joined onto. git reports the resolved root
  * (/private/var/…), while the tree holds the path the user opened (/var/…) —
- * so the caller's form wins when the two are the same place. Null outside a
- * repository.
+ * so the caller's form wins when the two are the same place.
  */
-function keyBase(cwd: string): string | null {
-  const top = git(cwd, ['rev-parse', '--show-toplevel'], 3000)
-  if (top.status !== 0) return null
-  const root = top.stdout.trim()
+function sameOrRoot(cwd: string, root: string): string {
   try {
     if (realpathSync(cwd) === realpathSync(root)) return cwd
   } catch {
@@ -609,60 +605,31 @@ function keyBase(cwd: string): string | null {
   return root
 }
 
-/**
- * Working-tree status against `ref`, keyed like `statusMap`. `git status` can
- * only ever compare against HEAD, so this takes two queries: what the diff says
- * about tracked files, plus the untracked ones — which differ from every ref,
- * and which the diff never mentions.
- */
-function statusAgainst(cwd: string, ref: string, base: string): Map<string, FileStatus> {
-  const statuses = new Map<string, FileStatus>()
-  // `-z` for the same reason as `statusMap`: quoted paths would never match its
-  // keys. It also drops the tab between the code and the path, so the fields
-  // arrive as a flat alternating list rather than one record per entry.
-  const run = git(cwd, ['diff', '--name-status', '-z', ref])
-  if (run.status !== 0) return statuses
-
-  const fields = run.stdout.split('\0')
-  for (let i = 0; i < fields.length; i += 2) {
-    const code = fields[i]
-    if (!code) continue
-    // A rename or copy spends a field on each path; the new one is what exists
-    // on disk, and skipping ahead keeps the codes on the even indices.
-    if (code[0] === 'R' || code[0] === 'C') i++
-    const path = fields[i + 1]
-    const status = STATUS_BY_CODE[code[0]!]
-    if (status && path) statuses.set(join(base, path), status)
-  }
-
-  const others = git(cwd, ['ls-files', '--others', '--exclude-standard', '-z'])
-  if (others.status === 0) {
-    for (const rel of others.stdout.split('\0')) {
-      if (rel.length > 0) statuses.set(join(base, rel), 'untracked')
-    }
-  }
-  return statuses
+/** `sameOrRoot` for the directory itself. Null outside a repository. */
+function keyBase(cwd: string): string | null {
+  const top = git(cwd, ['rev-parse', '--show-toplevel'], 3000)
+  return top.status === 0 ? sameOrRoot(cwd, top.stdout.trim()) : null
 }
 
-/**
- * Working-tree status per absolute path. Staged and unstaged changes collapse to
- * one mark — the tree only needs "this differs from HEAD", or from `ref` when
- * the user has pointed the whole editor at another branch.
+/*
+ * The three parsers below are shared by the synchronous and asynchronous
+ * spellings of `statusMap`. Both have to answer identically: the tree marks come
+ * from one and the commit picker from the other, and a file the two disagree
+ * about is a row you cannot commit.
  */
-export function statusMap(cwd: string, ref: string | null = null): Map<string, FileStatus> {
+
+const STATUS_ARGS = ['status', '--porcelain', '-z', '-uall']
+const UNTRACKED_ARGS = ['ls-files', '--others', '--exclude-standard', '-z']
+
+/**
+ * `git status --porcelain -z -uall`. `-z` because the default output C-quotes and
+ * octal-escapes any path that is not plain ASCII; unquoting that by hand loses
+ * every accented or spaced name. `-uall`, or a brand-new directory collapses to a
+ * single `?? newdir/` entry and every file inside it shows no mark at all.
+ */
+function parsePorcelain(stdout: string, base: string): Map<string, FileStatus> {
   const statuses = new Map<string, FileStatus>()
-  const base = keyBase(cwd)
-  if (base === null) return statuses
-  if (ref !== null) return statusAgainst(cwd, ref, base)
-
-  // `-z` because the default output C-quotes and octal-escapes any path that is
-  // not plain ASCII; unquoting that by hand loses every accented or spaced name.
-  // `-uall`, or a brand-new directory collapses to a single `?? newdir/` entry
-  // and every file inside it shows no mark at all.
-  const run = git(cwd, ['status', '--porcelain', '-z', '-uall'])
-  if (run.status !== 0) return statuses
-
-  const entries = run.stdout.split('\0')
+  const entries = stdout.split('\0')
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!
     if (entry.length < 4) continue
@@ -673,6 +640,87 @@ export function statusMap(cwd: string, ref: string | null = null): Map<string, F
     const status = STATUS_BY_CODE[code]
     if (status) statuses.set(join(base, entry.slice(3)), status)
   }
+  return statuses
+}
+
+/**
+ * `git diff --name-status -z`. `-z` drops the tab between the code and the path
+ * as well, so the fields arrive as a flat alternating list rather than one
+ * record per entry.
+ */
+function parseNameStatus(stdout: string, base: string): Map<string, FileStatus> {
+  const statuses = new Map<string, FileStatus>()
+  const fields = stdout.split('\0')
+  for (let i = 0; i < fields.length; i += 2) {
+    const code = fields[i]
+    if (!code) continue
+    // A rename or copy spends a field on each path; the new one is what exists
+    // on disk, and skipping ahead keeps the codes on the even indices.
+    if (code[0] === 'R' || code[0] === 'C') i++
+    const path = fields[i + 1]
+    const status = STATUS_BY_CODE[code[0]!]
+    if (status && path) statuses.set(join(base, path), status)
+  }
+  return statuses
+}
+
+function addUntracked(stdout: string, base: string, into: Map<string, FileStatus>) {
+  for (const rel of stdout.split('\0')) {
+    if (rel.length > 0) into.set(join(base, rel), 'untracked')
+  }
+}
+
+/**
+ * Working-tree status per absolute path. Staged and unstaged changes collapse to
+ * one mark — the tree only needs "this differs from HEAD", or from `ref` when
+ * the user has pointed the whole editor at another branch.
+ *
+ * Against a ref this takes two queries rather than one: `git status` can only
+ * ever compare against HEAD, so the tracked files come from a diff and the
+ * untracked ones — which differ from every ref, and which the diff never
+ * mentions — from `ls-files`.
+ */
+export function statusMap(cwd: string, ref: string | null = null): Map<string, FileStatus> {
+  const base = keyBase(cwd)
+  if (base === null) return new Map()
+  if (ref === null) {
+    const run = git(cwd, STATUS_ARGS)
+    return run.status === 0 ? parsePorcelain(run.stdout, base) : new Map()
+  }
+
+  const diff = git(cwd, ['diff', '--name-status', '-z', ref])
+  if (diff.status !== 0) return new Map()
+  const statuses = parseNameStatus(diff.stdout, base)
+  const others = git(cwd, UNTRACKED_ARGS)
+  if (others.status === 0) addUntracked(others.stdout, base, statuses)
+  return statuses
+}
+
+/**
+ * `statusMap` off the render thread. The multi-repository refresh runs one of
+ * these per repository at once: a folder holding twenty checkouts is forty
+ * subprocesses, which synchronously would be a visible freeze on every save and
+ * every filesystem event, and in parallel costs about what the slowest one does.
+ */
+export async function statusMapAsync(
+  cwd: string,
+  ref: string | null = null,
+): Promise<Map<string, FileStatus>> {
+  const top = await gitAsync(cwd, ['rev-parse', '--show-toplevel'])
+  if (top.status !== 0) return new Map()
+  const base = sameOrRoot(cwd, top.stdout.trim())
+  if (ref === null) {
+    const run = await gitAsync(cwd, STATUS_ARGS)
+    return run.status === 0 ? parsePorcelain(run.stdout, base) : new Map()
+  }
+
+  const [diff, others] = await Promise.all([
+    gitAsync(cwd, ['diff', '--name-status', '-z', ref]),
+    gitAsync(cwd, UNTRACKED_ARGS),
+  ])
+  if (diff.status !== 0) return new Map()
+  const statuses = parseNameStatus(diff.stdout, base)
+  if (others.status === 0) addUntracked(others.stdout, base, statuses)
   return statuses
 }
 

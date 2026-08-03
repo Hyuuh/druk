@@ -7,7 +7,7 @@ import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } 
 import { watchAppearance } from '../core/appearance'
 import { loadProjectConfig, resolveConfig } from '../core/config'
 import type { Config } from '../core/config'
-import { watchTree } from '../core/fs'
+import { watchGitRefs, watchTree } from '../core/fs'
 import { isImagePath } from '../core/image'
 import { isPdfPath } from '../core/pdf'
 import { checkForUpdate, currentVersion } from '../core/update'
@@ -111,7 +111,13 @@ export function App(props: {
     () => hiddenNodes(rootDir, settings.config),
   )
   const panes = createPanes(tree, restored.sidebar)
-  const git = createGit(rootDir, () => settings.config.gitPanelView)
+  const git = createGit(
+    rootDir,
+    () => settings.config.gitPanelView,
+    // Null unless the source-control panel is the sidebar's view: the tree's own
+    // cursor must not decide which repository a command acts on.
+    () => (panes.view() === 'git' ? panes.gitCursor() : null),
+  )
   const comparison = createComparison({ rootDir, git, status })
   const promptState = createPromptState()
   const lsp = createLsp({ rootDir, settings, status, prompts: promptState })
@@ -135,10 +141,9 @@ export function App(props: {
   })
   const navigation = createNavigation({ workspace, editor, panes, status })
   const fileOps = createFileOps({ rootDir, status, tree, workspace })
-  const gitOp = createGitOp({ rootDir, git, status, workspace })
-  const branches = createBranches({ rootDir, status, git, gitOp, prompts: promptState })
+  const gitOp = createGitOp({ git, status, workspace })
+  const branches = createBranches({ status, git, gitOp, prompts: promptState })
   const promptHandlers = createPromptHandlers({
-    rootDir,
     renderer,
     state: promptState,
     status,
@@ -182,6 +187,15 @@ export function App(props: {
     prompts: { ...promptState, ...promptHandlers },
     overlays,
   }
+
+  /**
+   * Which repository the branch and the panel header are about — named only when
+   * there is more than one, where "main" alone says nothing about whose main it is.
+   */
+  const repoName = createMemo(() => {
+    const active = git.activeRepo()
+    return git.repos().length > 1 && active ? basename(active) : null
+  })
 
   wireGitEffects({ rootDir, git, tree, editor, workspace, config: settings.config })
   wireLspEffects({ lsp, settings, workspace })
@@ -361,6 +375,21 @@ export function App(props: {
     })
   })
 
+  // A repository under the opened folder needs the same HEAD/refs watch the root
+  // gets, or a commit or checkout made in it elsewhere leaves its branch and marks
+  // stale. Re-subscribed as the list changes: a repository can be cloned into the
+  // folder while druk is open.
+  createEffect(
+    on(git.repos, repos => {
+      const stops = repos
+        .filter(repo => repo !== rootDir)
+        .map(repo => watchGitRefs(repo, () => git.bump()))
+      onCleanup(() => {
+        for (const stop of stops) stop()
+      })
+    }),
+  )
+
   // The watcher has no follow-up message of its own, so unlike the git callers it
   // reports the clash itself — and clears it again once the files agree, since
   // nothing else would ever replace a warning the user has already dealt with.
@@ -469,6 +498,7 @@ export function App(props: {
                 when={comparison.active()}
                 fallback={
                   <GitPanel
+                    repo={repoName()}
                     branch={git.branch()}
                     ahead={git.upstream()?.ahead ?? 0}
                     behind={git.upstream()?.behind ?? 0}
@@ -744,6 +774,7 @@ export function App(props: {
         }
         dirty={workspace.activeBuffer()?.dirty ?? false}
         vimMode={workspace.activePath() && !activeImage() && !activePdf() ? editor.vimMode() : null}
+        repo={repoName()}
         branch={git.branch()}
         ahead={git.upstream()?.ahead ?? 0}
         behind={git.upstream()?.behind ?? 0}

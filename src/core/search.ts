@@ -1,5 +1,6 @@
 import { listDir, readFile } from './fs'
 import { ignoredPaths } from './git'
+import { isRepoRoot } from './repos'
 
 export interface Match {
   path: string
@@ -102,16 +103,22 @@ export function searchText(
  * parked inside the project is nobody's search result either way. `ignoredPaths`
  * collapses a fully-ignored directory to a single entry, which is all this needs:
  * a directory that is skipped is never queued, so nothing under it is walked.
+ *
+ * Each directory carries the ignore rules of the repository it is in, picked up
+ * as the walk enters one: with a folder of repositories open there is no single
+ * set, and `ignoredPaths(root)` would be empty — every repository's node_modules
+ * a search result. Asking as the walk arrives is also what keeps the cost to the
+ * repositories actually reached.
  */
 function* filesUnder(root: string): Generator<string> {
-  const ignored = ignoredPaths(root)
-  const queue: string[] = [root]
+  const queue: Array<[dir: string, ignored: Set<string>]> = [[root, ignoredPaths(root)]]
   while (queue.length > 0) {
-    const dir = queue.shift()!
+    const [dir, ignored] = queue.shift()!
     for (const node of listDir(dir)) {
       if (ignored.has(node.path)) continue
       if (node.isDir) {
-        if (!SKIPPED_DIRS.has(node.name)) queue.push(node.path)
+        if (SKIPPED_DIRS.has(node.name)) continue
+        queue.push([node.path, isRepoRoot(node.path) ? ignoredPaths(node.path) : ignored])
       } else {
         yield node.path
       }

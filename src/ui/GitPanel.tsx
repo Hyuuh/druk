@@ -14,6 +14,8 @@ const fileRow = (row: ChangeRow) => (row.kind === 'file' ? row : undefined)
 const glyph = (dir: DirRow) => (dir.collapsed ? '▸ ' : '▾ ')
 
 export interface GitPanelProps {
+  /** Repository the header is about, when the folder holds more than one. */
+  repo: string | null
   branch: string | null
   /** Commits ahead of / behind the upstream, for the header. */
   ahead: number
@@ -57,7 +59,10 @@ export function GitPanel(props: GitPanelProps) {
     if (!props.inRepo) return 'not a git repository'
     const arrows =
       (props.ahead > 0 ? ` ↑${props.ahead}` : '') + (props.behind > 0 ? ` ↓${props.behind}` : '')
-    return `${props.branch ?? 'no branch'}${arrows}`
+    // With several repositories open the branch alone says nothing about whose
+    // branch it is — and none is picked until a file or a change is landed on.
+    if (props.repo) return `${props.repo}/${props.branch ?? 'no branch'}${arrows}`
+    return props.branch ? `${props.branch}${arrows}` : 'no branch'
   }
 
   return (

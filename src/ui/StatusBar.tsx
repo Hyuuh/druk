@@ -16,6 +16,8 @@ export interface StatusBarProps {
   cursor?: { line: number; col: number }
   dirty: boolean
   vimMode: VimMode | null
+  /** Repository the branch belongs to, when the folder holds more than one. */
+  repo: string | null
   branch: string | null
   /** Commits the branch is ahead of / behind its upstream. */
   ahead: number
@@ -70,7 +72,9 @@ export function StatusBar(props: StatusBarProps) {
 
   const gitText = () => {
     if (!props.branch) return ''
-    const parts = [`⎇ ${props.branch}`]
+    // `repo/branch` where several are open: "main" on its own would be whichever
+    // of them the editor happens to be in, with nothing saying which.
+    const parts = [`⎇ ${props.repo ? `${props.repo}/` : ''}${props.branch}`]
     if (props.ahead > 0) parts.push(`↑${props.ahead}`)
     if (props.behind > 0) parts.push(`↓${props.behind}`)
     if (props.changed > 0) parts.push(`~${props.changed}`)

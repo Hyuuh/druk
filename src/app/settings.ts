@@ -37,6 +37,11 @@ const EDITOR_MIN = 20
 
 const TAB_SIZES = [2, 4, 8]
 
+/** Levels the repository scan may look down; 0 is "the opened folder only". */
+const SCAN_DEPTHS = [0, 1, 2, 3, 4, 5]
+const depthLabel = (depth: number) =>
+  depth === 0 ? 'off' : `${depth} level${depth === 1 ? '' : 's'}`
+
 // Functions, not constants: plugins register themes and icon themes at startup,
 // which happens after this module is evaluated.
 const themeList = (): ThemeName[] => themeNames()
@@ -255,6 +260,15 @@ export function createSettings(deps: {
   const applyTabSize = (size: number) => {
     patchConfig({ tabSize: size })
     status.say(`Tab size: ${size}`)
+  }
+
+  const applyScanDepth = (depth: number) => {
+    patchConfig({ gitScanDepth: depth })
+    status.say(
+      depth === 0
+        ? 'Repositories below the folder: not looked for'
+        : `Repositories below the folder: ${depthLabel(depth)} deep`,
+    )
   }
 
   const applyCursorStyle = (style: Config['cursorStyle']) => {
@@ -759,6 +773,17 @@ export function createSettings(deps: {
       label: 'Changed files',
       value: view().gitPanelView === 'tree' ? 'tree' : 'flat list',
       cycle: toggleGitPanelView,
+    },
+    {
+      section: 'Git',
+      key: 'gitScanDepth',
+      label: 'Scan for repositories below the folder',
+      value: depthLabel(view().gitScanDepth),
+      cycle: dir => applyScanDepth(step(SCAN_DEPTHS, view().gitScanDepth, dir)),
+      select: {
+        options: SCAN_DEPTHS.map(depthLabel),
+        pick: at => applyScanDepth(SCAN_DEPTHS[at]!),
+      },
     },
     {
       section: 'Language servers',
