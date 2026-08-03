@@ -6,6 +6,7 @@ import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show
 import { copyToClipboard, readClipboard } from '../core/clipboard'
 import type { CursorStyle } from '../core/config'
 import type { LineChange } from '../core/git'
+import { secondary } from '../core/keybindings'
 import { changeRows } from '../editor/changes'
 import { inCells } from '../editor/columns'
 import { History } from '../editor/history'
@@ -1190,7 +1191,9 @@ export function EditorPane(props: EditorPaneProps) {
       return
     }
 
-    if (key.ctrl && (key.name === 'c' || key.name === 'x')) {
+    // Plain Ctrl+C/X: a second modifier makes it someone else's chord, and quitting
+    // on one that happens to be unbound is how Ctrl+Opt+C used to close the editor.
+    if (key.ctrl && !secondary(key) && (key.name === 'c' || key.name === 'x')) {
       key.preventDefault()
       const selected = editor.getSelectedText()
       if (!selected) {
