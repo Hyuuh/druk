@@ -53,6 +53,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'view.git': panes.toggleGitView,
     'view.collapse': actions.collapseSidebar,
     'view.markdown': workspace.toggleRendered,
+    'view.wrap': actions.toggleWrap,
     'view.focus': actions.toggleFocus,
     'git.diffFile': actions.gitDiffFile,
     'git.commit': actions.gitCommit,

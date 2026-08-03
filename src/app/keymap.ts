@@ -82,6 +82,7 @@ export const BINDABLE: Bindable[] = [
     label: 'Markdown: rendered / source',
     defaults: [`Ctrl+${ALT}+M`],
   },
+  { id: 'view.wrap', label: 'Toggle word wrap', defaults: [] },
   { id: 'view.focus', label: 'Focus tree / editor', defaults: [] },
   { id: 'git.diffFile', label: 'Diff current file', defaults: [] },
   { id: 'git.commit', label: 'Commit…', defaults: [] },
