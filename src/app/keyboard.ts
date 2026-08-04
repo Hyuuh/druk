@@ -389,6 +389,9 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         case 'c':
           actions.gitCommit()
           break
+        case 'd':
+          actions.gitDiscard()
+          break
         case 'p':
           actions.gitPush()
           break

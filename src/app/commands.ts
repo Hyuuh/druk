@@ -95,6 +95,7 @@ export interface CommandActions {
   gitMoveTo: (row: number) => void
   gitActivateRow: (row: number) => void
   gitOpenRow: (row: number) => void
+  gitDiscard: () => void
   /** Not a command: `App` runs it when git or a buffer moves under an open diff. */
   refreshDiff: () => void
   gitCommit: () => void
@@ -203,6 +204,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         // The only way in: it opens the source-control panel on this file, which
         // is where the cursor pages through every other change.
         { id: 'git.diffFile', label: 'Diff current file', run: actions.gitDiffFile },
+        {
+          id: 'git.discard',
+          label: 'Discard changes',
+          hint: 'd in source control',
+          run: actions.gitDiscard,
+        },
         // What the whole editor compares against — the panel names the branch
         // while one is picked, so the pair reads as a mode you are in or out of.
         { id: 'git.diffBase', label: 'Compare against branch…', run: actions.gitDiffBase },

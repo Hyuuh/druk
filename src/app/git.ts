@@ -209,7 +209,10 @@ export function createGitOp(deps: { git: Git; status: Status; workspace: Workspa
     verb: string,
     run: (repo: string) => Promise<GitResult>,
     options: {
-      touchesTree?: boolean
+      /** Repository captured when the operation was offered, rather than the live cursor's. */
+      repo?: string
+      /** How buffers follow a successful operation that rewrites the working tree. */
+      touchesTree?: { kind: 'sync' } | { kind: 'followDisk'; paths: readonly string[] }
       done?: (result: GitResult) => string
       /**
        * Offer a way out of a failure instead of reporting it. Returning true
@@ -219,7 +222,7 @@ export function createGitOp(deps: { git: Git; status: Status; workspace: Workspa
       handleFailure?: (result: GitResult) => boolean
     } = {},
   ) => {
-    const repo = git.activeRepo()
+    const repo = options.repo ?? git.activeRepo()
     if (repo === null) return status.say(noRepository(git), 'warn')
     if (git.gitBusy()) return status.say('A git command is already running — let it finish', 'warn')
     git.setGitBusy(true)
@@ -231,9 +234,11 @@ export function createGitOp(deps: { git: Git; status: Status; workspace: Workspa
         if (options.handleFailure?.(result)) return
         return status.say(result.detail || `${verb} failed`, 'error')
       }
-      if (options.touchesTree) {
+      if (options.touchesTree?.kind === 'sync') {
         const warning = workspace.clashWarning(workspace.syncFromDisk())
         if (warning) return status.say(warning, 'warn')
+      } else if (options.touchesTree?.kind === 'followDisk') {
+        for (const path of options.touchesTree.paths) workspace.followDisk(path)
       }
       status.say(options.done ? options.done(result) : result.detail || `${verb} done`)
     })

@@ -204,7 +204,8 @@ files. Work you do in another terminal shows up without a restart.
 changed files under the branch name. `↑↓` walks the changes and the diff for the one
 under the cursor opens beside the panel — that is the way to read a diff, and the way
 to move between them. `Tab` steps into the page (`Tab` again lays it out side by side,
-`Esc` closes it), `c` commits (pick the files, type the message), `p` pushes, `b`
+`Esc` closes it), `c` commits (pick the files, type the message), `d` discards the
+selected file after confirmation (*Git → Discard changes* does the same), `p` pushes, `b`
 switches branch, and `Esc` puts the file tree back. *Git → Diff current file* in the
 palette opens the panel on the file you are editing; commit, pull, fetch, stash,
 undo-commit and the branch commands live beside it.

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { searchProject } from '../src/core/search'
@@ -179,3 +179,23 @@ test('a folder with no repository anywhere below it still says so', async () => 
   await openPanel(t)
   await untilFrame(t, 'open a repository to use git')
 })
+
+test('a keyboard discard stays pinned when another repository row vanishes', async () => {
+  const dir = folderOfRepos()
+  const alpha = join(dir, 'alpha')
+  const beta = join(dir, 'nested/beta')
+  const t = await launch(dir, { gitPanelView: 'list' })
+  await openPanel(t)
+  await untilFrame(t, 'nested/beta/b.ts')
+
+  await press(t, input => input.pressArrow('down')) // beta is the second flat row
+  await press(t, input => void input.typeText('d'))
+  expect(frame(t)).toContain('Discard changes')
+  git(alpha, 'checkout', '-q', 'HEAD', '--', 'a.ts')
+  await until(t, () => !frame(t).includes('alpha/a.ts'))
+
+  await press(t, input => input.pressEnter())
+  await until(t, () => readFileSync(join(beta, 'b.ts'), 'utf8') === 'beta\n')
+  expect(subject(alpha)).toBe('init')
+  expect(subject(beta)).toBe('init')
+}, 20_000)

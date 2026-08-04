@@ -247,7 +247,7 @@ export function GitPanel(props: GitPanelProps) {
           <text
             fg={ui.faint}
             bg={ui.sidebarBg}
-            content="↑↓ diff · →← fold · c commit · p push · B compare"
+            content="↑↓ diff · →← fold · d discard · c commit · p push · B compare"
           />
         </box>
       </Show>

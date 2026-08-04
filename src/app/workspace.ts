@@ -585,6 +585,27 @@ export function createWorkspace(deps: {
   }
 
   /**
+   * Make one open tab follow an intentional destructive git operation. Unlike
+   * the watcher sync, unsaved text does not win here: the confirmation named its
+   * loss. Reloading through the bridge also drops the editor's undo/redo history.
+   */
+  const followDisk = (path: string) => {
+    if (conflict()?.path === path) setConflict(null)
+    if (!exists(path)) {
+      if (tabs().includes(path)) closeTab(path, true)
+    } else if (buffers[path]) {
+      try {
+        setBuffers(path, loadBuffer(path))
+        if (path === activePath()) editor.bumpReload()
+      } catch {
+        closeTab(path, true)
+      }
+    }
+    if (diffTab()?.path === path) setDiff(null)
+    tree.refreshTree()
+  }
+
+  /**
    * Replace the one match a panel row points at, wherever its file is: the
    * overlay's text for buffered paths, a fresh encoding-preserving read for the
    * rest. The drift guard runs against whichever text the apply would touch.
@@ -759,6 +780,7 @@ export function createWorkspace(deps: {
     saveDirtyOnBlur,
     resolveConflict,
     syncFromDisk,
+    followDisk,
     clashWarning,
     remapPaths,
   }
