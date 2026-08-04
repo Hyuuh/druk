@@ -86,6 +86,10 @@ function blend(color: string, base: string, amount: number): string {
   return `#${mix(0)}${mix(1)}${mix(2)}`
 }
 
+/** What a split pane's padded rows are filled with — no palette ships the role,
+ * so it is the theme's dim colour laid faintly over the editor background. */
+export const fillerBg = () => blend(ui.dim, ui.solidBg, 0.1)
+
 /** `[startOffset, endOffset, captureGroup]` in the pane document's coordinates. */
 type PaneHighlight = [number, number, string]
 
@@ -100,11 +104,19 @@ interface CodePane {
   onHighlight?: OnHighlight
 }
 
-/** The scrollable panes inside the `<diff>` renderable — private upstream, but
- * assigning `scrollY` and `onHighlight` is how its own internals drive them. */
+/** A pane's gutter wrapper: `setLineColor` is how the renderable tints its own rows. */
+interface SidePane {
+  setLineColor: (line: number, color: { gutter?: string; content?: string }) => void
+}
+
+/** The panes inside the `<diff>` renderable — private upstream, but assigning
+ * `scrollY`/`onHighlight` and calling `setLineColor` is how its own internals
+ * drive them. */
 interface DiffSides {
   leftCodeRenderable?: CodePane | null
   rightCodeRenderable?: CodePane | null
+  leftSide?: SidePane | null
+  rightSide?: SidePane | null
 }
 
 /** Which source document a pane line shows, and which of its lines. */
@@ -298,13 +310,53 @@ export function DiffView(props: DiffViewProps) {
 
   const diff = () => current().diff
 
+  /**
+   * An added or deleted file has one side and nothing to put beside it: split
+   * would draw the whole change against an empty pane. So the layout is inline
+   * here whatever the setting says, and Tab has nothing to toggle — flipping the
+   * persisted setting from a page that cannot show the difference is worse than
+   * a dead key.
+   */
+  const oneSided = () => props.file.oldText === '' || props.file.newText === ''
+  const mode = (): DiffMode => (oneSided() ? 'inline' : props.mode)
+
+  /**
+   * The rows split view pads a side with where the other side has more lines.
+   * The renderable leaves them the pane's own background, so a block of
+   * additions reads as a hole in the left pane rather than as "nothing stood
+   * here"; a flat tint is what every diff viewer draws instead.
+   *
+   * The padded rows are `paneLines`' nulls, and replaying them is exact only
+   * because `wrapMode` is `none`: with wrapping on, the renderable inserts
+   * further padding rows to keep two wrapped lines level, and those are not in
+   * the patch.
+   */
+  const paintFillers = (host: DiffSides, view: 'unified' | 'split') => {
+    if (view !== 'split') return
+    const fill = { gutter: fillerBg(), content: fillerBg() }
+    const refs = paneLines(diff().patch, 'split')
+    for (const [which, side] of [
+      ['left', host.leftSide],
+      ['right', host.rightSide],
+    ] as const) {
+      if (!side) continue
+      refs[which].forEach((ref, row) => {
+        if (!ref) side.setLineColor(row, fill)
+      })
+    }
+  }
+
   // Attach after the renderable's own (microtask-queued) rebuild has created
   // the panes for this diff and view; assigning marks highlights dirty, so an
-  // already-finished pass simply runs again with the callback in place.
+  // already-finished pass simply runs again with the callback in place. The
+  // fillers go the same way round: a rebuild replaces every line color the side
+  // holds, so painting them earlier would paint nothing. Reading the two theme
+  // colors here is what repaints them after a theme switch, which rebuilds the
+  // panes through the `syntaxStyle` prop.
   createEffect(
-    on([current, () => props.mode, client], () => {
+    on([current, mode, client, () => ui.dim, () => ui.solidBg], () => {
       const highlighter = current().highlighter
-      const view = props.mode === 'split' ? 'split' : 'unified'
+      const view = mode() === 'split' ? 'split' : 'unified'
       setTimeout(() => {
         const host = pane as unknown as DiffSides | undefined
         if (!host) return
@@ -312,6 +364,7 @@ export function DiffView(props: DiffViewProps) {
         if (host.rightCodeRenderable) {
           host.rightCodeRenderable.onHighlight = highlighter('right', view)
         }
+        paintFillers(host, view)
       }, 0)
     }),
   )
@@ -326,7 +379,7 @@ export function DiffView(props: DiffViewProps) {
 
   // Keyed on the path, not the file: a refresh rebuilds the same change on every
   // save, and resetting the scroll then would throw the reader back to the top.
-  createEffect(on([() => props.file.path, () => props.mode], () => scrollTo(0), { defer: true }))
+  createEffect(on([() => props.file.path, mode], () => scrollTo(0), { defer: true }))
 
   /** Rows a page spans — the pane is the editor slot: tabs, header, status bar off. */
   const page = () => Math.max(1, dimensions().height - 3)
@@ -350,18 +403,23 @@ export function DiffView(props: DiffViewProps) {
     else if (k === 'pagedown' || k === 'space' || (key.ctrl && k === 'd')) scroll(page())
     else if (k === 'end' || (k === 'g' && key.shift)) scrollTo(Number.MAX_SAFE_INTEGER)
     else if (k === 'home' || k === 'g') scrollTo(0)
-    else if (k === 'tab' || k === 's' || k === 'd') props.onToggleMode()
-    else if (k === 'escape' || k === 'q') props.onClose()
+    else if (k === 'tab' || k === 's' || k === 'd') {
+      if (!oneSided()) props.onToggleMode()
+    } else if (k === 'escape' || k === 'q') props.onClose()
     else return
     key.preventDefault()
   })
 
   /** Long spelling when the pane can afford it, initials beside a sidebar. */
   const hints = () => {
-    const mode = props.mode === 'inline' ? 'inline' : 'side-by-side'
-    const full = ` ${mode} · Tab layout · Esc ${props.escLabel ?? 'close'} `
+    const layout = mode() === 'inline' ? 'inline' : 'side-by-side'
+    if (oneSided()) {
+      const full = ` ${layout} · Esc ${props.escLabel ?? 'close'} `
+      return full.length + 28 <= props.width ? full : ` ${layout} · Esc `
+    }
+    const full = ` ${layout} · Tab layout · Esc ${props.escLabel ?? 'close'} `
     if (full.length + 28 <= props.width) return full
-    return ` ${mode} · Tab · Esc `
+    return ` ${layout} · Tab · Esc `
   }
 
   /**
@@ -413,7 +471,7 @@ export function DiffView(props: DiffViewProps) {
         <diff
           ref={(el: DiffRenderable) => (pane = el)}
           diff={diff().patch}
-          view={props.mode === 'split' ? 'split' : 'unified'}
+          view={mode() === 'split' ? 'split' : 'unified'}
           filetype={filetypeForPath(props.file.path)}
           syntaxStyle={getSyntaxStyle()}
           treeSitterClient={client() ?? undefined}

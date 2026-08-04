@@ -97,6 +97,14 @@ export interface EditorPaneProps {
   /** Also draw each problem's message after the end of its line. */
   problemText: boolean
   /**
+   * Review remarks on lines of this file: the notes written here and the pull
+   * request's comments. A gutter mark each, and the text after the line when
+   * `reviewText` is on — the same two the diagnostics get, in their own colours,
+   * because "somebody asked about this line" is not a diagnostic.
+   */
+  reviews: Map<number, { draft: boolean; label: string; text: string }>
+  reviewText: boolean
+  /**
    * Ask the language server for completions at a buffer position. Null when the
    * feature is off — the resolver also answers null, but a null prop is what
    * keeps the pane from scheduling requests at all.
@@ -120,6 +128,8 @@ export interface EditorPaneProps {
   notice: { name: string; reason: string } | null
   onChange: (text: string) => void
   onCursor: (pos: { line: number; col: number }) => void
+  /** The lines the selection spans, or null when there is none. */
+  onSelection: (lines: { from: number; to: number } | null) => void
   onFocus: () => void
   onVimMode: (mode: VimMode | null) => void
   /**
@@ -184,6 +194,17 @@ const PROBLEM_NOTE_COLORS: Record<ProblemSeverity, () => string> = {
   info: () => ui.dim,
   hint: () => ui.dim,
 }
+
+/**
+ * Review marks: a filled lozenge for a note written here, a hollow one for a
+ * comment that came from the forge. Deliberately neither the git glyph nor the
+ * diagnostic dot — a line can carry all three, and what each says is different.
+ */
+const REVIEW_GLYPH = { draft: '◆', fetched: '◇' } as const
+const reviewColor = (draft: boolean) => (draft ? ui.accent : ui.folder)
+/** As the problem text is: pulled toward the background so it annotates rather than shouts. */
+const reviewNoteColor = (draft: boolean) =>
+  mixColors(ui.solidBg, draft ? ui.accent : ui.folder, 0.62)
 
 /** Per renderer, the one renderable a mouse selection may start in. */
 const selectionHosts = new WeakMap<object, unknown>()
@@ -304,6 +325,8 @@ export function EditorPane(props: EditorPaneProps) {
   const segmented = new Set<number>()
   const appliedLines = new Set<number>()
   const cursor = { line: 0, col: 0 }
+  /** Last selection span reported upward, so unchanged ones are not re-reported. */
+  let reportedSelection: { from: number; to: number } | null = null
   const history = new History({ content: props.content, cursor: 0 })
   /** Cursor offset before the edit in progress — where undo should land. */
   let cursorBeforeEdit = 0
@@ -382,6 +405,7 @@ export function EditorPane(props: EditorPaneProps) {
 
   const displayGitLines = createMemo(() => toDisplay(props.gitLines))
   const displayProblems = createMemo(() => toDisplay(props.problems))
+  const displayReviews = createMemo(() => toDisplay(props.reviews))
   /**
    * Scroll position of the textarea, mirrored so the scrollbar can react to it.
    * Three signals rather than one object: a single `{top, height, total}` gets a
@@ -537,17 +561,34 @@ export function EditorPane(props: EditorPaneProps) {
   const inlineNotes = createMemo(() => {
     wrapKey()
     void props.content
-    const problems = displayProblems()
-    if (!props.problemText || problems.size === 0) return []
+    // Both annotations share the geometry, so they are merged into one map of
+    // buffer row → what to draw — the review marks first, so a diagnostic on the
+    // same line wins it. Keyed by *row*: with a fold open, the file's line and
+    // the line the buffer draws are two different numbers.
+    const wanted = new Map<number, { text: string; color: string }>()
+    if (props.reviewText) {
+      for (const [row, mark] of displayReviews()) {
+        wanted.set(row, { text: `${mark.label}: ${mark.text}`, color: reviewNoteColor(mark.draft) })
+      }
+    }
+    if (props.problemText) {
+      for (const [row, problem] of displayProblems()) {
+        wanted.set(row, {
+          text: problem.message,
+          color: PROBLEM_NOTE_COLORS[problem.severity](),
+        })
+      }
+    }
+    if (wanted.size === 0) return []
     const notes: { top: number; left: number; text: string; color: string }[] = []
-    for (const [row, problem] of problems) {
+    for (const [row, note] of wanted) {
       const slot = noteSlot(row)
       if (!slot) continue
       notes.push({
         top: slot.top,
         left: slot.left,
-        text: cut(problem.message.replaceAll(/\s+/g, ' '), slot.room),
-        color: PROBLEM_NOTE_COLORS[problem.severity](),
+        text: cut(note.text.replaceAll(/\s+/g, ' '), slot.room),
+        color: note.color,
       })
     }
     return notes
@@ -801,8 +842,15 @@ export function EditorPane(props: EditorPaneProps) {
     for (const [line, change] of displayGitLines()) {
       signs.set(line, { before: SIGN_GLYPH[change], beforeColor: signColor[change] })
     }
-    // After the git marks, so a line holding both shows the problem: the mark
-    // says "you touched this", the problem says "and it is broken".
+    // After the git marks, so a line holding both shows the review remark: the
+    // mark says "you touched this", the remark says "and somebody asked about it".
+    for (const [row, mark] of displayReviews()) {
+      signs.set(row, {
+        before: mark.draft ? REVIEW_GLYPH.draft : REVIEW_GLYPH.fetched,
+        beforeColor: reviewColor(mark.draft),
+      })
+    }
+    // Last of the three: a broken line is worth more than a remark about it.
     for (const [line, problem] of displayProblems()) {
       signs.set(line, { before: '●', beforeColor: PROBLEM_COLORS[problem.severity]() })
     }
@@ -850,6 +898,30 @@ export function EditorPane(props: EditorPaneProps) {
     gutter?.setLineNumbers?.(numbers)
   })
 
+  /** The row an absolute character offset falls on. */
+  const rowOfOffset = (text: string, offset: number) => {
+    let row = 0
+    for (let at = text.indexOf('\n'); at >= 0 && at < offset; at = text.indexOf('\n', at + 1)) row++
+    return row
+  }
+
+  /**
+   * Rows a line edit applies to: the selection's span, else the cursor's line.
+   * Also what a review note attaches to — above `syncCursor` for that reason,
+   * which is the only caller that runs before the line edits are wired up.
+   */
+  const editRange = (text: string) => {
+    const span = editor?.getSelection()
+    if (!span || span.start === span.end) {
+      const row = editor!.logicalCursor.row
+      return { from: row, to: row }
+    }
+    const start = Math.min(span.start, span.end)
+    const end = Math.max(span.start, span.end)
+    // `end` is exclusive: a selection stopping at column 0 does not take that line.
+    return { from: rowOfOffset(text, start), to: rowOfOffset(text, Math.max(start, end - 1)) }
+  }
+
   const syncViewport = () => {
     if (!editor) return
     setViewTop(editor.scrollY)
@@ -867,6 +939,19 @@ export function EditorPane(props: EditorPaneProps) {
     // Height is still zero while the first frame lays out, so the scrollbar has
     // to be measured again once the editor is on screen.
     syncViewport()
+    // Ahead of the unchanged-position return below: Shift+↑ from the last line of
+    // a file grows the selection without moving the caret off it, and a review
+    // note taken then would be about one line instead of the block on screen.
+    // Gated on `hasSelection` because the offset→row walk is per keystroke.
+    // In the file's own lines, as the cursor below is: a note taken over a
+    // selection while a fold is open is about the lines someone would go to,
+    // not the rows the fold happened to leave them on.
+    const rows = editor.hasSelection() ? editRange(editor.plainText) : null
+    const span = rows ? { from: realLine(rows.from), to: realLine(rows.to) } : null
+    if (span?.from !== reportedSelection?.from || span?.to !== reportedSelection?.to) {
+      reportedSelection = span
+      props.onSelection(span)
+    }
     const at = editor.visualCursor
     if (!at) return
     if (at.logicalRow === cursor.line && at.logicalCol === cursor.col) return
@@ -1284,26 +1369,6 @@ export function EditorPane(props: EditorPaneProps) {
     byLine = new Map()
     segmented.clear()
     void runHighlight(text)
-  }
-
-  /** The row an absolute character offset falls on. */
-  const rowOfOffset = (text: string, offset: number) => {
-    let row = 0
-    for (let at = text.indexOf('\n'); at >= 0 && at < offset; at = text.indexOf('\n', at + 1)) row++
-    return row
-  }
-
-  /** Rows a line edit applies to: the selection's span, else the cursor's line. */
-  const editRange = (text: string) => {
-    const selection = editor?.getSelection()
-    if (!selection || selection.start === selection.end) {
-      const row = editor!.logicalCursor.row
-      return { from: row, to: row }
-    }
-    const start = Math.min(selection.start, selection.end)
-    const end = Math.max(selection.start, selection.end)
-    // `end` is exclusive: a selection stopping at column 0 does not take that line.
-    return { from: rowOfOffset(text, start), to: rowOfOffset(text, Math.max(start, end - 1)) }
   }
 
   /**

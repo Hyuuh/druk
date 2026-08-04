@@ -1,4 +1,5 @@
 import type { TextEncoding } from '../core/fs'
+import type { NoteKind } from '../core/review'
 import type { SearchOptions } from '../core/search'
 import type { PackageManager } from '../lsp/install'
 import type { FetchableInstall } from '../lsp/servers'
@@ -64,6 +65,19 @@ export type Prompt =
       files: number
       /** The active toggles, restated so the user confirms what will run. */
       flags: string
+    }
+  /**
+   * A review note is being written. The kind is asked for first — a chooser,
+   * since the four read differently to an agent — and the text second, so the
+   * pair is two prompt kinds rather than one modal that does both.
+   */
+  | { kind: 'reviewKind'; path: string; line: number; endLine: number }
+  | {
+      kind: 'reviewNote'
+      path: string
+      line: number
+      endLine: number
+      noteKind: NoteKind
     }
   /** A language server is missing and druk can fetch it; `id` is the server id. */
   | {

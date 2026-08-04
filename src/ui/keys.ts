@@ -18,10 +18,10 @@ import { createSignal } from 'solid-js'
 
 type Pane = 'tree' | 'editor'
 
-/** The panes plus the sidebar's other views: the source-control and extensions
- * panels replace the tree's keys while they show, so the peek strip has to tell
- * them apart. */
-export type KeyScope = Pane | 'git' | 'extensions'
+/** The panes plus the sidebar's other views: the source-control, review and
+ * extensions panels replace the tree's keys while they show, so the peek strip
+ * has to tell them apart. */
+export type KeyScope = Pane | 'git' | 'review' | 'extensions'
 
 /** What the key next to the space bar is called on this machine's keyboard. */
 export const ALT = process.platform === 'darwin' ? 'Opt' : 'Alt'
@@ -237,6 +237,20 @@ export const KEYS: KeyInfo[] = [
     section: 'Source control',
     where: 'git',
   },
+
+  // One row for the pair, and short labels, as the source-control rows are: the
+  // help table only just fits a 70-row terminal, and a wrapped label costs it a
+  // second row — `test/help-scroll.test.tsx` measures exactly that.
+  {
+    key: `Ctrl+${ALT}+R / A`,
+    label: 'Review panel / note this line',
+    section: 'Review',
+    where: 'all',
+    ids: ['view.review', 'review.note'],
+  },
+  // Short labels on purpose, as the source-control rows are: the help table only
+  // just fits a 60-row terminal, and a wrapped label costs it a second row.
+  { key: 'Enter · f · y', label: 'Jump · fetch PR · copy', section: 'Review', where: 'review' },
 
   {
     key: 'Ctrl+B',

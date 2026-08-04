@@ -60,7 +60,9 @@ describe('editor', () => {
 
 describe('command palette', () => {
   test('nests into submenus and applies a theme', async () => {
-    const t = await launch(fixture(PROJECT))
+    // Tall enough for the whole root list: the palette windows its rows, so a
+    // command added above Themes would otherwise push it off a 20-row terminal.
+    const t = await launch(fixture(PROJECT), {}, { height: 30 })
     await openPalette(t)
     // `›`, the same glyph the title trail and the README use for nesting.
     expect(t.captureCharFrame()).toContain('Themes ›')

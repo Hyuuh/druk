@@ -27,6 +27,11 @@ export function createEditorBridge(vim: boolean) {
   /** Folding, the same one-shot shape: the pane owns which blocks are collapsed. */
   const [foldOp, setFoldOp] = createSignal<{ op: FoldOp; key: number } | null>(null)
   const [cursor, setCursor] = createSignal({ line: 0, col: 0 })
+  /**
+   * The lines the editor's selection spans, or null while there is none. Only
+   * the lines: the review notes are the one caller, and a note is about lines.
+   */
+  const [selection, setSelection] = createSignal<{ from: number; to: number } | null>(null)
   /** Palette-triggered "open the completion menu", same one-shot shape as lineOp. */
   const [completion, setCompletion] = createSignal<{ key: number } | null>(null)
   /**
@@ -68,6 +73,8 @@ export function createEditorBridge(vim: boolean) {
     setCompletionOpen,
     cursor,
     setCursor,
+    selection,
+    setSelection,
   }
 }
 

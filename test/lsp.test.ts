@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -122,24 +122,30 @@ describe('protocol mapping', () => {
     // The hint names the default's package; an override would send them elsewhere.
     expect(resolveServer('typescript', { typescript: ['deno', 'lsp'] })?.install).toBeUndefined()
     // An empty command disables that server, not every server for the language:
-    // eslint serves typescript too, and is left where it was.
+    // the two linters serve typescript too, and are left where they were.
     expect(resolveServers('typescript', { typescript: [] }).map(server => server.id)).toEqual([
       'eslint',
+      'oxlint',
     ])
     expect(resolveServers('brainfuck', {})).toEqual([])
     expect(resolveServer(undefined, {})).toBeNull()
   })
 
   test('a language may have several servers, the language server first', () => {
-    // Both are spawned and both report; the order is what decides which one is
-    // asked for a completion first, and a linter must never be that one.
+    // All of them are spawned and all of them report; the order is what decides
+    // which one is asked for a completion first, and a linter must never be that
+    // one.
     expect(resolveServers('typescript', {}).map(server => server.id)).toEqual([
       'typescript',
       'eslint',
+      'oxlint',
     ])
-    // Only the linter carries settings — it does nothing at all without them.
+    // Only the linters carry settings — eslint does nothing at all without them,
+    // and oxlint would lint on save alone.
     const eslint = resolveServers('typescript', {}).find(server => server.id === 'eslint')
     expect((eslint?.settings as { validate?: string } | undefined)?.validate).toBe('on')
+    const oxlint = resolveServers('typescript', {}).find(server => server.id === 'oxlint')
+    expect((oxlint?.settings as { run?: string } | undefined)?.run).toBe('onType')
   })
 
   test('typescript is pinned to 5, the last line that ships a tsserver.js', () => {
@@ -271,6 +277,54 @@ describe('installed servers', () => {
     // the list exists for are run by.
     expect(availablePackageManagers(root)).toEqual(['bun'])
   })
+
+  test('installing a second server keeps the first', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    // Local directories, so npm resolves them without a registry — the point of
+    // the test is what npm does to the tree it finds, not where it got it.
+    const fake = (name: string) => {
+      const dir = join(mkdtempSync(join(tmpdir(), 'druk-fake-pkg-')), name)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({ name, version: '1.0.0', bin: { [name]: 'cli.js' } }),
+      )
+      writeFileSync(join(dir, 'cli.js'), '#!/usr/bin/env node\n')
+      return dir
+    }
+
+    expect(await installServer([fake('druk-fake-a')], root)).toBeNull()
+    expect(installedCommand(['druk-fake-a'], root)).not.toBeNull()
+    // npm prunes whatever the prefix's package.json does not claim, so without
+    // one this install deletes the server above — and druk offers it again on
+    // the next launch, forever.
+    expect(await installServer([fake('druk-fake-b')], root)).toBeNull()
+    expect(installedCommand(['druk-fake-a'], root)).not.toBeNull()
+    expect(installedCommand(['druk-fake-b'], root)).not.toBeNull()
+  }, 60_000)
+
+  test('a prefix filled before the manifest existed is described, not pruned', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    const pkg = join(root, 'node_modules', 'typescript-language-server')
+    mkdirSync(pkg, { recursive: true })
+    writeFileSync(
+      join(pkg, 'package.json'),
+      JSON.stringify({ name: 'typescript-language-server', version: '4.3.3' }),
+    )
+    mkdirSync(join(root, 'node_modules', '.bin'), { recursive: true })
+
+    const path = process.env.PATH
+    process.env.PATH = ''
+    try {
+      // The manifest is written before the manager runs, so npm going missing
+      // costs the install and not the repair.
+      await installServer(['druk-no-such-package'], root)
+    } finally {
+      process.env.PATH = path
+    }
+    const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(manifest.dependencies).toEqual({ 'typescript-language-server': '4.3.3' })
+  }, 20_000)
 
   test('an install with no npm to run it fails instead of hanging', async () => {
     const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))

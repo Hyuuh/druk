@@ -9,6 +9,8 @@
  * To add a command: add an action to `CommandActions`, then an entry below. Set
  * `hint` when a keybinding also triggers it (keybindings live in App).
  */
+import { NOTE_KINDS, NOTE_LABELS } from '../core/review'
+import type { NoteKind } from '../core/review'
 import type { FoldOp } from '../editor/folds'
 import { iconThemeLabel, iconThemeNames, iconThemeNeedsFont } from '../icons'
 import { themeLabel, themeNames } from '../themes'
@@ -108,6 +110,16 @@ export interface CommandActions {
   gitRenameBranch: () => void
   gitDeleteBranch: () => void
   gitDeleteBranchForce: () => void
+  openReview: () => void
+  reviewNote: () => void
+  reviewNoteOf: (kind: NoteKind) => void
+  reviewFetch: () => void
+  reviewCopy: () => void
+  reviewClear: () => void
+  /** Not commands: the review panel's cursor, moved and pressed. */
+  reviewMoveTo: (row: number) => void
+  reviewActivate: (row: number) => void
+  reviewCollapseAll: () => void
   openExtensions: () => void
   reloadExtensions: () => void
   updateExtensions: () => void
@@ -234,6 +246,46 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
             },
           ],
         },
+      ],
+    },
+    {
+      // Reading code with an agent beside you: notes on lines, the pull
+      // request's own comments, and the Markdown block that carries both into a
+      // prompt. Nothing here writes to a forge — the clipboard is the way out.
+      id: 'review',
+      label: 'Review',
+      children: [
+        {
+          id: 'review.panel',
+          label: 'Review panel',
+          hint: `Ctrl+${ALT}+R`,
+          run: actions.openReview,
+        },
+        {
+          id: 'review.note',
+          label: 'Note this line…',
+          hint: `Ctrl+${ALT}+A`,
+          run: actions.reviewNote,
+        },
+        // The four spelled out as well as behind the chooser: a palette that
+        // knows what you meant is one keystroke shorter than one that asks.
+        ...NOTE_KINDS.map(kind => ({
+          id: `review.note.${kind}`,
+          label: `Note this line as ${NOTE_LABELS[kind].toLowerCase()}…`,
+          run: () => actions.reviewNoteOf(kind),
+        })),
+        {
+          id: 'review.fetch',
+          label: 'Fetch pull request comments',
+          run: actions.reviewFetch,
+        },
+        {
+          id: 'review.copy',
+          label: 'Copy review as Markdown (for an agent)',
+          hint: 'y in review',
+          run: actions.reviewCopy,
+        },
+        { id: 'review.clear', label: 'Clear review notes', run: actions.reviewClear },
       ],
     },
     {

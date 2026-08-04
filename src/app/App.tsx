@@ -31,6 +31,7 @@ import { LspStatusView } from '../ui/LspStatusView'
 import { MarkdownView } from '../ui/MarkdownView'
 import { PdfView } from '../ui/PdfView'
 import { PreviewPane } from '../ui/PreviewPane'
+import { ReviewPanel } from '../ui/ReviewPanel'
 import { SettingsView } from '../ui/SettingsView'
 import { SidebarTabs } from '../ui/SidebarTabs'
 import { StatusBar } from '../ui/StatusBar'
@@ -52,6 +53,7 @@ import { createPanes } from './panes'
 import { createPreview } from './preview'
 import type { PreviewTarget } from './preview'
 import { createPromptHandlers, createPromptState } from './prompts'
+import { createReview } from './review'
 import { createSettings } from './settings'
 import { createStatus, READY } from './status'
 import { createTree, hiddenNodes } from './tree'
@@ -164,6 +166,15 @@ export function App(props: {
   const fileOps = createFileOps({ rootDir, status, tree, workspace, renderer })
   const gitOp = createGitOp({ git, status, workspace })
   const branches = createBranches({ status, git, gitOp, prompts: promptState })
+  const review = createReview({
+    rootDir,
+    status,
+    settings,
+    workspace,
+    git,
+    panes,
+    renderer,
+  })
   const promptHandlers = createPromptHandlers({
     renderer,
     state: promptState,
@@ -177,6 +188,7 @@ export function App(props: {
     branches,
     lsp,
     market,
+    review,
   })
   const overlays = createOverlays({
     renderer,
@@ -229,6 +241,7 @@ export function App(props: {
     lsp,
     market,
     extensions: extensionsPanel,
+    review,
     branches,
     comparison,
     workspace,
@@ -545,6 +558,20 @@ export function App(props: {
                 onActivate={extensionsPanel.activate}
               />
             </Show>
+            <Show when={panes.view() === 'review'}>
+              <ReviewPanel
+                rows={review.rows()}
+                cursor={review.cursor()}
+                count={review.count()}
+                pull={review.pull() ? `#${review.pull()!.number} ${review.pull()!.title}` : null}
+                fetching={review.fetching()}
+                focused={panes.focus() === 'tree'}
+                width={settings.treeWidth()}
+                onFocus={() => panes.setFocus('tree')}
+                onActivate={actions.reviewActivate}
+                onCollapseAll={actions.reviewCollapseAll}
+              />
+            </Show>
             <Show when={panes.view() === 'files'}>
               <FileTree
                 rootName={basename(rootDir) || rootDir}
@@ -678,6 +705,8 @@ export function App(props: {
             problems={problemLines()}
             problemRanges={problemRanges()}
             problemText={config.lspInline}
+            reviews={review.marks()}
+            reviewText={config.reviewInline}
             complete={
               config.lsp && config.lspCompletion
                 ? (line, col) => {
@@ -702,6 +731,7 @@ export function App(props: {
             blocked={overlays.overlay() || editorCovered()}
             onChange={workspace.onEditorChange}
             onCursor={editor.setCursor}
+            onSelection={editor.setSelection}
             onFocus={() => panes.setFocus('editor')}
             onVimMode={editor.setVimMode}
             onQuit={promptHandlers.quit}

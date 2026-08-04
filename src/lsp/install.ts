@@ -24,6 +24,7 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -100,13 +101,75 @@ function rememberManager(root: string, manager: PackageManager): void {
 }
 
 /**
- * Only npm is told not to save. It is the one that would otherwise leave a
- * package.json describing a "project" that is really a bin directory — while
- * bun and pnpm need the dependency written down or their own `remove` finds
- * nothing to take and leaves the executable behind, exiting 0 as it does.
+ * Give the prefix the package.json the managers save into, building it out of
+ * whatever is already installed when there is none. A prefix filled by a druk
+ * that ran `--no-save` has servers in it and nothing describing them, so writing
+ * an empty manifest would make the very next install prune the lot — the bug
+ * this exists to end, one last time. Every top-level package is listed, the ones
+ * that came along as dependencies included: over-listing costs a directory that
+ * outstays its server, while under-listing costs a server.
+ */
+function ensureManifest(root: string): void {
+  const manifest = join(root, 'package.json')
+  if (existsSync(manifest)) return
+  const body = {
+    name: 'druk-language-servers',
+    version: '0.0.0',
+    private: true,
+    dependencies: installedPackages(root),
+  }
+  try {
+    writeFileSync(manifest, `${JSON.stringify(body, null, 2)}\n`)
+  } catch {
+    // Nothing to do but let the manager run: it will prune, and the servers it
+    // takes are offered again on the next launch.
+  }
+}
+
+/** What is in `node_modules` now, as a dependency map at the exact versions there. */
+function installedPackages(root: string): Record<string, string> {
+  const modules = join(root, 'node_modules')
+  const found: Record<string, string> = {}
+  const add = (dir: string) => {
+    try {
+      const { name, version } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+      if (typeof name === 'string' && typeof version === 'string') found[name] = version
+    } catch {
+      // Not a package — an empty scope directory npm left behind, most of all.
+    }
+  }
+  for (const entry of readdirOrNone(modules)) {
+    // `.bin`, `.package-lock.json`: npm's own bookkeeping, not packages.
+    if (entry.startsWith('.')) continue
+    if (entry.startsWith('@')) {
+      for (const scoped of readdirOrNone(join(modules, entry))) add(join(modules, entry, scoped))
+      continue
+    }
+    add(join(modules, entry))
+  }
+  return found
+}
+
+function readdirOrNone(dir: string): string[] {
+  try {
+    return readdirSync(dir)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The prefix keeps a package.json, and every manager writes to it. It reads like
+ * a "project" that is really a bin directory, and npm was once told `--no-save`
+ * for exactly that reason — but npm's ideal tree is the manifest plus the
+ * arguments and *everything else in `node_modules` is extraneous*, so with no
+ * manifest each install pruned the servers installed before it. That is a loop:
+ * every launch finds one server missing, offers it, and the install evicts
+ * another. bun and pnpm need the dependency written down for their own `remove`
+ * to find anything to take, so all three want the same thing.
  */
 const INSTALL_ARGS: Record<PackageManager, (root: string) => string[]> = {
-  npm: root => ['install', '--prefix', root, '--no-save', '--no-audit', '--no-fund'],
+  npm: root => ['install', '--prefix', root, '--no-audit', '--no-fund'],
   bun: root => ['add', '--cwd', root],
   pnpm: root => ['add', '--dir', root],
 }
@@ -179,6 +242,9 @@ export async function removeServer(
   // Whoever wrote the tree takes it apart; npm for one filled before the note
   // existed, which is what every install used then.
   const manager = savedManager(root) ?? 'npm'
+  // A removal prunes what the manifest does not list, exactly as an install
+  // does, so the other servers need describing before this one is taken.
+  ensureManifest(root)
   const result = await run(manager, [...REMOVE_ARGS[manager](root), ...install.packages], {
     timeout: INSTALL_TIMEOUT_MS,
   })
@@ -201,6 +267,7 @@ export async function installServer(
   // The managers are given a directory to work in rather than one to create,
   // and pnpm refuses a path that is not there at all.
   mkdirSync(root, { recursive: true })
+  ensureManifest(root)
   const result = await run(manager, [...INSTALL_ARGS[manager](root), ...packages], {
     timeout: INSTALL_TIMEOUT_MS,
   })

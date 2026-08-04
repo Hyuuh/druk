@@ -26,9 +26,10 @@ const READY_FILE = { 'a.ts': 'oops\n' }
 
 const lspConfig = {
   lsp: true,
-  // The market's eslint extension serves typescript too; these tests are about
-  // the one server they name, so the other is turned off rather than spawned.
-  lspServers: { typescript: [process.execPath, FAKE], eslint: [] },
+  // The market's eslint and oxlint extensions serve typescript too; these tests
+  // are about the one server they name, so the rest are turned off rather than
+  // spawned.
+  lspServers: { typescript: [process.execPath, FAKE], eslint: [], oxlint: [] },
 }
 
 async function readyEditor(files = READY_FILE) {
@@ -146,7 +147,7 @@ test('the palette command triggers the menu, Escape dismisses it', async () => {
 test('the settings page carries the Autocomplete toggle', async () => {
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   // Tall: the page windows its rows, and the language-server rows come last.
-  const t = await launch(dir, {}, { height: 40 })
+  const t = await launch(dir, {}, { height: 46 })
 
   await runCommand(t, 'Settings')
   await untilFrame(t, 'Autocomplete')

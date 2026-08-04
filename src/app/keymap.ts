@@ -87,6 +87,7 @@ export const BINDABLE: Bindable[] = [
   { id: 'editor.unfoldAll', label: 'Unfold everything', defaults: [] },
   { id: 'view.sidebar', label: 'Show / hide sidebar', defaults: ['Ctrl+B'] },
   { id: 'view.git', label: 'Source control panel', defaults: [`Ctrl+${ALT}+G`] },
+  { id: 'view.review', label: 'Review panel', defaults: [`Ctrl+${ALT}+R`] },
   { id: 'view.extensions', label: 'Extensions panel', defaults: [`Ctrl+${ALT}+X`] },
   { id: 'view.collapse', label: 'Collapse folders in sidebar', defaults: [] },
   {
@@ -103,6 +104,10 @@ export const BINDABLE: Bindable[] = [
   { id: 'git.commit', label: 'Commit…', defaults: [] },
   { id: 'git.push', label: 'Push', defaults: [] },
   { id: 'git.compare', label: 'Compare branches', defaults: [] },
+  // A for annotate: R is the panel, and the note is the thing pressed far more often.
+  { id: 'review.note', label: 'Note this line for a review', defaults: [`Ctrl+${ALT}+A`] },
+  { id: 'review.fetch', label: 'Fetch pull request comments', defaults: [] },
+  { id: 'review.copy', label: 'Copy review as Markdown', defaults: [] },
   { id: 'problems.list', label: 'List problems', defaults: [] },
   { id: 'problems.next', label: 'Next problem', defaults: [] },
   { id: 'problems.prev', label: 'Previous problem', defaults: [] },

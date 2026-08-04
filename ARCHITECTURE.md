@@ -43,6 +43,8 @@ scripts/
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
     market.ts        the market as the editor sees it: updates, offers, installs
     extensionsPanel.ts the sidebar's extensions view: rows, cursor, fold state
+    review.ts        the review view: draft notes on lines, the pull request's
+                     comments, and the Markdown block both leave as
     lsp.ts           language servers: spawn per language, sync buffers, diagnostics,
                      completion requests (flushing the didChange debounce first)
     settings.ts      the two config layers (user / project) resolved into one store,
@@ -64,6 +66,10 @@ scripts/
     git.ts           queries, mutations, and async branch-comparison metadata/blob reads
     repos.ts         which repositories the opened folder holds, and which one a path
                      is in — filesystem-only, so the tree may ask per row
+    forge.ts         a remote URL -> which forge, and its open pull request's
+                     comments: GitHub, GitLab, Gitea/Forgejo, Bitbucket Cloud
+    review.ts        review notes (model + store beside the config) and the
+                     Markdown block the export puts on the clipboard
     diff.ts          Myers line diff between two texts, emitted as a unified patch
     imports.ts       the path token under the cursor, and where it resolves —
                      relative, project-root, or through tsconfig/jsconfig aliases
@@ -117,7 +123,8 @@ scripts/
   ui/                presentational components, no app state
     EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
     SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
-    SearchPanel, DiffView, ImageView, PdfView, PreviewPane, SettingsView, SettingEditor,
+    SearchPanel, DiffView, ImageView, PdfView, PreviewPane, ReviewPanel, SettingsView,
+    SettingEditor,
     SettingPicker, ExtensionsPanel, LspStatusView, UpdateBanner,
     Overlay, TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
     modal.ts         modal geometry: width, list rows, text wrapping
@@ -679,12 +686,28 @@ is just a diff against the empty tree.
   placeholder and destroys the native buffer while `editor` still points at it. Both
   pending timers touch it, so they are cleared from the ref's own `onCleanup` — the pane's
   `onCleanup` fires far too late and the timer throws from outside any handler.
+- **The review is read-only, and the clipboard is its only exit.** `core/forge.ts`
+  asks a forge three questions — which change is open for this branch, what was said
+  on it, and where each remark sits — and has no code path that writes. Nothing
+  posts a comment, approves, or resolves a thread: the export is a Markdown block
+  the user pastes wherever they meant to, which is also why a token is optional
+  (a public repository answers all three questions unauthenticated). The one place
+  a guess would be tempting is the forge itself, and it is refused: a self-hosted
+  GitLab and a self-hosted Gitea are identical from the outside, and asking one of
+  them the other's questions produces plausible nonsense rather than an error, so
+  an unplaceable host is reported against `reviewForge` instead.
+- **Review notes live beside the config, not in the project.** `review.json` next to
+  `sessions.json`, keyed by project path, for the same reason sessions are: a draft
+  remark is personal scratch, and a `.druk/` file would land in somebody's commit the
+  first time they staged everything.
 - **Network.** druk makes two kinds of request, both at startup and both
   best-effort (2.5s timeout, failures ignored): one npm registry lookup for a newer
   druk, disabled by `checkUpdates: false`, and the extension market's `index.json`,
   disabled by `extensionUpdates: false` and cached for six hours in between. Everything
   after that is a fetch someone asked for — a manifest, because an extension is being
-  installed. druk runs no git command that talks to a remote, which is also what
+  installed, or a forge's API, because a review asked for a pull request's comments
+  (10s, since somebody is waiting on it). druk runs no git command that talks to a
+  remote, which is also what
   keeps a credential prompt from ever opening `/dev/tty` behind the alt-screen and
   freezing the single render thread.
 - **Session restore.** Tabs and their buffers are seeded synchronously in the component
