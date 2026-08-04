@@ -14,7 +14,12 @@ Features: file tree with bulk file operations and opt-in hiding of dotfiles and
 git-ignored files, a `▴` in the sidebar header that shuts every folder at once
 (palette → View → Collapse folders in sidebar, which folds whichever of the two
 sidebar views is up, and the button is drawn only while there is something to fold),
-preview/pinned tabs, tree-sitter syntax
+preview/pinned tabs, a quick look at the row under the tree's cursor that opens no
+tab at all (Space in the tree, palette → View → Preview file — the file over the
+editor slot, syntax-coloured, following the cursor as ↑↓ walks the tree and paging
+with PgUp/PgDn, since the tree keeps the keyboard; Enter opens the file for real and
+ends the mode, Space or Esc closes it, and a folder, an image, a PDF or a file too
+big to read says so rather than showing nothing), tree-sitter syntax
 highlighting, search (current file and project-wide — the project scan and the fuzzy
 file picker both skip git-ignored paths, whatever the tree's `respectGitignore` says, so
 a build directory or an agent's worktree checkout is never a result; the panel previews
@@ -27,6 +32,16 @@ overrides while it is on, since there the shape is what tells normal from insert
 word wrap on by default with a toggle (`wrap`, palette → View → Toggle word wrap —
 off, a long line's tail is reached by moving the cursor into it, since OpenTUI
 scrolls sideways only with the caret),
+code folding (`Ctrl+Opt+C` / `Ctrl+Opt+E`, palette → Editor → Fold / Unfold block at
+cursor, and fold/unfold everything: blocks come from indentation rather than from the
+grammar, so they work for the languages druk paints with `patterns` and no tree at
+all; a `▾` sits between the line number and the code of every foldable block and
+`▸` where one is closed — clicking it folds or opens that block, since a terminal has
+no hover to hide the control behind, and the column it needs is only reserved for a
+file that has something to fold; the collapsed line says `⋯ N lines` after its text
+and the gutter keeps the file's own numbering across the gap, a tab comes back folded
+the way it was left, and anything that replaces the text wholesale — undo, a reload,
+replace, moving lines — opens the file first),
 git marks in tree/gutter/status bar plus a source-control panel in the sidebar
 (changed files as a folder tree or a flat list — `gitPanelView` — folders folding on
 → / ←, or all of them from the header's `▴`), for however many repositories the

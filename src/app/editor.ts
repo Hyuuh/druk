@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js'
 
+import type { FoldOp } from '../editor/folds'
 import type { VimMode } from '../editor/vim'
 
 /**
@@ -23,6 +24,8 @@ export function createEditorBridge(vim: boolean) {
     op: 'comment' | 'up' | 'down' | 'duplicate'
     key: number
   } | null>(null)
+  /** Folding, the same one-shot shape: the pane owns which blocks are collapsed. */
+  const [foldOp, setFoldOp] = createSignal<{ op: FoldOp; key: number } | null>(null)
   const [cursor, setCursor] = createSignal({ line: 0, col: 0 })
   /** Palette-triggered "open the completion menu", same one-shot shape as lineOp. */
   const [completion, setCompletion] = createSignal<{ key: number } | null>(null)
@@ -42,6 +45,7 @@ export function createEditorBridge(vim: boolean) {
   const requestLineOp = (op: 'comment' | 'up' | 'down' | 'duplicate') =>
     setLineOp(prev => ({ op, key: (prev?.key ?? 0) + 1 }))
   const requestCompletion = () => setCompletion(prev => ({ key: (prev?.key ?? 0) + 1 }))
+  const requestFoldOp = (op: FoldOp) => setFoldOp(prev => ({ op, key: (prev?.key ?? 0) + 1 }))
 
   return {
     vimMode,
@@ -56,6 +60,8 @@ export function createEditorBridge(vim: boolean) {
     pushEdit,
     lineOp,
     requestLineOp,
+    foldOp,
+    requestFoldOp,
     completion,
     requestCompletion,
     completionOpen,

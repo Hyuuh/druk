@@ -99,6 +99,13 @@ export const KEYS: KeyInfo[] = [
   },
   { key: 'Shift+Tab', label: 'Outdent', section: 'Editing', where: 'editor' },
   { key: 'Ctrl+Space', label: 'Autocomplete (Tab accepts)', section: 'Editing', where: 'editor' },
+  {
+    key: `Ctrl+${ALT}+C / E`,
+    label: 'Fold / unfold block at cursor',
+    section: 'Editing',
+    where: 'editor',
+    ids: ['editor.fold', 'editor.unfold'],
+  },
 
   {
     key: 'Ctrl+F',
@@ -179,6 +186,14 @@ export const KEYS: KeyInfo[] = [
   {
     key: 'h j k l',
     label: 'Move / collapse / expand (vim mode)',
+    section: 'File tree',
+    where: 'tree',
+  },
+  // Deliberately without `ids`: the command is bindable, but its key here is the
+  // tree's own Space, which no global chord can replace.
+  {
+    key: 'Space · PgUp/Dn',
+    label: 'Preview file, no tab · scroll it',
     section: 'File tree',
     where: 'tree',
   },

@@ -22,6 +22,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     git,
     comparison,
     extensions,
+    preview,
     editorCovered,
   } = ctx
   const { config } = settings
@@ -71,12 +72,17 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'nav.forward': actions.navForward,
     'tabs.closeOthers': actions.closeOthers,
     'tabs.closeAll': actions.closeAll,
+    'editor.fold': () => actions.foldOp('fold'),
+    'editor.unfold': () => actions.foldOp('unfold'),
+    'editor.foldAll': () => actions.foldOp('foldAll'),
+    'editor.unfoldAll': () => actions.foldOp('unfoldAll'),
     'view.sidebar': panes.toggleSidebar,
     'view.git': panes.toggleGitView,
     'view.extensions': panes.toggleExtensionsView,
     'view.collapse': actions.collapseSidebar,
     'view.markdown': workspace.toggleRendered,
     'view.wrap': actions.toggleWrap,
+    'view.preview': actions.togglePreview,
     'view.focus': actions.toggleFocus,
     'git.diffFile': actions.gitDiffFile,
     'git.commit': actions.gitCommit,
@@ -375,7 +381,23 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         break
       case 'return':
       case 'enter':
+        // Opening a file ends the browsing the preview is for — see App's own
+        // `onActivate`, which is the same landing by mouse.
+        if (node && !node.isDir) preview.close()
         if (node) workspace.activateNode(node)
+        break
+      // Space, as the Finder's quick look: the file under the cursor over the
+      // editor slot, following the cursor, and never a tab.
+      case 'space':
+        preview.toggle()
+        break
+      // The tree keeps the keyboard while it previews, so paging the pane is
+      // the tree's job. Neither key means anything else here.
+      case 'pageup':
+        if (preview.target()) preview.scroll(-1)
+        break
+      case 'pagedown':
+        if (preview.target()) preview.scroll(1)
         break
       case 'a':
         prompts.setPrompt({ kind: key.shift ? 'newFolder' : 'newFile', dir: tree.targetDir() })
@@ -396,7 +418,10 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         fileOps.paste()
         break
       case 'escape':
-        if (fileOps.clipboard().paths.length > 0) fileOps.cancelTake()
+        // The preview first: it is the thing on screen, and Esc is what closes
+        // whatever covers the editor slot everywhere else.
+        if (preview.target()) preview.close()
+        else if (fileOps.clipboard().paths.length > 0) fileOps.cancelTake()
         else if (tree.marked().length > 0) tree.clearMarks()
         break
       case 'd':

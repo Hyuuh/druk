@@ -9,6 +9,7 @@ import type { Market } from './market'
 import type { Navigation } from './navigation'
 import type { Overlays } from './Overlays'
 import type { Panes } from './panes'
+import type { Preview } from './preview'
 import type { PromptHandlers, PromptState } from './prompts'
 import type { Settings } from './settings'
 import type { Status } from './status'
@@ -24,6 +25,7 @@ export interface AppContext {
   settings: Settings
   tree: Tree
   panes: Panes
+  preview: Preview
   editor: EditorBridge
   git: Git
   gitOp: GitOp

@@ -39,6 +39,7 @@ scripts/
     comparison.ts    branch-comparison state and its OID-keyed caches
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, which view it shows (files/git/extensions)
+    preview.ts       quick look: whether the tree is previewing, and what row it is on
     editor.ts        one-shot signal channels into EditorPane (goto, undo, edits…)
     market.ts        the market as the editor sees it: updates, offers, installs
     extensionsPanel.ts the sidebar's extensions view: rows, cursor, fold state
@@ -107,13 +108,16 @@ scripts/
     history.ts       undo/redo, coalesced per edit burst
     changes.ts       git changes per track row, for the column by the scrollbar
     problems.ts      LSP problems per track row, its own column beside that one
+    folds.ts         foldable blocks from indentation, and the two coordinate
+                     spaces a collapsed one creates: the file's lines and the
+                     buffer's
     window.ts        visual rows -> logical lines, for the highlight window
     columns.ts       character columns -> drawn cells, since a tab is two of them
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
     EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
     SidebarTabs, Tabs, StatusBar, CommandPalette, FilePicker,
-    SearchPanel, DiffView, ImageView, PdfView, SettingsView, SettingEditor,
+    SearchPanel, DiffView, ImageView, PdfView, PreviewPane, SettingsView, SettingEditor,
     SettingPicker, ExtensionsPanel, LspStatusView, UpdateBanner,
     Overlay, TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome
     modal.ts         modal geometry: width, list rows, text wrapping
@@ -462,6 +466,46 @@ is just a diff against the empty tree.
   tick. `test/perf.test.tsx` guards it as a ratio against a whole-document pass, so a
   slow machine cannot make it pass by accident. Adding a per-window `.map()`,
   `.filter()` or `.sort()` over `ordered` reintroduces it.
+- **A fold is a second text, not a hidden line.** OpenTUI's edit buffer has no
+  notion of a line it does not show, so `EditorPane` collapses a block by giving
+  the textarea the file's text *minus* those lines and keeping the file's own in
+  `FoldView.source`. Everything line-addressed then lives in one of two spaces —
+  the gutter's numbers, git marks, diagnostics, the highlight window, the
+  cursor it reports and the position it asks the language server about are all
+  translated — and `folded()` being null while nothing is collapsed is what
+  keeps that cost off every other file. Two rules hold it together. The buffer's
+  text is never the document: `docText()` and `syncDocument()` are what a save,
+  a parse or an `onChange` may read, and reaching for `editor.plainText`
+  directly is how a folded file gets written to disk with a function missing.
+  And an edit must never rewrite an anchor line: the key handlers, vim's
+  operators and the paste hook open the block first (`releaseFoldForEdit`),
+  because `reconcileFolds` replays the buffer's edit against a file that still
+  holds the hidden lines — it rescues a block whose anchor went away rather than
+  deleting it, but that is the net, not the plan. Anything that replaces the
+  text wholesale (undo, a reload, search-replace, moving lines) unfolds first:
+  a fold is a pair of line numbers into the text being replaced.
+
+  Every rewrite of the buffer goes through `keepingView`, and that is not
+  cosmetic: `setText` drops the buffer to the top, and the caret placed after it
+  scrolls the least amount that reveals itself, so a fold left the block pinned
+  to the bottom edge with the code being read scrolled off. It puts the line
+  that was at the top back at the top and chases the caret only when that
+  leaves it off screen.
+
+  The fold markers are `lineSign`s in the gutter's `after` column, and the
+  overlay over them paints nothing — it is a hit target, because a sign cannot
+  be clicked. That split is not a preference: an overlay reads `el.x` from a
+  ref, and on the frame where the layout has not run yet every coordinate is
+  zero, so a *drawn* overlay puts the whole column two cells left of the pane
+  and leaves it there until something else invalidates the memo. The gutter
+  knows where its own column is on every frame. The column is reserved for a
+  file with anything foldable in it rather than for the lines currently
+  carrying a glyph, since a width that changed as the viewport scrolled past
+  the last block would shift every line of code sideways. Which lines carry one
+  is answered by `foldsFrom`, never by `foldableRegions`: the whole-file pass
+  splits the text, which is 3ms per keystroke on a 20 000-line file against
+  0.24ms for the per-line form. `contentStarts` is the line-offset table both
+  that and the line count read, so the per-keystroke scan is paid once.
 - **Incremental parsing is not available for this.** The client does expose
   `createBuffer`/`updateBuffer`, and it is roughly twice as fast — but it reports
   highlights only for the lines the edit *touched*, not the ones it invalidates. Typing

@@ -57,7 +57,10 @@ test('the help table advertises the custom key, not the one it replaced', async 
   const t = await launch(
     fixture(PROJECT),
     { keybindings: { 'view.sidebar': `Ctrl+${ALT}+B`, 'settings': 'F6' } },
-    { height: 60 },
+    // Tall enough for the View section to be in the first window: the overlay
+    // shows `height - 7` rows from the top, so a row added to `KEYS` above that
+    // section pushes it one closer to falling off.
+    { height: 64 },
   )
   await runCommand(t, 'Keyboard shortcuts')
   const sidebarRow = frame(t)
@@ -65,11 +68,18 @@ test('the help table advertises the custom key, not the one it replaced', async 
     .find(line => line.includes('Show / hide sidebar'))!
   expect(sidebarRow).toContain(`Ctrl+${ALT}+B`)
   // A command the table has no row of its own for still gets one, or its new key
-  // would only exist in the config file. It sits at the end, past the window.
-  await pressTimes(t, 12, input => input.pressArrow('down'))
-  const end = frame(t)
-  expect(end).toContain('Custom keys')
-  expect(end.split('\n').find(line => line.includes('Settings'))).toContain('F6')
+  // would only exist in the config file. It sits at the end, past the window —
+  // scrolled to rather than stepped a fixed number of times, since every row
+  // added to `KEYS` pushes it one further down.
+  const customRow = () =>
+    frame(t)
+      .split('\n')
+      .find(line => line.includes('F6'))
+  for (let step = 0; step < 40 && !customRow(); step++) {
+    await pressTimes(t, 2, input => input.pressArrow('down'))
+  }
+  expect(frame(t)).toContain('Custom keys')
+  expect(customRow()).toContain('Settings')
 })
 
 test('a chord bound twice leaves one command with it and warns about the other', async () => {

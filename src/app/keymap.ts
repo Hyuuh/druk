@@ -74,6 +74,12 @@ export const BINDABLE: Bindable[] = [
   { id: 'nav.forward', label: 'Go forward', defaults: [`Ctrl+${ALT}+Y`] },
   { id: 'tabs.closeOthers', label: 'Close other tabs', defaults: [] },
   { id: 'tabs.closeAll', label: 'Close all tabs', defaults: [] },
+  // Collapse and expand, since the bracket pair every GUI editor uses for this
+  // is Ctrl+Shift+[ / ] — a shifted Ctrl chord no terminal can deliver.
+  { id: 'editor.fold', label: 'Fold block at cursor', defaults: [`Ctrl+${ALT}+C`] },
+  { id: 'editor.unfold', label: 'Unfold block at cursor', defaults: [`Ctrl+${ALT}+E`] },
+  { id: 'editor.foldAll', label: 'Fold everything', defaults: [] },
+  { id: 'editor.unfoldAll', label: 'Unfold everything', defaults: [] },
   { id: 'view.sidebar', label: 'Show / hide sidebar', defaults: ['Ctrl+B'] },
   { id: 'view.git', label: 'Source control panel', defaults: [`Ctrl+${ALT}+G`] },
   { id: 'view.extensions', label: 'Extensions panel', defaults: [`Ctrl+${ALT}+X`] },
@@ -84,6 +90,9 @@ export const BINDABLE: Bindable[] = [
     defaults: [`Ctrl+${ALT}+M`],
   },
   { id: 'view.wrap', label: 'Toggle word wrap', defaults: [] },
+  // No default chord: the key for this is Space in the tree, which the global
+  // keymap cannot hold — a bare key here would be typing the editor never sees.
+  { id: 'view.preview', label: 'Preview file (no tab)', defaults: [] },
   { id: 'view.focus', label: 'Focus tree / editor', defaults: [] },
   { id: 'git.diffFile', label: 'Diff current file', defaults: [] },
   { id: 'git.commit', label: 'Commit…', defaults: [] },

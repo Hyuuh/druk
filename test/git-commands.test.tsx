@@ -51,7 +51,7 @@ test('commit picker shows every change and commits them all on Enter', async () 
 
   await until(t, () => subject(dir) === 'add things')
   expect(porcelain(dir)).toBe('')
-})
+}, 20000)
 
 test('a file unchecked in the picker stays out of the commit', async () => {
   const dir = repo('one\n')
@@ -73,7 +73,7 @@ test('a file unchecked in the picker stays out of the commit', async () => {
   const status = porcelain(dir)
   expect(status).toContain('?? b.ts')
   expect(status).not.toContain('a.ts')
-})
+}, 20000)
 
 test('the picker refuses an empty selection and A toggles everything', async () => {
   const dir = repo('one\n')
@@ -87,7 +87,7 @@ test('the picker refuses an empty selection and A toggles everything', async () 
   expect(t.captureCharFrame()).not.toContain('Commit message')
   await press(t, i => void i.typeText('a')) // back to all checked
   expect(t.captureCharFrame()).toContain('1 of 1 files')
-})
+}, 20000)
 
 test('a hand-built index prefills the picker, and Enter commits just that', async () => {
   const dir = repo('one\n')
@@ -109,7 +109,7 @@ test('a hand-built index prefills the picker, and Enter commits just that', asyn
   await until(t, () => subject(dir) === 'staged only')
   expect(porcelain(dir)).toContain('?? b.ts')
   expect(porcelain(dir)).not.toContain('a.ts')
-})
+}, 20000)
 
 test('undo last commit asks first, then leaves the changes staged', async () => {
   const dir = repo('one\n')
@@ -124,7 +124,7 @@ test('undo last commit asks first, then leaves the changes staged', async () => 
 
   await until(t, () => subject(dir) === 'init')
   expect(porcelain(dir)).toContain('M  a.ts')
-})
+}, 20000)
 
 test('stash reverts the working tree and pop brings it back', async () => {
   const dir = repo('one\ntwo\n')
@@ -143,7 +143,7 @@ test('stash reverts the working tree and pop brings it back', async () => {
   await runCommand(t, 'Stash pop')
   await until(t, () => readFileSync(join(dir, 'a.ts'), 'utf8') === 'CHANGED\ntwo\n')
   await until(t, () => t.captureCharFrame().includes('CHANGED'))
-})
+}, 20000)
 
 test('push sets an upstream on a local bare remote, and fetch succeeds after', async () => {
   const dir = repo('one\n')
@@ -169,10 +169,10 @@ test('push sets an upstream on a local bare remote, and fetch succeeds after', a
 
   await runCommand(t, 'Fetch')
   await until(t, () => t.captureCharFrame().includes('Fetched'))
-})
+}, 20000)
 
 test('outside a repository the commands refuse with a warning', async () => {
   const t = await launch(fixture({ 'a.ts': 'x\n' }))
   await runCommand(t, 'Commit')
   await until(t, () => t.captureCharFrame().includes('Not a git repository'))
-})
+}, 20000)

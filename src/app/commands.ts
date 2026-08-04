@@ -9,6 +9,7 @@
  * To add a command: add an action to `CommandActions`, then an entry below. Set
  * `hint` when a keybinding also triggers it (keybindings live in App).
  */
+import type { FoldOp } from '../editor/folds'
 import { iconThemeLabel, iconThemeNames, iconThemeNeedsFont } from '../icons'
 import { themeLabel, themeNames } from '../themes'
 import type { ThemeName } from '../themes'
@@ -58,6 +59,7 @@ export interface CommandActions {
   toggleSidebar: () => void
   collapseSidebar: () => void
   toggleGitView: () => void
+  togglePreview: () => void
   toggleMarkdown: () => void
   toggleWrap: () => void
   setTheme: (name: ThemeName) => void
@@ -67,6 +69,7 @@ export interface CommandActions {
   previewIcons: (id: string) => void
   restoreIcons: () => void
   lineOp: (op: 'comment' | 'up' | 'down' | 'duplicate') => void
+  foldOp: (op: FoldOp) => void
   triggerCompletion: () => void
   openSettings: () => void
   openProjectSettings: () => void
@@ -281,6 +284,12 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           run: actions.collapseSidebar,
         },
         {
+          id: 'view.preview',
+          label: 'Preview file (no tab)',
+          hint: 'Space in tree',
+          run: actions.togglePreview,
+        },
+        {
           id: 'view.markdown',
           label: 'Markdown: rendered / source',
           hint: `Ctrl+${ALT}+M`,
@@ -380,6 +389,28 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           label: 'Trigger autocomplete',
           hint: 'Ctrl+Space',
           run: actions.triggerCompletion,
+        },
+        {
+          id: 'editor.fold',
+          label: 'Fold block at cursor',
+          hint: `Ctrl+${ALT}+C`,
+          run: () => actions.foldOp('fold'),
+        },
+        {
+          id: 'editor.unfold',
+          label: 'Unfold block at cursor',
+          hint: `Ctrl+${ALT}+E`,
+          run: () => actions.foldOp('unfold'),
+        },
+        {
+          id: 'editor.foldAll',
+          label: 'Fold everything',
+          run: () => actions.foldOp('foldAll'),
+        },
+        {
+          id: 'editor.unfoldAll',
+          label: 'Unfold everything',
+          run: () => actions.foldOp('unfoldAll'),
         },
       ],
     },

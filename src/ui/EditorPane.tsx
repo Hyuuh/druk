@@ -1,5 +1,5 @@
 import { TextAttributes } from '@opentui/core'
-import type { KeyEvent, MouseEvent, TextareaRenderable } from '@opentui/core'
+import type { KeyEvent, MouseEvent, PasteEvent, TextareaRenderable } from '@opentui/core'
 import { useRenderer, useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, For, Index, on, onCleanup, Show } from 'solid-js'
 
@@ -8,6 +8,14 @@ import type { CursorStyle } from '../core/config'
 import type { LineChange } from '../core/git'
 import { changeRows } from '../editor/changes'
 import { inCells } from '../editor/columns'
+import {
+  foldableRegions,
+  foldsFrom,
+  foldView,
+  innermostRegion,
+  reconcileFolds,
+} from '../editor/folds'
+import type { FoldOp, FoldRegion, FoldView } from '../editor/folds'
 import { History } from '../editor/history'
 import { duplicateLines, moveLines, toggleComment } from '../editor/lines'
 import { problemRows } from '../editor/problems'
@@ -62,6 +70,8 @@ export interface EditorPaneProps {
   edit: { content: string; key: number } | null
   /** A line edit asked for from the palette; bumped `key` re-applies. */
   lineOp: { op: 'comment' | 'up' | 'down' | 'duplicate'; key: number } | null
+  /** A fold asked for from the palette or a chord; bumped `key` re-applies. */
+  foldOp: { op: FoldOp; key: number } | null
   vim: boolean
   /** Caret shape, for as long as vim is off — see the `cursorStyle` config key. */
   cursorStyle: CursorStyle
@@ -241,6 +251,31 @@ export function ignoreScrollOutsideBounds(el: TextareaRenderable) {
   }
 }
 
+/** Keys that reach the buffer as an edit rather than as a move. */
+const isEditingKey = (key: KeyEvent): boolean => {
+  if (key.ctrl || key.meta) return key.name === 'v'
+  const typed = key.sequence
+  return (
+    key.name === 'backspace' ||
+    key.name === 'delete' ||
+    key.name === 'return' ||
+    key.name === 'enter' ||
+    key.name === 'tab' ||
+    (typed?.length === 1 && typed >= ' ' && typed !== '\u007F')
+  )
+}
+
+/** What the gutter accepts per line — `after` is the column the fold marker rides in. */
+interface LineSign {
+  before?: string
+  beforeColor?: string
+  after?: string
+  afterColor?: string
+}
+
+/** Vim's normal-mode commands that write, as opposed to the ones that move. */
+const VIM_EDITS = new Set(['x', 'X', 'd', 'D', 'c', 'C', 's', 'S', 'p', 'P', 'o', 'O', 'J', 'r'])
+
 export function EditorPane(props: EditorPaneProps) {
   const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
@@ -248,7 +283,9 @@ export function EditorPane(props: EditorPaneProps) {
    * reconciler builds elements bare, so the width has to be poked in by hand. */
   interface GutterHost {
     gutter?: { _minWidth?: number; requestRender?: () => void }
-    setLineSigns?: (signs: Map<number, { before?: string; beforeColor?: string }>) => void
+    setLineSigns?: (signs: Map<number, LineSign>) => void
+    /** Buffer line → the number drawn on it, which folding makes two things. */
+    setLineNumbers?: (numbers: Map<number, number>) => void
   }
   let gutter: GutterHost | undefined
   let editor: TextareaRenderable | undefined
@@ -279,6 +316,71 @@ export function EditorPane(props: EditorPaneProps) {
 
   const [editorEl, setEditorEl] = createSignal<TextareaRenderable | null>(null)
   const [cursorLine, setCursorLine] = createSignal(0)
+
+  // ── Folding ───────────────────────────────────────────────────────────────
+  /**
+   * Null unless something is folded, and that is load-bearing: with no view the
+   * buffer's text *is* the file and every line number means one thing, which is
+   * what the rest of this component was written against. Only the folded case
+   * pays for the translation.
+   */
+  const [folded, setFolded] = createSignal<FoldView | null>(null)
+  /** Collapsed regions per path — the pane outlives a tab switch, so folds do. */
+  const foldsFor = new Map<string, FoldRegion[]>()
+  /** True while a fold is rewriting the buffer, so its own change event is not an edit. */
+  let refolding = false
+
+  /** The file's text: the buffer's, with whatever is folded put back into it. */
+  const docText = (): string => folded()?.source ?? editor?.plainText ?? ''
+
+  /** The file's line a buffer line stands for. */
+  const realLine = (row: number): number => folded()?.real[row] ?? row
+
+  /**
+   * The buffer line a file line is drawn on, or the anchor hiding it — every
+   * caller wants somewhere to put a caret, not the -1 that says "not on screen".
+   */
+  const shownLine = (line: number): number => {
+    const view = folded()
+    if (!view) return line
+    for (let at = Math.min(line, view.display.length - 1); at >= 0; at--) {
+      const row = view.display[at]!
+      if (row >= 0) return row
+    }
+    return 0
+  }
+
+  /** The last file line the buffer line `row` speaks for, folded block included. */
+  const realSpanEnd = (row: number): number => {
+    const view = folded()
+    if (!view) return row
+    const next = view.real[row + 1]
+    return next === undefined ? view.starts.length - 1 : next - 1
+  }
+
+  /** The caret's offset into the file, which is where undo has to land. */
+  const documentOffset = (): number => {
+    if (!editor) return 0
+    const view = folded()
+    if (!view) return editor.cursorOffset
+    const { row, col } = editor.logicalCursor
+    return (view.starts[realLine(row)] ?? 0) + col
+  }
+
+  /** Marks and diagnostics come keyed by file line; the buffer is drawn by its own. */
+  const toDisplay = <T,>(marks: Map<number, T>): Map<number, T> => {
+    const view = folded()
+    if (!view) return marks
+    const mapped = new Map<number, T>()
+    for (const [line, mark] of marks) {
+      const row = view.display[line]
+      if (row !== undefined && row >= 0) mapped.set(row, mark)
+    }
+    return mapped
+  }
+
+  const displayGitLines = createMemo(() => toDisplay(props.gitLines))
+  const displayProblems = createMemo(() => toDisplay(props.problems))
   /**
    * Scroll position of the textarea, mirrored so the scrollbar can react to it.
    * Three signals rather than one object: a single `{top, height, total}` gets a
@@ -343,15 +445,21 @@ export function EditorPane(props: EditorPaneProps) {
     return low
   }
 
-  // Counted without split(): this re-runs on every keystroke, and allocating an
-  // array of every line just to count them is the expensive way to find '\n'.
-  const lineCount = createMemo(() => {
-    let lines = 1
+  /**
+   * Where each line of the file begins. Offsets rather than a split(): this
+   * re-runs on every keystroke, and allocating a string per line to count them
+   * — or to read the indent of the forty on screen — is the expensive way to
+   * find '\n'. The line count and the fold markers are both read off it.
+   */
+  const contentStarts = createMemo(() => {
+    const starts = [0]
     for (let at = props.content.indexOf('\n'); at >= 0; at = props.content.indexOf('\n', at + 1)) {
-      lines++
+      starts.push(at + 1)
     }
-    return lines
+    return starts
   })
+
+  const lineCount = createMemo(() => contentStarts().length)
 
   /**
    * The track's size, apart from where the file is scrolled to — the two tracks
@@ -398,40 +506,123 @@ export function EditorPane(props: EditorPaneProps) {
   const [wrapKey, setWrapKey] = createSignal(0)
 
   /**
+   * Where a note after buffer line `row` would go, or null when the line is off
+   * screen or the pane has no room left for one. Positions come from
+   * `lineInfo`: the note sits on the line's *last* visual row (wrapping), after
+   * the columns that row actually uses.
+   */
+  const noteSlot = (row: number): { top: number; left: number; room: number } | null => {
+    const el = editorEl()
+    if (!el || !host) return null
+    const top = viewTop()
+    const height = viewHeight() || el.height
+    const { sources, widths } = lineLayout()
+    const first = rowAtLine(row)
+    if (sources[first] !== row) return null
+    let lastRow = first
+    while (sources[lastRow + 1] === row) lastRow++
+    if (lastRow < top || lastRow >= top + height) return null
+
+    const left = el.x - host.x + 1 + (widths[lastRow] ?? 0) + 2
+    const room = host.width - left - 2
+    if (room < 8) return null
+    return { top: el.y - host.y + (lastRow - top), left, room }
+  }
+
+  /**
    * The worst problem's message, drawn after the end of its line — the gutter
    * dot says where, this says what, without a trip to the problems list.
-   * Positions come from `lineInfo`: the note sits on the line's *last* visual
-   * row (wrapping), after the columns that row actually uses.
    */
   const inlineNotes = createMemo(() => {
     wrapKey()
     void props.content
-    const el = editorEl()
-    if (!props.problemText || !el || !host || props.problems.size === 0) return []
-    const top = viewTop()
-    const height = viewHeight() || el.height
-    const { sources, widths } = lineLayout()
+    const problems = displayProblems()
+    if (!props.problemText || problems.size === 0) return []
     const notes: { top: number; left: number; text: string; color: string }[] = []
-    for (const [line, problem] of props.problems) {
-      // First visual row of the line, then walk to its last wrap row.
-      const first = rowAtLine(line)
-      if (sources[first] !== line) continue
-      let lastRow = first
-      while (sources[lastRow + 1] === line) lastRow++
-      if (lastRow < top || lastRow >= top + height) continue
-
-      const left = el.x - host.x + 1 + (widths[lastRow] ?? 0) + 2
-      const room = host.width - left - 2
-      if (room < 8) continue
-      const text = cut(problem.message.replaceAll(/\s+/g, ' '), room)
+    for (const [row, problem] of problems) {
+      const slot = noteSlot(row)
+      if (!slot) continue
       notes.push({
-        top: el.y - host.y + (lastRow - top),
-        left,
-        text,
+        top: slot.top,
+        left: slot.left,
+        text: cut(problem.message.replaceAll(/\s+/g, ' '), slot.room),
         color: PROBLEM_NOTE_COLORS[problem.severity](),
       })
     }
     return notes
+  })
+
+  /**
+   * What a collapsed block says for itself. Without it a fold is only a jump in
+   * the gutter's numbers, which reads as a rendering fault rather than as
+   * something the editor was told to do.
+   */
+  const foldNotes = createMemo(() => {
+    wrapKey()
+    void props.content
+    const view = folded()
+    if (!view) return []
+    const notes: { top: number; left: number; text: string }[] = []
+    for (const [line, count] of view.hidden) {
+      const row = view.display[line]
+      if (row === undefined || row < 0) continue
+      const slot = noteSlot(row)
+      if (!slot) continue
+      notes.push({
+        top: slot.top,
+        left: slot.left,
+        text: cut(`⋯ ${count} line${count === 1 ? '' : 's'}`, slot.room),
+      })
+    }
+    return notes
+  })
+
+  /**
+   * Whether the file has anything to fold at all — what decides the marker
+   * column exists. Answered by the same local test the markers use, from the
+   * top: a file with code in it says yes within a few lines, and only a wholly
+   * flat one is walked to the end.
+   */
+  const anyFoldable = createMemo(() => {
+    const starts = contentStarts()
+    for (let line = 0; line < starts.length; line++) {
+      if (foldsFrom(props.content, starts, line, props.tabSize)) return true
+    }
+    return false
+  })
+
+  /**
+   * Where each chevron the gutter drew can be clicked. Nothing is painted here
+   * — the glyph is a `lineSign` — so this is only a hit target, laid over the
+   * column the gutter reserves for it.
+   *
+   * Guarded on the editor having a size: this is read from a ref rather than
+   * from a signal, and before the first layout every coordinate is zero, which
+   * would put the whole column two cells left of the pane.
+   */
+  const foldMarkers = createMemo(() => {
+    wrapKey()
+    const el = editorEl()
+    if (!el || !host || el.width <= 0 || host.width <= 0) return []
+    if (!anyFoldable()) return []
+    const starts = contentStarts()
+    const top = viewTop()
+    const height = viewHeight() || el.height
+    const { sources } = lineLayout()
+    const rows = sources.length > 0 ? sources.length : viewTotal()
+    const markers: { top: number; left: number; line: number }[] = []
+    let previous = top > 0 ? (sources[top - 1] ?? top - 1) : -1
+    for (let row = top; row < top + height && row < rows; row++) {
+      const buffer = sources.length > 0 ? (sources[row] ?? row) : row
+      // Only the first visual row of a line: a wrapped line is one block, and a
+      // target on each of its rows would answer for a row with no glyph on it.
+      if (buffer === previous) continue
+      previous = buffer
+      const line = realLine(buffer)
+      if (!foldsFrom(props.content, starts, line, props.tabSize)) continue
+      markers.push({ top: el.y - host.y + (row - top), left: el.x - host.x - 2, line })
+    }
+    return markers
   })
 
   // ── Completion ────────────────────────────────────────────────────────────
@@ -490,7 +681,9 @@ export function EditorPane(props: EditorPaneProps) {
     const gen = ++completionGen
     const forPath = props.path
     const { row, col } = editor.logicalCursor
-    const reply = await props.complete(row, col)
+    // The server holds the file, not the buffer: it has never been told that
+    // anything is folded, so the ask is in the file's own line numbers.
+    const reply = await props.complete(realLine(row), col)
     if (!editor || gen !== completionGen || props.path !== forPath || props.blocked) return
     const now = editor.logicalCursor
     // The reply is aimed at the request position; a cursor that left the line,
@@ -603,22 +796,58 @@ export function EditorPane(props: EditorPaneProps) {
       modified: ui.gitModified,
       deleted: ui.gitDeleted,
     }
-    const signs = new Map<number, { before?: string; beforeColor?: string }>()
-    for (const [line, change] of props.gitLines) {
+    const signs = new Map<number, LineSign>()
+    for (const [line, change] of displayGitLines()) {
       signs.set(line, { before: SIGN_GLYPH[change], beforeColor: signColor[change] })
     }
     // After the git marks, so a line holding both shows the problem: the mark
     // says "you touched this", the problem says "and it is broken".
-    for (const [line, problem] of props.problems) {
+    for (const [line, problem] of displayProblems()) {
       signs.set(line, { before: '●', beforeColor: PROBLEM_COLORS[problem.severity]() })
     }
     // The sign column only widens the gutter while a sign exists, so the first
     // mark or diagnostic used to shift the whole file one column right — and
     // back again when it cleared. A blank sign keeps the column reserved.
     if (signs.size === 0) signs.set(0, { before: ' ' })
+    // The fold markers are the gutter's own column rather than an overlay of
+    // ours: it knows where the column is on a frame whose layout has not run
+    // yet, and it repaints the cursor's row underneath them. Reserved for the
+    // whole file, not just for the lines carrying a glyph — the column's width
+    // is what the code sits to the right of, and one that came and went as the
+    // viewport scrolled past the last block would shift every line sideways.
+    if (anyFoldable()) {
+      signs.set(0, { ...signs.get(0), after: signs.get(0)?.after ?? ' ' })
+      const view = folded()
+      const closed = new Set(view?.folds.map(fold => fold.start))
+      const starts = contentStarts()
+      for (let line = 0; line < starts.length; line++) {
+        if (!foldsFrom(props.content, starts, line, props.tabSize)) continue
+        const row = view ? (view.display[line] ?? -1) : line
+        if (row < 0) continue
+        const shut = closed.has(line)
+        signs.set(row, {
+          ...signs.get(row),
+          after: shut ? '▸' : '▾',
+          afterColor: shut ? ui.text : ui.gutter,
+        })
+      }
+    }
     gutter?.setLineSigns?.(signs)
   }
   createEffect(applyLineSigns)
+
+  /**
+   * The gutter numbers a buffer line by its own index, which stops being the
+   * file's line the moment anything is folded. Empty map while nothing is —
+   * the override table costs an entry per visible line, and unfolded there is
+   * nothing for it to say.
+   */
+  createEffect(() => {
+    const view = folded()
+    const numbers = new Map<number, number>()
+    if (view) view.real.forEach((line, row) => numbers.set(row, line + 1))
+    gutter?.setLineNumbers?.(numbers)
+  })
 
   const syncViewport = () => {
     if (!editor) return
@@ -643,7 +872,10 @@ export function EditorPane(props: EditorPaneProps) {
     cursor.line = at.logicalRow
     cursor.col = at.logicalCol
     setCursorLine(at.visualRow)
-    props.onCursor({ ...cursor })
+    // Reported in the file's own lines: the status bar, the language server and
+    // the visit history all mean the line someone would go to, not the row a
+    // fold happens to have left it on.
+    props.onCursor({ line: realLine(cursor.line), col: cursor.col })
   }
 
   /**
@@ -703,12 +935,12 @@ export function EditorPane(props: EditorPaneProps) {
    * first line only — the gutter dot marks the rest, and measuring every
    * continuation line costs more than it says.
    */
-  const markProblems = (line: number) => {
+  const markProblems = (row: number, line: number) => {
     const problems = problemsByLine().get(line)
     if (!editor || !problems) return
     // Only now: without a parse this walks the buffer to find the line, and most
     // lines of a window carry no diagnostic at all.
-    const text = parsedLine(line) ?? lineTextAt(line)
+    const text = parsedLine(line) ?? lineTextAt(row)
     for (const problem of problems) {
       const group = problem.unnecessary ? 'unnecessary' : problem.severity
       const styleId = styleIdForGroup(`druk.problem.${group}`)
@@ -716,7 +948,7 @@ export function EditorPane(props: EditorPaneProps) {
       const sameLine = problem.endLine === problem.line
       // A zero-width or line-crossing span still marks something visible.
       const end = sameLine ? Math.max(problem.endCol, problem.col + 1) : problem.col + 1
-      editor.addHighlight(line, inCells({ start: problem.col, end, styleId, priority: 100 }, text))
+      editor.addHighlight(row, inCells({ start: problem.col, end, styleId, priority: 100 }, text))
     }
   }
 
@@ -736,21 +968,24 @@ export function EditorPane(props: EditorPaneProps) {
         appliedLines.delete(line)
       }
     }
-    ensureSegments(from, to)
-    for (let line = from; line <= to; line++) {
-      if (appliedLines.has(line)) continue
-      appliedLines.add(line)
+    // The window is in buffer rows and everything it paints is keyed by the
+    // file's lines, which folding makes two different numbers.
+    for (let row = from; row <= to; row++) {
+      if (appliedLines.has(row)) continue
+      appliedLines.add(row)
+      const line = realLine(row)
+      ensureSegments(line, line)
       const segments = byLine.get(line)
       if (segments) {
         const text = parsedLine(line) ?? ''
-        for (const segment of segments) editor.addHighlight(line, inCells(segment, text))
+        for (const segment of segments) editor.addHighlight(row, inCells(segment, text))
       }
-      markProblems(line)
+      markProblems(row, line)
     }
   }
 
   /**
-   * Scroll so line `wanted` is at the top (the buffer scrolls in visual rows).
+   * Scroll so visual row `row` is the top one.
    *
    * `scrollY` is read-only, and moving the caret would be wrong — dragging a
    * scrollbar must not retarget the cursor. So the move is delivered as the one
@@ -758,9 +993,9 @@ export function EditorPane(props: EditorPaneProps) {
    * The coordinates have to land inside the textarea or `ignoreScrollOutsideBounds`
    * drops it.
    */
-  const scrollTo = (wanted: number) => {
+  const scrollToRow = (row: number) => {
     if (!editor) return
-    const delta = rowAtLine(Math.round(wanted)) - editor.scrollY
+    const delta = Math.max(0, Math.round(row)) - editor.scrollY
     if (delta === 0) return
     const host = editor as unknown as { onMouseEvent: (event: unknown) => void }
     host.onMouseEvent({
@@ -771,6 +1006,31 @@ export function EditorPane(props: EditorPaneProps) {
     })
     syncViewport()
     applyWindow()
+  }
+
+  /** The same, for callers that count in lines rather than in wrapped rows. */
+  const scrollTo = (wanted: number) => scrollToRow(rowAtLine(Math.round(wanted)))
+
+  /**
+   * Rewrite the buffer's text without the view jumping.
+   *
+   * `setText` drops the buffer back to the top, and placing the caret afterwards
+   * scrolls the least amount that reveals it — which leaves the caret pinned to
+   * the bottom edge and the code the user was reading gone from the screen. So
+   * the line that was at the top is put back at the top, and the caret is only
+   * chased if that leaves it off screen.
+   */
+  const keepingView = (rewrite: () => void) => {
+    const wasTop = editor ? realLine(lineAtRow(editor.scrollY)) : 0
+    rewrite()
+    forgetLayout()
+    if (!editor) return
+    scrollToRow(rowAtLine(shownLine(wasTop)))
+    const height = editor.height
+    if (height <= 0) return
+    const caret = rowAtLine(editor.logicalCursor.row)
+    if (caret < editor.scrollY) scrollToRow(caret)
+    else if (caret >= editor.scrollY + height) scrollToRow(caret - height + 1)
   }
 
   const dragTo = (screenY: number) => {
@@ -824,17 +1084,162 @@ export function EditorPane(props: EditorPaneProps) {
     scheduleCursorSync()
   }
 
+  /** Put text into the buffer without it reading as an edit of the file. */
+  const applyFoldText = (text: string) => {
+    if (!editor || editor.plainText === text) return
+    refolding = true
+    try {
+      editor.setText(text)
+    } finally {
+      refolding = false
+    }
+  }
+
+  const rememberFolds = (regions: FoldRegion[]) => {
+    if (props.path == null) return
+    if (regions.length > 0) foldsFor.set(props.path, regions)
+    else foldsFor.delete(props.path)
+  }
+
+  /**
+   * Collapse `regions` — an empty list being "show the whole file" — and leave
+   * the caret on the file line it was on, or on the anchor now hiding it.
+   */
+  const setFolds = (regions: FoldRegion[], keepAt?: number) => {
+    if (!editor) return
+    const source = docText()
+    const line = keepAt ?? realLine(editor.logicalCursor.row)
+    const col = editor.logicalCursor.col
+    const view = regions.length > 0 ? foldView(source, regions) : null
+    keepingView(() => {
+      setFolded(view)
+      rememberFolds(view?.folds ?? [])
+      applyFoldText(view ? view.text : source)
+      editor!.setCursor(shownLine(line), col)
+    })
+    applyWindow(true)
+    scheduleCursorSync()
+  }
+
+  /**
+   * The file's text once the buffer has taken an edit, with the fold model
+   * carried along. Idempotent while the two already agree, which is what lets
+   * every path that reports a change call it rather than remember to.
+   */
+  const syncDocument = (): string => {
+    const view = folded()
+    if (!editor) return ''
+    if (!view) return editor.plainText
+    if (editor.plainText === view.text) return view.source
+    const next = reconcileFolds(view, editor.plainText)
+    const rebuilt = next.folds.length > 0 ? foldView(next.source, next.folds) : null
+    setFolded(rebuilt)
+    rememberFolds(rebuilt?.folds ?? [])
+    // An edit that carried an anchor away releases its block, and the lines it
+    // was hiding have to come back into the buffer, not only into the file.
+    const wanted = rebuilt ? rebuilt.text : next.source
+    if (wanted !== editor.plainText) {
+      const at = editor.cursorOffset
+      keepingView(() => {
+        applyFoldText(wanted)
+        editor!.cursorOffset = Math.min(at, wanted.length)
+      })
+      applyWindow(true)
+    }
+    return next.source
+  }
+
+  /** Show the file whole again — what anything that replaces the text wholesale does. */
+  const clearFolds = () => {
+    if (folded()) setFolded(null)
+    if (props.path != null) foldsFor.delete(props.path)
+  }
+
+  const runFoldOp = (op: FoldOp) => {
+    if (!editor || props.path == null) return
+    const current = folded()?.folds ?? []
+    const line = realLine(editor.logicalCursor.row)
+    if (op === 'unfoldAll') {
+      if (current.length > 0) setFolds([], line)
+      return
+    }
+    if (op === 'foldAll') {
+      const all = foldableRegions(docText(), props.tabSize)
+      if (all.length > 0) setFolds(all, line)
+      return
+    }
+    if (op === 'unfold') {
+      const kept = current.filter(fold => fold.start !== line)
+      if (kept.length !== current.length) setFolds(kept, line)
+      return
+    }
+    const region = innermostRegion(foldableRegions(docText(), props.tabSize), line)
+    if (!region || current.some(fold => fold.start === region.start)) return
+    setFolds([...current, region], region.start)
+  }
+
+  /**
+   * What the gutter's chevron does: the block anchored *at* this line, rather
+   * than the innermost one covering it — a click names its own row.
+   */
+  const toggleFoldAt = (line: number) => {
+    if (!editor) return
+    const current = folded()?.folds ?? []
+    if (current.some(fold => fold.start === line)) {
+      setFolds(
+        current.filter(fold => fold.start !== line),
+        line,
+      )
+      return
+    }
+    const region = foldableRegions(docText(), props.tabSize).find(fold => fold.start === line)
+    if (region) setFolds([...current, region], line)
+  }
+
+  /**
+   * Open the block the caret is about to edit. The buffer is missing the lines
+   * a fold hides, so an edit that rewrites an anchor line would be replayed
+   * against a file that still holds them — opening first is what keeps the two
+   * texts describing the same edit. A *selection* over an anchor is left alone:
+   * rebuilding the buffer would drop the selection and with it the keystroke,
+   * and `reconcileFolds` rescues the block instead.
+   */
+  const releaseFoldForEdit = (key?: KeyEvent) => {
+    const view = folded()
+    if (!view || !editor || editor.hasSelection()) return
+    const { row, col } = editor.logicalCursor
+    const touched = new Set([realLine(row)])
+    // The two keys that reach past the line they are pressed on: each joins a
+    // neighbour up, and that neighbour may be the anchor of a block.
+    if (key?.name === 'backspace' && col === 0 && row > 0) touched.add(realLine(row - 1))
+    if (key?.name === 'delete' && col === lineTextAt(row).length) touched.add(realLine(row + 1))
+    const kept = view.folds.filter(fold => !touched.has(fold.start))
+    if (kept.length !== view.folds.length) setFolds(kept, realLine(row))
+  }
+
+  /**
+   * A bracketed paste never passes through a key handler, so the one guard the
+   * editing keys get has to be hung on the textarea's own entry point.
+   */
+  const unfoldBeforePaste = (el: TextareaRenderable) => {
+    const paste = el.handlePaste.bind(el)
+    el.handlePaste = (event: PasteEvent) => {
+      releaseFoldForEdit()
+      paste(event)
+    }
+  }
+
   const highlight = async (snapshot: string, forPath: string | null) => {
     const result = await computeHighlights(
       snapshot,
       props.filetype,
       props.tabSize,
-      () => !editor || forPath !== props.path || editor.plainText !== snapshot,
+      () => !editor || forPath !== props.path || docText() !== snapshot,
     )
     if (result === STALE) return
     // Stale guard: only apply if this is still the same file AND the buffer text
     // is byte-for-byte what we highlighted — otherwise offsets would drift.
-    if (!editor || forPath !== props.path || editor.plainText !== snapshot) return
+    if (!editor || forPath !== props.path || docText() !== snapshot) return
     parsed = result
     byLine = new Map()
     segmented.clear()
@@ -865,7 +1270,7 @@ export function EditorPane(props: EditorPaneProps) {
     }
     if (!queuedParse) return
     queuedParse = false
-    if (editor) void runHighlight(editor.plainText)
+    if (editor) void runHighlight(docText())
   }
 
   /** The text changed: drop the stale segments before re-highlighting the new text. */
@@ -900,11 +1305,19 @@ export function EditorPane(props: EditorPaneProps) {
     return { from: rowOfOffset(text, start), to: rowOfOffset(text, Math.max(start, end - 1)) }
   }
 
-  /** Replace the text as one undoable step and land the caret on `row`, `col`. */
+  /**
+   * Replace the file's text as one undoable step and land the caret on `row`,
+   * `col` — both in the file's own lines, since every caller works out where the
+   * edit went from the text it just built rather than from the buffer.
+   */
   const applyLineEdit = (content: string, row: number, col: number) => {
     if (!editor) return
-    editor.setText(content)
-    editor.setCursor(row, col)
+    const view = folded()
+    const next = view ? foldView(content, view.folds) : null
+    setFolded(next)
+    rememberFolds(next?.folds ?? [])
+    applyFoldText(next ? next.text : content)
+    editor.setCursor(next ? shownLine(row) : row, col)
     props.onChange(content)
     rehighlight(content)
     scheduleCursorSync()
@@ -937,48 +1350,76 @@ export function EditorPane(props: EditorPaneProps) {
     // A cursor that left the line during the wait means the user moved on;
     // dropping the completion beats inserting it where they are not.
     if (row !== acceptedRow) return
+    // The file's text and line: an auto-import edit is aimed at the top of the
+    // file the server holds, which a fold does not shorten.
     const applied = applyCompletion(
-      editor.plainText,
-      { line: row, character: col },
+      docText(),
+      { line: realLine(row), character: col },
       anchorCol,
       item,
     )
     applyLineEdit(applied.content, applied.cursor.line, applied.cursor.character)
   }
 
+  /**
+   * The file lines a buffer-line range stands for. A folded anchor speaks for
+   * the whole block under it, so commenting or moving one takes it all.
+   */
+  const realRange = (span: { from: number; to: number }) => ({
+    from: realLine(span.from),
+    to: realSpanEnd(span.to),
+  })
+
   const toggleCommentLines = () => {
     if (!editor) return
     const prefix = commentPrefix(props.filetype)
     if (!prefix) return
-    const text = editor.plainText
-    const { from, to } = editRange(text)
+    const { from, to } = realRange(editRange(editor.plainText))
+    const text = docText()
     const next = toggleComment(text, from, to, prefix)
-    const { row, col } = editor.logicalCursor
-    if (next !== text) applyLineEdit(next, row, col)
+    if (next !== text)
+      applyLineEdit(next, realLine(editor.logicalCursor.row), editor.logicalCursor.col)
+  }
+
+  /**
+   * Line counts move under these two, and a fold is a pair of line numbers into
+   * the text being rewritten — so the file comes back open rather than with its
+   * blocks hiding whatever ended up at those numbers.
+   */
+  const withoutFolds = (): number => {
+    const row = realLine(editor!.logicalCursor.row)
+    if (folded()) setFolds([], row)
+    return row
   }
 
   const moveSelectedLines = (delta: -1 | 1) => {
     if (!editor) return
-    const text = editor.plainText
-    const { from, to } = editRange(text)
-    const { row, col } = editor.logicalCursor
-    const next = moveLines(text, from, to, delta)
+    const { from, to } = realRange(editRange(editor.plainText))
+    const col = editor.logicalCursor.col
+    const row = withoutFolds()
+    const next = moveLines(docText(), from, to, delta)
     if (next !== null) applyLineEdit(next, row + delta, col)
   }
 
   /** Duplicate below; the caret follows onto the copy only when asked downward. */
   const duplicateSelectedLines = (follow: boolean) => {
     if (!editor) return
-    const text = editor.plainText
-    const { from, to } = editRange(text)
-    const { row, col } = editor.logicalCursor
-    applyLineEdit(duplicateLines(text, from, to), follow ? row + (to - from + 1) : row, col)
+    const { from, to } = realRange(editRange(editor.plainText))
+    const col = editor.logicalCursor.col
+    const row = withoutFolds()
+    applyLineEdit(duplicateLines(docText(), from, to), follow ? row + (to - from + 1) : row, col)
   }
 
   const stepHistory = (kind: 'undo' | 'redo') => {
     if (!editor) return
     const at = kind === 'undo' ? history.undo() : history.redo()
     if (!at) return
+    // The step replaces the file wholesale, so its folds are line numbers into
+    // a text that no longer exists.
+    if (folded()) {
+      setFolded(null)
+      rememberFolds([])
+    }
     // setText resets the buffer's own history, which is fine — `history` is the
     // one being stepped, and its entries are whole edit bursts.
     editor.setText(at.content)
@@ -1020,6 +1461,17 @@ export function EditorPane(props: EditorPaneProps) {
 
   createEffect(
     on(
+      () => props.foldOp?.key,
+      () => {
+        const request = props.foldOp
+        if (request) runFoldOp(request.op)
+      },
+      { defer: true },
+    ),
+  )
+
+  createEffect(
+    on(
       () => props.completionRequest?.key,
       () => {
         if (!props.completionRequest || !editor || props.blocked) return
@@ -1039,7 +1491,7 @@ export function EditorPane(props: EditorPaneProps) {
   const scheduleHighlight = () => {
     if (highlightTimer) clearTimeout(highlightTimer)
     highlightTimer = setTimeout(() => {
-      if (editor) void runHighlight(editor.plainText)
+      if (editor) void runHighlight(docText())
     }, DEBOUNCE_MS)
   }
 
@@ -1051,14 +1503,14 @@ export function EditorPane(props: EditorPaneProps) {
   const changeTrack = createMemo(() => {
     const height = trackHeight()
     if (height <= 0) return []
-    return changeRows(props.gitLines, trackTotal(), height)
+    return changeRows(displayGitLines(), trackTotal(), height)
   })
 
   /** The same idea for diagnostics: the whole file's errors, in their own column. */
   const problemTrack = createMemo(() => {
     const height = trackHeight()
     if (height <= 0) return []
-    return problemRows(props.problems, trackTotal(), height)
+    return problemRows(displayProblems(), trackTotal(), height)
   })
 
   /** Click the track to jump there, the way dragging the thumb does. */
@@ -1092,8 +1544,14 @@ export function EditorPane(props: EditorPaneProps) {
     // key already claimed elsewhere (the tree's Enter) must be ignored here too.
     if (key.defaultPrevented) return
     if (props.blocked || !editor || !props.focused) return
+    // Before anything reads the caret: a key that edits the anchor of a folded
+    // block has to find the block open, or the edit lands in a buffer the file
+    // does not match. Not for vim's command keys — the second handler owns those.
+    if (folded() && (!props.vim || vimState.mode === 'insert') && isEditingKey(key)) {
+      releaseFoldForEdit(key)
+    }
     scheduleCursorSync()
-    cursorBeforeEdit = editor.cursorOffset
+    cursorBeforeEdit = documentOffset()
 
     // Remember a printable keystroke for the sync tick that follows: whether it
     // should open the completion menu is decided there, once the buffer settled.
@@ -1171,7 +1629,7 @@ export function EditorPane(props: EditorPaneProps) {
         key.preventDefault()
         editor.deleteSelection()
         if (printable) editor.insertText(typed!)
-        props.onChange(editor.plainText)
+        props.onChange(syncDocument())
         scheduleHighlight()
         applyWindow(true)
         return
@@ -1264,6 +1722,11 @@ export function EditorPane(props: EditorPaneProps) {
     if (key.defaultPrevented) return
     if (props.blocked || !props.vim || !editor || !props.focused) return
     const before = vimState.mode
+    // Same reason as the typing handler: an operator about to rewrite a folded
+    // anchor needs the block open first.
+    if (folded() && vimState.mode !== 'insert' && VIM_EDITS.has(key.sequence ?? '')) {
+      releaseFoldForEdit()
+    }
     const stepped = { undo: () => stepHistory('undo'), redo: () => stepHistory('redo') }
     if (handleVimKey(editor, key, vimState, stepped)) key.preventDefault()
     if (vimState.mode !== before) {
@@ -1280,7 +1743,14 @@ export function EditorPane(props: EditorPaneProps) {
       () => {
         if (!editor) return
         scheduleCursorSync()
-        if (editor.plainText !== props.content) editor.setText(props.content)
+        // The pane outlives the tab, so a file comes back folded the way it was
+        // left. Rebuilt against the content as it reads now, since the tab may
+        // have been away while the file was written to.
+        const regions = props.path == null ? [] : (foldsFor.get(props.path) ?? [])
+        const view = regions.length > 0 ? foldView(props.content, regions) : null
+        setFolded(view)
+        rememberFolds(view?.folds ?? [])
+        applyFoldText(view ? view.text : props.content)
         editor.setCursor(0, 0)
         history.reset({ content: props.content, cursor: 0 })
         editor.syntaxStyle = getSyntaxStyle()
@@ -1363,7 +1833,10 @@ export function EditorPane(props: EditorPaneProps) {
     on(
       () => props.reloadKey,
       () => {
-        if (editor && props.content !== editor.plainText) {
+        if (editor && props.content !== docText()) {
+          // The lines a fold was standing on are whatever the writer put there;
+          // the file comes back open rather than hiding something else.
+          clearFolds()
           editor.setText(props.content)
           history.reset({ content: props.content, cursor: editor.cursorOffset })
           rehighlight(props.content)
@@ -1380,8 +1853,11 @@ export function EditorPane(props: EditorPaneProps) {
       () => props.edit?.key,
       () => {
         const edit = props.edit
-        if (!edit || !editor || edit.content === editor.plainText) return
+        if (!edit || !editor || edit.content === docText()) return
         const at = editor.cursorOffset
+        // A replace rewrites lines this pane never showed, so the fold ranges
+        // are numbers into a text that is going away.
+        clearFolds()
         editor.setText(edit.content)
         editor.cursorOffset = Math.min(at, edit.content.length)
         props.onChange(edit.content)
@@ -1400,7 +1876,16 @@ export function EditorPane(props: EditorPaneProps) {
       () => {
         const target = props.goto
         if (!target || !editor) return
-        editor.setCursor(target.line, target.col)
+        // A jump names a line of the file, and landing on the anchor that hides
+        // it would be a jump to the wrong place — the block opens instead.
+        const view = folded()
+        if (view && (view.display[target.line] ?? 0) < 0) {
+          setFolds(
+            view.folds.filter(fold => target.line <= fold.start || target.line > fold.end),
+            target.line,
+          )
+        }
+        editor.setCursor(shownLine(target.line), target.col)
         editor.focus()
       },
     ),
@@ -1502,8 +1987,14 @@ export function EditorPane(props: EditorPaneProps) {
                   syncViewport()
                   forgetLayout()
                   applyWindow(true)
+                  // The pane moved or changed size, so everything positioned
+                  // against its coordinates — the notes and the fold targets —
+                  // was measured against where it used to be. This also covers
+                  // the first layout, where those coordinates were still zero.
+                  setWrapKey(key => key + 1)
                 })
                 allowSelectionOnlyInEditor(el)
+                unfoldBeforePaste(el)
                 onCleanup(releaseEditor)
               }}
               initialValue={props.content}
@@ -1542,9 +2033,12 @@ export function EditorPane(props: EditorPaneProps) {
               flexGrow={1}
               paddingLeft={1}
               onContentChange={() => {
-                if (!editor) return
-                history.record({ content: editor.plainText, cursor: cursorBeforeEdit }, Date.now())
-                props.onChange(editor.plainText)
+                // A fold rewriting the buffer is not an edit of the file, and it
+                // is the one change the buffer reports that must record nothing.
+                if (!editor || refolding) return
+                const content = syncDocument()
+                history.record({ content, cursor: cursorBeforeEdit }, Date.now())
+                props.onChange(content)
                 scheduleHighlight()
               }}
               onMouse={() => scheduleCursorSync()}
@@ -1565,6 +2059,37 @@ export function EditorPane(props: EditorPaneProps) {
                 left={note.left}
                 zIndex={5}
                 fg={note.color}
+                bg={ui.bg}
+                content={note.text}
+              />
+            )}
+          </For>
+          {/* The hit target over each of the gutter's chevrons — painting
+              nothing, since the gutter has already drawn the glyph. A box is
+              simply the only thing that reports a click. */}
+          <For each={foldMarkers()}>
+            {marker => (
+              <box
+                position="absolute"
+                top={marker.top}
+                left={marker.left}
+                width={1}
+                height={1}
+                zIndex={6}
+                onMouseDown={() => toggleFoldAt(marker.line)}
+              />
+            )}
+          </For>
+          {/* What a collapsed block says for itself, in the space after the line
+              it is folded into. */}
+          <For each={foldNotes()}>
+            {note => (
+              <text
+                position="absolute"
+                top={note.top}
+                left={note.left}
+                zIndex={5}
+                fg={ui.dim}
                 bg={ui.bg}
                 content={note.text}
               />

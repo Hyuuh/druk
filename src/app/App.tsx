@@ -30,6 +30,7 @@ import { ImageView } from '../ui/ImageView'
 import { LspStatusView } from '../ui/LspStatusView'
 import { MarkdownView } from '../ui/MarkdownView'
 import { PdfView } from '../ui/PdfView'
+import { PreviewPane } from '../ui/PreviewPane'
 import { SettingsView } from '../ui/SettingsView'
 import { SidebarTabs } from '../ui/SidebarTabs'
 import { StatusBar } from '../ui/StatusBar'
@@ -48,6 +49,8 @@ import { createMarket } from './market'
 import { createNavigation } from './navigation'
 import { createOverlays, OverlayStack } from './Overlays'
 import { createPanes } from './panes'
+import { createPreview } from './preview'
+import type { PreviewTarget } from './preview'
 import { createPromptHandlers, createPromptState } from './prompts'
 import { createSettings } from './settings'
 import { createStatus, READY } from './status'
@@ -114,6 +117,7 @@ export function App(props: {
     () => hiddenNodes(rootDir, settings.config),
   )
   const panes = createPanes(tree, restored.sidebar)
+  const preview = createPreview({ tree, panes })
   const git = createGit(
     rootDir,
     () => settings.config.gitPanelView,
@@ -202,7 +206,8 @@ export function App(props: {
     comparison.detailOpen() ||
     activeImage() !== null ||
     activePdf() !== null ||
-    workspace.renderedPath() !== null
+    workspace.renderedPath() !== null ||
+    preview.target() !== null
 
   const ctx: AppContext = {
     rootDir,
@@ -211,6 +216,7 @@ export function App(props: {
     settings,
     tree,
     panes,
+    preview,
     editor,
     git,
     gitOp,
@@ -551,6 +557,9 @@ export function App(props: {
                   // interactive while one is up, like any other editor page.
                   workspace.setDiff(null)
                   workspace.setPage(null)
+                  // Opening a file is the end of browsing; leaving the mode on
+                  // would put the preview back over it on the way to the tree.
+                  preview.close()
                   workspace.activateNode(node)
                 }}
                 onPin={node => workspace.pinTab(node.path)}
@@ -654,6 +663,7 @@ export function App(props: {
             history={editor.history()}
             edit={editor.edit()}
             lineOp={editor.lineOp()}
+            foldOp={editor.foldOp()}
             vim={config.vim}
             cursorStyle={config.cursorStyle}
             wrap={config.wrap}
@@ -782,6 +792,23 @@ export function App(props: {
                     if (backToPanel()) panes.focusTree()
                     else workspace.setDiff(null)
                   }}
+                />
+              </box>
+            )}
+          </Show>
+          {/* Above every page: it is a look at another file, and it lasts only
+              as long as the tree is being walked. */}
+          <Show when={preview.target()}>
+            {(target: () => PreviewTarget) => (
+              <box position="absolute" top={0} left={0} width="100%" height="100%" zIndex={65}>
+                <PreviewPane
+                  path={target().path}
+                  isDir={target().isDir}
+                  buffer={workspace.buffers[target().path]?.content}
+                  width={dimensions().width - (panes.sidebar() ? settings.treeWidth() + 1 : 0)}
+                  height={dimensions().height - 2}
+                  scroll={preview.scrollRequest()}
+                  onFocus={() => panes.setFocus('editor')}
                 />
               </box>
             )}

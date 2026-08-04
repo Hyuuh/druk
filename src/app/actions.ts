@@ -246,6 +246,20 @@ export function createCommands(ctx: AppContext) {
     collapseSidebar: () => (panes.view() === 'git' ? gitCollapseAll() : tree.collapseAll()),
     gitCollapseAll,
     toggleGitView: panes.toggleGitView,
+    /**
+     * Quick look on or off. Turning it on shows the file tree and hands it the
+     * keyboard: the preview follows that cursor, so from the editor there would
+     * otherwise be nothing to preview and no way to walk to the next file.
+     */
+    togglePreview: () => {
+      if (ctx.preview.on()) {
+        ctx.preview.close()
+        return say('Preview off')
+      }
+      panes.showView('files')
+      ctx.preview.open()
+      say('Preview on — ↑↓ walks the tree, Enter opens, Space closes')
+    },
     toggleMarkdown: workspace.toggleRendered,
     setTheme: settings.applyTheme,
     previewTheme: settings.previewTheme,
@@ -255,6 +269,7 @@ export function createCommands(ctx: AppContext) {
     restoreIcons: settings.restoreIcons,
     toggleWrap: settings.toggleWrap,
     lineOp: editor.requestLineOp,
+    foldOp: editor.requestFoldOp,
     triggerCompletion: editor.requestCompletion,
     openSettings: () => {
       settings.setScope('user')
