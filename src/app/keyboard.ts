@@ -54,8 +54,6 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'goto.file': actions.openFileUnderCursor,
     'find.file': () => overlays.setSearch({ scope: 'file' }),
     'find.project': () => overlays.setSearch({ scope: 'project' }),
-    'find.next': actions.findNext,
-    'find.prev': actions.findPrev,
     'find.replace': actions.replaceInFile,
     'find.replaceProject': actions.replaceInProject,
     'file.new': () => prompts.setPrompt({ kind: 'newFile', dir: tree.targetDir() }),

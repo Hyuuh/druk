@@ -44,19 +44,6 @@ describe('what terminals can encode', () => {
     }
   })
 
-  test('F3 survives the wire but Shift+F3 does not', () => {
-    // Why find-previous is Opt+F3 rather than the Shift+F3 every other editor
-    // uses. Both spell the same chord here — Shift shares the one secondary slot
-    // — but of the three sequences terminals send for Shift+F3, only the last
-    // arrives as f3, and nothing sends it without modifyFunctionKeys set by hand.
-    expect(seq(`${ESC}OR`)).toMatchObject({ name: 'f3', shift: false })
-    expect(parseKeypress(`${ESC}[1;2R`)).toBeNull() // xterm, iTerm2
-    expect(seq(`${ESC}[25~`).name).toBe('') // Terminal.app, rxvt
-    expect(seq(`${ESC}[13;2~`)).toMatchObject({ name: 'f3', shift: true })
-    // The Opt spelling arrives the way every other Opt chord here does.
-    expect(seq(withOpt(`${ESC}OR`))).toMatchObject({ name: 'f3', meta: true })
-  })
-
   test('the tab and page chords keep their names', () => {
     expect(seq(`${ESC}[5;5~`)).toMatchObject({ name: 'pageup', ctrl: true })
     expect(seq(`${ESC}[6;5~`)).toMatchObject({ name: 'pagedown', ctrl: true })

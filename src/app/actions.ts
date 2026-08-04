@@ -19,7 +19,6 @@ import {
 } from '../core/git'
 import type { FileStatus } from '../core/git'
 import { pathTokenAt, resolveImportPath } from '../core/imports'
-import { searchText } from '../core/search'
 import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
@@ -177,47 +176,6 @@ export function createCommands(ctx: AppContext) {
     return workspace.buffers[path]?.content.split('\n')[at.line] ?? ''
   }
 
-  /**
-   * Jump through the last file search from the cursor, wrapping at either end.
-   * No search yet falls back to the selection — F3 on a word, in every editor.
-   */
-  const repeatFind = (direction: 1 | -1) => {
-    const path = workspace.activePath()
-    const buffer = workspace.buffers[path ?? '']
-    if (!path || !buffer) return say('No file open', 'warn')
-    let last = ctx.overlays.lastFileSearch()
-    if (!last) {
-      const seed = ctx.overlays.selection()
-      if (!seed) return say('No search to repeat')
-      last = { query: seed, options: {} }
-      ctx.overlays.setLastFileSearch(last)
-    }
-    const matches = searchText(buffer.content, last.query, path, last.options, Infinity)
-    if (matches.length === 0) return say('No matches')
-    const at = editor.cursor()
-    let index: number
-    if (direction === 1) {
-      const after = matches.findIndex(
-        m => m.line > at.line || (m.line === at.line && m.col > at.col),
-      )
-      index = after === -1 ? 0 : after
-    } else {
-      // Scanning from the end, the first hit before the cursor is the nearest one;
-      // none at all wraps to the last.
-      index = matches.length - 1
-      for (let i = matches.length - 1; i >= 0; i--) {
-        const m = matches[i]!
-        if (m.line < at.line || (m.line === at.line && m.col < at.col)) {
-          index = i
-          break
-        }
-      }
-    }
-    const m = matches[index]!
-    editor.requestGoto(m.line, m.col)
-    say(`${index + 1} of ${matches.length}`)
-  }
-
   /** Jump to the neighbouring problem and read it out in the status bar. */
   const jumpProblem = (direction: 1 | -1) => {
     const path = workspace.activePath()
@@ -279,8 +237,6 @@ export function createCommands(ctx: AppContext) {
     },
     findInFile: () => ctx.overlays.setSearch({ scope: 'file' }),
     findInProject: () => ctx.overlays.setSearch({ scope: 'project' }),
-    findNext: () => repeatFind(1),
-    findPrev: () => repeatFind(-1),
     replaceInFile: () => ctx.overlays.setSearch({ scope: 'file', replacing: true }),
     replaceInProject: () => ctx.overlays.setSearch({ scope: 'project', replacing: true }),
     newFile: () => ctx.prompts.setPrompt({ kind: 'newFile', dir: tree.targetDir() }),

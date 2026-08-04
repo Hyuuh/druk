@@ -116,13 +116,6 @@ export const KEYS: KeyInfo[] = [
     welcome: { label: 'Search the project', rank: 3 },
   },
   {
-    key: `F3 / ${ALT}+F3`,
-    label: 'Next / previous match',
-    section: 'Search & replace',
-    where: 'editor',
-    ids: ['find.next', 'find.prev'],
-  },
-  {
     key: 'Enter / Ctrl+A',
     label: 'Replace this match / all (in replace)',
     section: 'Search & replace',

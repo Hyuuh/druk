@@ -45,14 +45,6 @@ export const BINDABLE: Bindable[] = [
   { id: 'goto.file', label: 'Open file under cursor', defaults: [`Ctrl+${ALT}+O`] },
   { id: 'find.file', label: 'Find in current file', defaults: ['Ctrl+F'] },
   { id: 'find.project', label: 'Find in project', defaults: ['Ctrl+R'], also: [`Ctrl+${ALT}+F`] },
-  { id: 'find.next', label: 'Find next', defaults: ['F3'] },
-  // Not Shift+F3, which is what every other editor calls this: it parses to this
-  // very chord — Shift shares the one secondary slot — but no terminal delivers a
-  // Shift+F3 that arrives as f3 at all. xterm and iTerm2 send `CSI 1;2R`, which
-  // parses to null; Terminal.app sends `CSI 25~`, which parses to no key name.
-  // Only `CSI 13;2~` arrives, and nothing sends it without modifyFunctionKeys.
-  // Opt+F3 is the same chord by a spelling terminals do send.
-  { id: 'find.prev', label: 'Find previous', defaults: [`${ALT}+F3`] },
   { id: 'find.replace', label: 'Replace in current file', defaults: [] },
   { id: 'find.replaceProject', label: 'Replace in project', defaults: [] },
   { id: 'file.new', label: 'New file', defaults: ['Ctrl+N'] },

@@ -47,11 +47,13 @@ export interface SearchPanelProps {
    */
   suspended?: boolean
   /**
-   * Told what was searched for, as it changes — query and flags both, since a
-   * toggle flipped after the last keystroke re-runs the search too. The caller
-   * keeps it past the panel's death; find-next is why.
+   * Told what is being searched for as it changes — query, flags and which match
+   * is selected. The caller keeps it past the panel's death so reopening lands
+   * back where this one was left; `initialIndex` is that value coming home.
    */
-  onSearch?: (query: string, options: SearchOptions) => void
+  onSearch?: (query: string, options: SearchOptions, index: number) => void
+  /** Row to select on open, for a panel reopened on the query it remembered. */
+  initialIndex?: number
   onPick: (match: Match) => void
   /** Replace the selected match only. */
   onReplaceOne?: (match: Match, replacement: string) => void
@@ -148,7 +150,7 @@ export function SearchPanel(props: SearchPanelProps) {
     props.replacing && props.initialQuery ? 'replace' : 'query',
   )
   /** Row the selection is nearest to, not the match: rows outnumber matches. */
-  const [index, setIndex] = createSignal(0)
+  const [index, setIndex] = createSignal(props.initialIndex ?? 0)
   /** Paths whose matches are hidden behind their heading. */
   const [folded, setFolded] = createSignal<ReadonlySet<string>>(new Set())
   const [options, setOptions] = createSignal<SearchOptions>({})
@@ -176,8 +178,8 @@ export function SearchPanel(props: SearchPanelProps) {
   const [generation, setGeneration] = createSignal(0)
 
   createEffect(
-    on([query, options], ([q, opts]) => {
-      if (q.length >= MIN_QUERY) props.onSearch?.(q, opts)
+    on([query, options, index], ([q, opts, at]) => {
+      if (q.length >= MIN_QUERY) props.onSearch?.(q, opts, at)
     }),
   )
 
@@ -559,6 +561,7 @@ export function SearchPanel(props: SearchPanelProps) {
         value={query()}
         placeholder="Search…"
         focused={!props.suspended && (!replacing() || field() === 'query')}
+        selectAllOnMount
         onInput={type}
       />
       <Show when={replacing()}>

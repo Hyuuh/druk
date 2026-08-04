@@ -65,13 +65,16 @@ export function createOverlays(deps: {
   /** Open search: its scope, and whether the replacement field starts showing. */
   const [search, setSearch] = createSignal<{ scope: SearchScope; replacing?: boolean } | null>(null)
   /**
-   * The last file-scope search, kept after the panel dies so find-next can
-   * repeat it. Flags ride along: a case toggle flipped after the final
-   * keystroke is part of what was searched for.
+   * The last file-scope search, kept after the panel dies so reopening it comes
+   * back where it was left rather than empty. Flags ride along — a case toggle
+   * flipped after the final keystroke is part of what was searched for — and so
+   * does the selected row, which is what makes Esc and Ctrl+F a way to glance at
+   * the file rather than a way to lose your place.
    */
   const [lastFileSearch, setLastFileSearch] = createSignal<{
     query: string
     options: SearchOptions
+    index: number
   } | null>(null)
   const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
   /** The problems list, jumping to a diagnostic on Enter. */
@@ -105,6 +108,19 @@ export function createOverlays(deps: {
     return text.includes('\n') ? '' : text
   }
 
+  /**
+   * What the search box opens carrying. A selection wins over the remembered
+   * query — it is this moment's intent against the last one's — and only the
+   * remembered query brings its row back, since an index into another search's
+   * results points at nothing in particular.
+   */
+  const searchOpensWith = (scope: SearchScope) => {
+    const selected = selection()
+    if (selected) return { query: selected, index: 0 }
+    const last = scope === 'file' ? lastFileSearch() : null
+    return { query: last?.query ?? '', index: last?.index ?? 0 }
+  }
+
   const jumpTo = (match: Match) => {
     setSearch(null)
     // A page gives way to anything that lands in a file — `openFile` closes it,
@@ -129,6 +145,7 @@ export function createOverlays(deps: {
     setSearch,
     lastFileSearch,
     setLastFileSearch,
+    searchOpensWith,
     update,
     setUpdate,
     problemsOpen,
@@ -244,10 +261,11 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             rootDir={app.rootDir}
             activePath={workspace.activePath()}
             activeContent={workspace.activeBuffer()?.content ?? ''}
-            initialQuery={overlays.selection()}
+            initialQuery={overlays.searchOpensWith(open().scope).query}
+            initialIndex={overlays.searchOpensWith(open().scope).index}
             onSearch={
               open().scope === 'file'
-                ? (query, options) => overlays.setLastFileSearch({ query, options })
+                ? (query, options, index) => overlays.setLastFileSearch({ query, options, index })
                 : undefined
             }
             replacing={open().replacing}
