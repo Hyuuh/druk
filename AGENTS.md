@@ -91,15 +91,19 @@ well as behind the chooser), the notes show as `◆` in the gutter and after the
 (`reviewInline`) and outlive the session in `review.json` beside the config; the panel's
 cursor pages the editor the way the source-control panel's pages the diff — the remark's
 file goes up in a preview tab at its line, the keyboard staying in the panel, and the
-remark itself opens as a card under that line, GitHub's arrangement (drawn *over* the
-rows below rather than between them: the editor draws the file, and a row that is not in
-the file cannot be inserted without the caret, the gutter and undo all having to agree
-about a line that does not exist — so it spans the whole pane, gutter included, since a
-half-covered row shows code through on the right and the covered lines' *numbers* on the
-left, and it ends with `⋯ N lines behind`, the words a fold uses, so the gap in the
-numbering is something the editor said rather than something to work out; the card is
-only up while the panel is, and the trailing text is suppressed on the line it covers so
-nothing is said twice), opening the
+remark itself opens as a card under that line, GitHub's arrangement — drawn in a gap of
+blank rows opened for it (`spacedView` in `src/editor/folds.ts`, the same "hand the buffer
+a different text" trick a fold is), so it hides no code and the gutter's numbering carries
+on across it: `spacers` names the rows that stand for no line and the gutter draws no
+number on them (`setHideLineNumbers`), while `real` repeats the anchor's line so nothing
+downstream has to learn about a row belonging to none. Three rules keep those rows
+harmless: they are never in `source`, so saving, diffing and highlighting cannot see them;
+`syncDocument` refuses to read the buffer back while a gap is open; and the card is torn
+down the moment the *editor* takes the keyboard, which is what stops rows the file has not
+from ever being typed into — `baseFold` is the folds alone and `folded()` is what the
+buffer holds, which is the split that keeps a gap from being remembered or reconciled as
+one. The trailing text is suppressed on the line the card is under so nothing is said
+twice. Opening the
 panel fetches the open pull request's comments for the current branch by itself
 (`reviewAutoFetch`, and again whenever the branch changes under an open panel, since the
 comments belong to the branch; `f` asks again on demand, and is the loud path — the

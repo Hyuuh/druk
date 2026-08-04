@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -18,6 +18,7 @@ import {
   runCommand,
   settle,
   untilFrame,
+  untilGone,
 } from './helpers'
 import type { Harness } from './helpers'
 
@@ -307,9 +308,9 @@ test('the panel opens the remark as a card under its line, and pages files', asy
   await untilFrame(t, 'why on a')
   const card = t.captureCharFrame()
   expect(card).toContain('◆ QUESTION')
-  // It covers rows, gutter included, so it says how many rather than leaving a
-  // gap in the numbering for the reader to work out.
-  expect(card).toContain('lines behind')
+  // The card sits in a gap opened for it, so the line it is about is still on
+  // screen under its own number rather than behind the box.
+  expect(card).toContain('const a = 1')
 
   // Two rows down is b.ts's heading — a file that is not the one on screen, so
   // the cursor pages the editor to it and the card follows.
@@ -317,6 +318,28 @@ test('the panel opens the remark as a card under its line, and pages files', asy
   await press(t, i => i.pressArrow('down'))
   await untilFrame(t, 'wrong on b')
   expect(t.captureCharFrame()).toContain('const b = 2')
+})
+
+test('the gap the card sits in never reaches the file, and closes on the editor', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\nconst b = 2\nconst c = 3\n' })
+  const t = await launch(dir, {}, { width: 100, height: 24 })
+  await openFile(t, 'a.ts')
+  await press(t, i => void i.typeText('X'))
+  await noteLine(t, 'issue', 'blank rows must not be saved')
+
+  await runCommand(t, 'Review panel')
+  await untilFrame(t, 'must not be saved')
+
+  // The buffer is holding rows the file has not. Saving must write the file.
+  await runCommand(t, 'Save file')
+  await settle(t, 200)
+  expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('Xconst a = 1\nconst b = 2\nconst c = 3\n')
+
+  // And taking the keyboard closes the card, which is what keeps those rows
+  // from ever being typed into.
+  await press(t, i => i.pressTab())
+  await untilGone(t, '◆ ISSUE')
+  expect(t.captureCharFrame()).toContain('const c = 3')
 })
 
 test('opening the panel fetches by itself, and is quiet where the key is loud', async () => {

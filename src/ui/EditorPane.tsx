@@ -14,7 +14,9 @@ import {
   foldsFrom,
   foldView,
   innermostRegion,
+  plainView,
   reconcileFolds,
+  spacedView,
 } from '../editor/folds'
 import type { FoldOp, FoldRegion, FoldView } from '../editor/folds'
 import { History } from '../editor/history'
@@ -318,6 +320,8 @@ export function EditorPane(props: EditorPaneProps) {
     setLineSigns?: (signs: Map<number, LineSign>) => void
     /** Buffer line → the number drawn on it, which folding makes two things. */
     setLineNumbers?: (numbers: Map<number, number>) => void
+    /** Rows to draw no number on at all — the blank gap a review card sits in. */
+    setHideLineNumbers?: (rows: Set<number>) => void
   }
   let gutter: GutterHost | undefined
   let editor: TextareaRenderable | undefined
@@ -358,7 +362,62 @@ export function EditorPane(props: EditorPaneProps) {
    * what the rest of this component was written against. Only the folded case
    * pays for the translation.
    */
-  const [folded, setFolded] = createSignal<FoldView | null>(null)
+  /** The pane's row box, the coordinate space the inline notes position in. */
+  let host: { x: number; y: number; width: number } | undefined
+
+  const [baseFold, setFolded] = createSignal<FoldView | null>(null)
+
+  /** Rows of body a card will show before it says how many it left. */
+  const CARD_LINES = 8
+
+  /**
+   * The card's contents, and how many rows of buffer they need — everything
+   * about it that does not depend on where the row ends up on screen.
+   *
+   * This is what opens the gap, so it has to be answerable before the view that
+   * places it exists; `reviewCard` below only positions what this decides.
+   *
+   * Never while the editor holds the keyboard. The gap is rows the file does not
+   * have, and the one rule that keeps them harmless is that they cannot be typed
+   * into — so taking the keyboard closes the card rather than freezing it.
+   */
+  const cardGap = createMemo(() => {
+    const card = props.reviewCard
+    if (!card || !host || props.focused) return null
+    // Two columns of border and one of padding either side.
+    const room = host.width - 4
+    if (room < 12) return null
+    const wrapped = wrapText(card.body.replaceAll(/\s+/g, ' ').trim(), room)
+    const lines = wrapped.slice(0, CARD_LINES)
+    if (wrapped.length > CARD_LINES) {
+      lines[CARD_LINES - 1] = `… ${wrapped.length - CARD_LINES + 1} more lines`
+    }
+    return {
+      line: card.line,
+      draft: card.draft,
+      // Spaces of its own: the border draws straight up to the title otherwise.
+      heading: cut(` ${REVIEW_GLYPH[card.draft ? 'draft' : 'fetched']} ${card.heading} `, room),
+      lines: lines.map(line => cut(line, room)),
+      /** Borders included — the gap has to hold the whole box. */
+      rows: lines.length + 2,
+    }
+  })
+
+  /**
+   * The view the buffer actually holds: whatever is folded, plus the blank gap a
+   * review card is drawn in. Split from `baseFold` because the gap is not a
+   * fold — it is not remembered per path, it is never reconciled back into the
+   * file, and every fold command works on the folds alone.
+   *
+   * Everything that renders reads this, so the gap moves the git marks, the
+   * diagnostics, the highlighting and the gutter with it for free.
+   */
+  const folded = createMemo<FoldView | null>(() => {
+    const base = baseFold()
+    const gap = cardGap()
+    if (!gap) return base
+    return spacedView(base ?? plainView(props.content), gap.line, gap.rows)
+  })
   /** Collapsed regions per path — the pane outlives a tab switch, so folds do. */
   const foldsFor = new Map<string, FoldRegion[]>()
   /** True while a fold is rewriting the buffer, so its own change event is not an edit. */
@@ -535,8 +594,6 @@ export function EditorPane(props: EditorPaneProps) {
   /** True between grabbing the scrollbar thumb and letting go. */
   const [dragging, setDragging] = createSignal(false)
 
-  /** The pane's row box, the coordinate space the inline notes position in. */
-  let host: { x: number; y: number; width: number } | undefined
   /** Bumped when the buffer re-wraps, so the inline notes re-measure. */
   const [wrapKey, setWrapKey] = createSignal(0)
 
@@ -564,74 +621,37 @@ export function EditorPane(props: EditorPaneProps) {
     return { top: el.y - host.y + (lastRow - top), left, room }
   }
 
-  /** Rows of body a card will show before it says how many it left. */
-  const CARD_LINES = 8
-
   /**
-   * The card under its line: a box drawn over the rows that follow, GitHub's
-   * arrangement, for the one remark the review panel's cursor is on.
-   *
-   * Over rather than between, because the editor draws the file and a row that
-   * is not in the file cannot be inserted into it without the caret, the gutter
-   * and undo all having to agree about a line that does not exist.
-   *
-   * So it covers rows, and two things follow. It spans the *whole* pane, gutter
-   * included: half-covered, the code shows through on the right and the numbers
-   * of the covered lines show on the left, and a number beside a row that is not
-   * that line is worse than no number. And it says how many lines are behind it,
-   * in the words a fold uses — the gap in the numbering is then something the
-   * editor has told you about rather than something you have to work out.
+   * Where the card is drawn: over the blank rows `cardGap` opened under its
+   * line, so it hides no code and the gutter's numbering carries on across it.
    */
   const reviewCard = createMemo(() => {
     wrapKey()
     void props.content
-    const card = props.reviewCard
-    const el = editorEl()
-    if (!card || !el || !host) return null
+    const gap = cardGap()
     const view = folded()
-    const row = view ? view.display[card.line] : card.line
-    if (row === undefined || row < 0) return null
+    const el = editorEl()
+    if (!gap || !view || !el || !host) return null
+    const anchor = view.display[gap.line]
+    if (anchor === undefined || anchor < 0) return null
 
     const top = viewTop()
     const height = viewHeight() || el.height
     const { sources } = lineLayout()
-    const first = rowAtLine(row)
-    if (sources[first] !== row) return null
+    const first = rowAtLine(anchor)
+    if (sources[first] !== anchor) return null
     let lastRow = first
-    while (sources[lastRow + 1] === row) lastRow++
-    // The card hangs below its line, so the line itself being the last one on
-    // screen leaves nowhere to hang it.
-    if (lastRow < top || lastRow >= top + height - 1) return null
+    while (sources[lastRow + 1] === anchor) lastRow++
+    if (lastRow + 1 < top || lastRow + 1 >= top + height) return null
 
-    const width = host.width
-    // Two columns of border and one of padding either side.
-    const room = width - 4
-    if (room < 12) return null
-
-    const wrapped = wrapText(card.body.replaceAll(/\s+/g, ' ').trim(), room)
-    // What is left below the line, less the two border rows and the row that
-    // says what is behind the card.
-    const space = top + height - (lastRow + 1) - 3
-    if (space < 1) return null
-    const body =
-      wrapped.length <= Math.min(CARD_LINES, space)
-        ? wrapped
-        : [
-            ...wrapped.slice(0, Math.min(CARD_LINES, space) - 1),
-            `… ${wrapped.length - (Math.min(CARD_LINES, space) - 1)} more lines`,
-          ]
-    // Border rows included: every row the box occupies is a row of code it hides.
-    const covers = body.length + 3
     return {
-      /** Buffer row the card hangs from, as `displayReviews` keys its marks. */
-      row,
+      /** Buffer row of the line itself, as `displayReviews` keys its marks. */
+      row: anchor,
       top: el.y - host.y + (lastRow + 1 - top),
-      width,
-      // Spaces of its own: the border draws straight up to the title otherwise.
-      heading: cut(` ${REVIEW_GLYPH[card.draft ? 'draft' : 'fetched']} ${card.heading} `, room),
-      lines: body.map(line => cut(line, room)),
-      behind: `⋯ ${covers} line${covers === 1 ? '' : 's'} behind`,
-      draft: card.draft,
+      width: host.width,
+      heading: gap.heading,
+      lines: gap.lines,
+      draft: gap.draft,
     }
   })
 
@@ -981,6 +1001,9 @@ export function EditorPane(props: EditorPaneProps) {
     const numbers = new Map<number, number>()
     if (view) view.real.forEach((line, row) => numbers.set(row, line + 1))
     gutter?.setLineNumbers?.(numbers)
+    // The gap's rows stand for no line, and `real` repeats the anchor on them —
+    // without this they would each draw the anchor's number again.
+    gutter?.setHideLineNumbers?.(new Set(view?.spacers ?? []))
   })
 
   /** The row an absolute character offset falls on. */
@@ -1298,8 +1321,13 @@ export function EditorPane(props: EditorPaneProps) {
    * every path that reports a change call it rather than remember to.
    */
   const syncDocument = (): string => {
-    const view = folded()
     if (!editor) return ''
+    // A card's gap is open: the buffer holds rows the file has not. Nothing may
+    // be read back out of it, and nothing has edited it — the card is gone the
+    // moment the editor takes the keyboard — so the file is what it already was.
+    const applied = folded()
+    if (applied && applied.spacers.size > 0) return applied.source
+    const view = baseFold()
     if (!view) return editor.plainText
     if (editor.plainText === view.text) return view.source
     const next = reconcileFolds(view, editor.plainText)
@@ -1319,6 +1347,25 @@ export function EditorPane(props: EditorPaneProps) {
     }
     return next.source
   }
+
+  /**
+   * Open and close the card's gap in the buffer, the same way a fold is applied
+   * — a rewrite that does not read as an edit of the file. Driven by `cardGap`
+   * alone, so an ordinary keystroke never reaches it.
+   */
+  createEffect(
+    on(cardGap, () => {
+      if (!editor) return
+      const wanted = folded()?.text ?? docText()
+      if (editor.plainText === wanted) return
+      const at = editor.cursorOffset
+      keepingView(() => {
+        applyFoldText(wanted)
+        editor!.cursorOffset = Math.min(at, wanted.length)
+      })
+      applyWindow(true)
+    }),
+  )
 
   /** Show the file whole again — what anything that replaces the text wholesale does. */
   const clearFolds = () => {
@@ -2240,9 +2287,6 @@ export function EditorPane(props: EditorPaneProps) {
                 <For each={card().lines}>
                   {line => <text fg={ui.text} bg={ui.panelBg} wrapMode="none" content={line} />}
                 </For>
-                {/* The gap the card leaves in the gutter's numbering, said out
-                    loud in the words a collapsed block uses. */}
-                <text fg={ui.faint} bg={ui.panelBg} wrapMode="none" content={card().behind} />
               </box>
             )}
           </Show>

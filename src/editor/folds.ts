@@ -36,6 +36,47 @@ export interface FoldView {
   starts: number[]
   /** Lines hidden under each visible anchor, for the note drawn after it. */
   hidden: Map<number, number>
+  /**
+   * Display rows that stand for no line of the file — the blank gap a review
+   * card is drawn in. The gutter draws no number on them, and nothing may be
+   * read back out of them: they are not in `source`.
+   */
+  spacers: ReadonlySet<number>
+}
+
+/** A view of `source` with nothing folded and no gap opened — the identity. */
+export function plainView(source: string): FoldView {
+  return foldView(source, [])
+}
+
+/**
+ * `view` with `count` blank rows opened after the file's line `line`.
+ *
+ * This is how a review card hides no code: the rows it is drawn over are rows
+ * the buffer does not have text for, so the gutter's numbering carries on
+ * across the gap instead of jumping. `real` repeats the anchor's line on them —
+ * nothing downstream then has to learn about a row belonging to no line, and
+ * `spacers` is what keeps their numbers off the gutter.
+ *
+ * `source` and `starts` are untouched: the gap is not in the file, so nothing
+ * that reads the file back — saving, diffing, highlighting — can see it.
+ */
+export function spacedView(view: FoldView, line: number, count: number): FoldView {
+  const anchor = view.display[line]
+  if (count <= 0 || anchor === undefined || anchor < 0) return view
+  const after = anchor + 1
+  const gap = Array.from({ length: count }, () => '')
+  const rows = view.text.split('\n')
+  const spacers = new Set<number>()
+  for (let n = 0; n < count; n++) spacers.add(after + n)
+  return {
+    ...view,
+    text: [...rows.slice(0, after), ...gap, ...rows.slice(after)].join('\n'),
+    real: [...view.real.slice(0, after), ...gap.map(() => line), ...view.real.slice(after)],
+    // Only the rows below the gap move; the anchor itself sits above it.
+    display: view.display.map(row => (row >= after ? row + count : row)),
+    spacers,
+  }
 }
 
 const isBlank = (line: string): boolean => line.trim() === ''
@@ -155,6 +196,9 @@ function normalize(folds: FoldRegion[], lines: number): FoldRegion[] {
   return kept
 }
 
+/** Shared, since an ordinary fold view opens no gap and every one would else allocate. */
+const EMPTY: ReadonlySet<number> = new Set()
+
 export function foldView(source: string, folds: FoldRegion[]): FoldView {
   const lines = source.split('\n')
   const kept = normalize(folds, lines.length)
@@ -185,7 +229,16 @@ export function foldView(source: string, folds: FoldRegion[]): FoldView {
     hidden.set(fold.start, fold.end - fold.start)
   }
 
-  return { source, text: shown.join('\n'), folds: kept, real, display, starts, hidden }
+  return {
+    source,
+    text: shown.join('\n'),
+    folds: kept,
+    real,
+    display,
+    starts,
+    hidden,
+    spacers: EMPTY,
+  }
 }
 
 /**
