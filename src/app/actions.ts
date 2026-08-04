@@ -217,15 +217,25 @@ export function createCommands(ctx: AppContext) {
    *
    * Two differences from `openAt`, and both are what make it a pager rather than
    * a jump: a preview tab, so walking a list of twenty remarks does not leave
-   * twenty tabs on the strip, and no `setFocus` — the arrows belong to the panel
-   * or there is nothing left to page with. Enter is still the way in.
+   * twenty tabs on the strip, and the keyboard stays where it was — the arrows
+   * belong to the panel or there is nothing left to page with. Enter is the way
+   * in.
    */
   const showNote = () => {
     const target = ctx.review.targetOf()
     if (!target) return
     workspace.setDiff(null)
     workspace.setPage(null)
-    if (target.path !== workspace.activePath()) workspace.openFile(target.path, true)
+    if (target.path !== workspace.activePath()) {
+      // The source-control panel's pager keeps the keyboard for free: a diff is
+      // a page, so it never goes near `openFile`. This one opens a real tab, and
+      // `openFile` ends by handing the keyboard to the editor — right for every
+      // other caller, and here it would stop the arrows driving the moment a
+      // remark was in another file, and take the card down with them.
+      const had = panes.focus()
+      workspace.openFile(target.path, true)
+      panes.setFocus(had)
+    }
     if (workspace.activePath() !== target.path) return
     editor.requestGoto(target.line, 0)
   }

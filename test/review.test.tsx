@@ -317,7 +317,11 @@ test('the panel opens the remark as a card under its line, and pages files', asy
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressArrow('down'))
   await untilFrame(t, 'wrong on b')
-  expect(t.captureCharFrame()).toContain('const b = 2')
+  const paged = t.captureCharFrame()
+  expect(paged).toContain('const b = 2')
+  // Opening the file must not hand the keyboard to the editor: the arrows are
+  // what drives the pager, and the card is only up while the panel holds them.
+  expect(paged).toContain('◆ ISSUE')
 })
 
 test('the gap the card sits in never reaches the file, and closes on the editor', async () => {
