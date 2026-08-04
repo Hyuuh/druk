@@ -159,6 +159,12 @@ the file you are on, so one file with forty hits stops burying the rest.
 In file search, `Tab` opens the replace field instead: `Enter` replaces the selected match,
 `Ctrl+A` replaces every match in the file.
 
+The search outlives the panel. `Ctrl+F` reopens carrying the query you last gave it, on
+the match you were last on — so closing the panel to look at the file and opening it again
+costs nothing. The text arrives selected, so typing replaces it and a fresh search is no
+slower than it was. With text selected in the editor, that wins instead: it is what you
+mean now rather than what you meant last time.
+
 The whole project replaces too: *Find → Replace in project* in the palette opens the
 project search with the replace field showing, and every row previews the hit beside what
 would replace it. `Enter` applies the selected match; `Ctrl+A` asks first — the confirm

@@ -30,7 +30,11 @@ palette → Find → Replace in project adds a replace field to that panel — r
 hit beside its replacement, Enter applies one match, Ctrl+A applies everywhere behind a
 confirm naming true counts past the 200-row display cap, open buffers take the edit
 unsaved while closed files are written with their encoding kept, and the scan reads open
-dirty buffers instead of their disk copies so what is listed is what is replaced),
+dirty buffers instead of their disk copies so what is listed is what is replaced;
+the last file search outlives its panel — Ctrl+F reopens carrying the query it was
+last given, on the row it was last left on, with the text selected so the first
+keystroke replaces it; a selection wins over the remembered query, being this
+moment's intent against the last one's, and brings no row back with it),
 command palette,
 themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, which vim mode
 overrides while it is on, since there the shape is what tells normal from insert),
