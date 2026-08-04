@@ -49,6 +49,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'peek': togglePeek,
     'open': () => overlays.setPicker('files'),
     'save': workspace.saveActive,
+    'file.saveAll': workspace.saveAll,
     'goto': () => prompts.setPrompt({ kind: 'gotoLine' }),
     'goto.definition': actions.gotoDefinition,
     'goto.file': actions.openFileUnderCursor,

@@ -29,6 +29,7 @@ export interface Command {
 
 export interface CommandActions {
   save: () => void
+  saveAll: () => void
   openFile: () => void
   switchTab: () => void
   closeOthers: () => void
@@ -155,6 +156,7 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
       id: 'file',
       label: 'File',
       children: [
+        { id: 'file.saveAll', label: 'Save all', run: actions.saveAll },
         { id: 'file.new', label: 'New file', hint: 'Ctrl+N', run: actions.newFile },
         { id: 'file.newDir', label: 'New folder', hint: `Ctrl+${ALT}+N`, run: actions.newFolder },
         { id: 'file.rename', label: 'Rename…', hint: 'r', run: actions.rename },
