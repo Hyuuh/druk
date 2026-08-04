@@ -94,8 +94,12 @@ file goes up in a preview tab at its line, the keyboard staying in the panel, an
 remark itself opens as a card under that line, GitHub's arrangement (drawn *over* the
 rows below rather than between them: the editor draws the file, and a row that is not in
 the file cannot be inserted without the caret, the gutter and undo all having to agree
-about a line that does not exist; the card is only up while the panel is, and the trailing
-text is suppressed on the line it covers so nothing is said twice), opening the
+about a line that does not exist — so it spans the whole pane, gutter included, since a
+half-covered row shows code through on the right and the covered lines' *numbers* on the
+left, and it ends with `⋯ N lines behind`, the words a fold uses, so the gap in the
+numbering is something the editor said rather than something to work out; the card is
+only up while the panel is, and the trailing text is suppressed on the line it covers so
+nothing is said twice), opening the
 panel fetches the open pull request's comments for the current branch by itself
 (`reviewAutoFetch`, and again whenever the branch changes under an open panel, since the
 comments belong to the branch; `f` asks again on demand, and is the loud path — the

@@ -305,7 +305,11 @@ test('the panel opens the remark as a card under its line, and pages files', asy
   // line of its first remark rather than waiting for a keypress.
   await runCommand(t, 'Review panel')
   await untilFrame(t, 'why on a')
-  expect(t.captureCharFrame()).toContain('QUESTION')
+  const card = t.captureCharFrame()
+  expect(card).toContain('◆ QUESTION')
+  // It covers rows, gutter included, so it says how many rather than leaving a
+  // gap in the numbering for the reader to work out.
+  expect(card).toContain('lines behind')
 
   // Two rows down is b.ts's heading — a file that is not the one on screen, so
   // the cursor pages the editor to it and the card follows.

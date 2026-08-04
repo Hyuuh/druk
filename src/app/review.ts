@@ -258,13 +258,13 @@ export function createReview(deps: {
       ? {
           line: place.line,
           draft: true,
-          heading: ` ${NOTE_LABELS[remark.kind]} `,
+          heading: NOTE_LABELS[remark.kind],
           body: remark.body,
         }
       : {
           line: place.line,
           draft: false,
-          heading: ` @${remark.comment.author || 'reviewer'} `,
+          heading: `@${remark.comment.author || 'reviewer'}`,
           body: remark.comment.body,
         }
   })

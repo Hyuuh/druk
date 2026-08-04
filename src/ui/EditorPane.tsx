@@ -564,9 +564,6 @@ export function EditorPane(props: EditorPaneProps) {
     return { top: el.y - host.y + (lastRow - top), left, room }
   }
 
-  /** Widest a card gets, however much pane there is: a comment read across a
-   * hundred and twenty columns is a comment read twice. */
-  const CARD_MAX = 62
   /** Rows of body a card will show before it says how many it left. */
   const CARD_LINES = 8
 
@@ -576,9 +573,14 @@ export function EditorPane(props: EditorPaneProps) {
    *
    * Over rather than between, because the editor draws the file and a row that
    * is not in the file cannot be inserted into it without the caret, the gutter
-   * and undo all having to agree about a line that does not exist. Covering a
-   * few lines is the honest trade: the card is transient, it belongs to a panel
-   * that is showing, and Esc takes it away.
+   * and undo all having to agree about a line that does not exist.
+   *
+   * So it covers rows, and two things follow. It spans the *whole* pane, gutter
+   * included: half-covered, the code shows through on the right and the numbers
+   * of the covered lines show on the left, and a number beside a row that is not
+   * that line is worse than no number. And it says how many lines are behind it,
+   * in the words a fold uses — the gap in the numbering is then something the
+   * editor has told you about rather than something you have to work out.
    */
   const reviewCard = createMemo(() => {
     wrapKey()
@@ -601,34 +603,34 @@ export function EditorPane(props: EditorPaneProps) {
     // screen leaves nowhere to hang it.
     if (lastRow < top || lastRow >= top + height - 1) return null
 
-    // Flush with the code's left edge, not indented into it: the gutter stays
-    // visible beside the card, but any column of code left uncovered shows a
-    // stray character or two through the gap and reads as a rendering fault.
-    const left = el.x - host.x
-    const width = Math.min(CARD_MAX, host.width - left - 1)
+    const width = host.width
     // Two columns of border and one of padding either side.
     const room = width - 4
     if (room < 12) return null
 
     const wrapped = wrapText(card.body.replaceAll(/\s+/g, ' ').trim(), room)
-    // What is left below the line, less the two border rows.
-    const space = top + height - (lastRow + 1) - 2
+    // What is left below the line, less the two border rows and the row that
+    // says what is behind the card.
+    const space = top + height - (lastRow + 1) - 3
     if (space < 1) return null
-    const shown =
-      wrapped.length <= space
+    const body =
+      wrapped.length <= Math.min(CARD_LINES, space)
         ? wrapped
         : [
             ...wrapped.slice(0, Math.min(CARD_LINES, space) - 1),
             `… ${wrapped.length - (Math.min(CARD_LINES, space) - 1)} more lines`,
           ]
+    // Border rows included: every row the box occupies is a row of code it hides.
+    const covers = body.length + 3
     return {
       /** Buffer row the card hangs from, as `displayReviews` keys its marks. */
       row,
       top: el.y - host.y + (lastRow + 1 - top),
-      left,
       width,
-      heading: cut(card.heading, room),
-      lines: shown.map(line => cut(line, room)),
+      // Spaces of its own: the border draws straight up to the title otherwise.
+      heading: cut(` ${REVIEW_GLYPH[card.draft ? 'draft' : 'fetched']} ${card.heading} `, room),
+      lines: body.map(line => cut(line, room)),
+      behind: `⋯ ${covers} line${covers === 1 ? '' : 's'} behind`,
       draft: card.draft,
     }
   })
@@ -2223,7 +2225,7 @@ export function EditorPane(props: EditorPaneProps) {
               <box
                 position="absolute"
                 top={card().top}
-                left={card().left}
+                left={0}
                 width={card().width}
                 zIndex={20}
                 flexDirection="column"
@@ -2238,6 +2240,9 @@ export function EditorPane(props: EditorPaneProps) {
                 <For each={card().lines}>
                   {line => <text fg={ui.text} bg={ui.panelBg} wrapMode="none" content={line} />}
                 </For>
+                {/* The gap the card leaves in the gutter's numbering, said out
+                    loud in the words a collapsed block uses. */}
+                <text fg={ui.faint} bg={ui.panelBg} wrapMode="none" content={card().behind} />
               </box>
             )}
           </Show>
