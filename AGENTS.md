@@ -31,9 +31,10 @@ hit beside its replacement, Enter applies one match, Ctrl+A applies everywhere b
 confirm naming true counts past the 200-row display cap, open buffers take the edit
 unsaved while closed files are written with their encoding kept, and the scan reads open
 dirty buffers instead of their disk copies so what is listed is what is replaced;
-the last file search outlives its panel — F3 / Shift+F3 walk its matches from the
+the last file search outlives its panel — F3 / Opt+F3 walk its matches from the
 cursor, wrapping, counting off in the status bar, seeded from the selection when
-nothing was searched yet),
+nothing was searched yet; Opt+F3 rather than the Shift+F3 other editors use, since
+that parses to the same chord and no terminal sends one that arrives as F3),
 command palette,
 themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, which vim mode
 overrides while it is on, since there the shape is what tells normal from insert),
