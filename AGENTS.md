@@ -232,8 +232,10 @@ server that serves it) or an *appearance* extension (themes and icon themes).
 What is compiled in: two themes (`dark` / `light`, the GitHub pair the defaults
 name), the `unicode` icon theme, every tree-sitter grammar wasm — and a
 *preinstalled* set of extension manifests, listed in `src/extensions/builtin.ts`:
-typescript (ts/tsx/js/jsx), json, markdown, html, css, yaml and toml. Those are
-the languages a first run has to highlight with no network.
+typescript (ts/tsx/js/jsx), json, markdown, html, css, yaml, toml and dotenv. Those
+are the languages a first run has to highlight with no network — dotenv among them
+because a `.env` is a file every project has and nobody thinks to install a language
+extension for.
 
 Everything else — Go, Rust, Python, the other twenty-odd languages with their
 servers, every palette beyond the GitHub pair, the Nerd Font icons — is a market
@@ -487,9 +489,9 @@ Highlight helpers live in `test/syntax.ts` instead — `parseHighlights()` and
 harness exists to encode:
 
 - **A test process starts with the preinstalled extensions and nothing else.**
-  `test/setup.ts` registers them, so typescript, json, markdown, html, css, yaml and
-  toml highlight as they do on a real first run. Anything else — Go, Python, tsrx,
-  dotenv, a market theme — needs `loadMarketExtensions()` at the top of the file, which
+  `test/setup.ts` registers them, so typescript, json, markdown, html, css, yaml,
+  toml and dotenv highlight as they do on a real first run. Anything else — Go, Python,
+  tsrx, a market theme — needs `loadMarketExtensions()` at the top of the file, which
   reads this repository’s `extensions/` folder as an extensions folder. A test that asserts
   on a *missing* extension (the market’s install offer) must not call it.
 

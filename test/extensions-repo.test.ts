@@ -45,11 +45,10 @@ test('no two extensions claim the same id', () => {
     ...market.flatMap(extension => extension.servers.map(server => `server:${server.id}`)),
     // Two extensions claiming one language would make which of them highlights it
     // depend on load order, which is a folder listing — not a decision anyone
-    // made. The same goes for the server that language spawns.
+    // made. Filetypes are deliberately not held to that: several servers may
+    // claim one, and every one of them is spawned — eslint and oxlint both lint
+    // the TypeScript that typescript's own server is already serving.
     ...market.flatMap(extension => extension.languages.map(language => `lang:${language.id}`)),
-    ...market.flatMap(extension =>
-      extension.servers.flatMap(server => `serves:${server.filetypes}`),
-    ),
   ]
   expect(new Set(claimed).size).toBe(claimed.length)
 })
@@ -89,7 +88,15 @@ test('what ships in the binary is the market folder, and needs no files beside i
   }
   // The languages a first run has to highlight without any network at all.
   const languages = new Set(shipped.flatMap(extension => extension.languages.map(l => l.id)))
-  for (const id of ['typescript', 'javascript', 'typescriptreact', 'json', 'markdown', 'css']) {
+  for (const id of [
+    'typescript',
+    'javascript',
+    'typescriptreact',
+    'json',
+    'markdown',
+    'css',
+    'dotenv',
+  ]) {
     expect(`${id}:${languages.has(id)}`).toBe(`${id}:true`)
   }
 })
