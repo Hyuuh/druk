@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -277,6 +277,54 @@ describe('installed servers', () => {
     // the list exists for are run by.
     expect(availablePackageManagers(root)).toEqual(['bun'])
   })
+
+  test('installing a second server keeps the first', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    // Local directories, so npm resolves them without a registry — the point of
+    // the test is what npm does to the tree it finds, not where it got it.
+    const fake = (name: string) => {
+      const dir = join(mkdtempSync(join(tmpdir(), 'druk-fake-pkg-')), name)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({ name, version: '1.0.0', bin: { [name]: 'cli.js' } }),
+      )
+      writeFileSync(join(dir, 'cli.js'), '#!/usr/bin/env node\n')
+      return dir
+    }
+
+    expect(await installServer([fake('druk-fake-a')], root)).toBeNull()
+    expect(installedCommand(['druk-fake-a'], root)).not.toBeNull()
+    // npm prunes whatever the prefix's package.json does not claim, so without
+    // one this install deletes the server above — and druk offers it again on
+    // the next launch, forever.
+    expect(await installServer([fake('druk-fake-b')], root)).toBeNull()
+    expect(installedCommand(['druk-fake-a'], root)).not.toBeNull()
+    expect(installedCommand(['druk-fake-b'], root)).not.toBeNull()
+  }, 60_000)
+
+  test('a prefix filled before the manifest existed is described, not pruned', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
+    const pkg = join(root, 'node_modules', 'typescript-language-server')
+    mkdirSync(pkg, { recursive: true })
+    writeFileSync(
+      join(pkg, 'package.json'),
+      JSON.stringify({ name: 'typescript-language-server', version: '4.3.3' }),
+    )
+    mkdirSync(join(root, 'node_modules', '.bin'), { recursive: true })
+
+    const path = process.env.PATH
+    process.env.PATH = ''
+    try {
+      // The manifest is written before the manager runs, so npm going missing
+      // costs the install and not the repair.
+      await installServer(['druk-no-such-package'], root)
+    } finally {
+      process.env.PATH = path
+    }
+    const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(manifest.dependencies).toEqual({ 'typescript-language-server': '4.3.3' })
+  }, 20_000)
 
   test('an install with no npm to run it fails instead of hanging', async () => {
     const root = mkdtempSync(join(tmpdir(), 'druk-lsp-root-'))
