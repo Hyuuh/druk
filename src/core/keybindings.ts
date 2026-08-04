@@ -157,7 +157,7 @@ export const chordId = (chord: Chord): string =>
  * The second modifier as the terminal reports it: meta on Terminal.app, option on
  * iTerm2, and shift for the letters where Ctrl+Shift and Ctrl are the same byte.
  */
-const secondary = (key: KeyEvent) => Boolean(key.option || key.meta || key.shift)
+export const secondary = (key: KeyEvent) => Boolean(key.option || key.meta || key.shift)
 
 export function matchesChord(chord: Chord, key: KeyEvent): boolean {
   // Enter reports under either name depending on the terminal; one chord covers both.

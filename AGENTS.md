@@ -14,6 +14,11 @@ Features: file tree with bulk file operations and opt-in hiding of dotfiles and
 git-ignored files, a `▴` in the sidebar header that shuts every folder at once
 (palette → View → Collapse folders in sidebar, which folds whichever of the two
 sidebar views is up, and the button is drawn only while there is something to fold),
+copy the path of a file to the system clipboard (`Ctrl+Opt+C`, palette → File → Copy
+path / Copy relative path — whichever file the tree's cursor is on while the tree has
+the keyboard, and the open file otherwise; sent over OSC 52 as well as to `pbcopy`/
+`wl-copy`, so it reaches the clipboard of the terminal an SSH session is really on,
+and a path outside the project has no relative form so it copies absolute and says so),
 preview/pinned tabs, a quick look at the row under the tree's cursor that opens no
 tab at all (Space in the tree, palette → View → Preview file — the file over the
 editor slot, syntax-coloured, following the cursor as ↑↓ walks the tree and paging
@@ -25,14 +30,23 @@ file picker both skip git-ignored paths, whatever the tree's `respectGitignore` 
 a build directory or an agent's worktree checkout is never a result; the panel previews
 the selected hit in its file, syntax-coloured and with the hit picked out, over as many
 lines either side as the terminal has room for, and folds a file behind its heading with
-Tab or every file at once with Shift+Tab, which turns the results into a list of files),
+Tab or every file at once with Shift+Tab, which turns the results into a list of files;
+palette → Find → Replace in project adds a replace field to that panel — rows preview the
+hit beside its replacement, Enter applies one match, Ctrl+A applies everywhere behind a
+confirm naming true counts past the 200-row display cap, open buffers take the edit
+unsaved while closed files are written with their encoding kept, and the scan reads open
+dirty buffers instead of their disk copies so what is listed is what is replaced;
+the last file search outlives its panel — Ctrl+F reopens carrying the query it was
+last given, on the row it was last left on, with the text selected so the first
+keystroke replaces it; a selection wins over the remembered query, being this
+moment's intent against the last one's, and brings no row back with it),
 command palette,
 themes, vim mode, a caret shape (`cursorStyle` — block, line or underline, which vim mode
 overrides while it is on, since there the shape is what tells normal from insert),
 word wrap on by default with a toggle (`wrap`, palette → View → Toggle word wrap —
 off, a long line's tail is reached by moving the cursor into it, since OpenTUI
 scrolls sideways only with the caret),
-code folding (`Ctrl+Opt+C` / `Ctrl+Opt+E`, palette → Editor → Fold / Unfold block at
+code folding (`Ctrl+Opt+S` / `Ctrl+Opt+E`, palette → Editor → Fold / Unfold block at
 cursor, and fold/unfold everything: blocks come from indentation rather than from the
 grammar, so they work for the languages druk paints with `patterns` and no tree at
 all; a `▾` sits between the line number and the code of every foldable block and
@@ -112,13 +126,21 @@ version *picks the server*: 7.x is the Go port, which ships no `tsserver.js` for
 typescript-language-server to drive and speaks LSP itself, so a 7 project is
 served by `tsc --lsp --stdio` and a 5/6 project by typescript-language-server; a
 server that is not on PATH and has an npm package offers to install
-itself — a confirm prompt, never a silent fetch, into `$XDG_DATA_HOME/druk/lsp`
-rather than a global prefix, gated by `lspAutoInstall`; one that ships a
+itself — a prompt, never a silent fetch, naming the package managers on PATH so
+the fetch goes through whichever of npm, bun or pnpm the user keeps (not yarn:
+Berry resolves through Plug'n'Play and writes no `node_modules` for druk to find
+the binary in), into `$XDG_DATA_HOME/druk/lsp`
+rather than a global prefix, gated by `lspAutoInstall`; the answer is asked for
+once and recorded in the prefix, since a `node_modules` written half by one
+manager and half by another is a tree neither can take apart, and node has to be
+there whatever fetched them, the servers being `#!/usr/bin/env node` scripts;
+one that ships a
 release binary instead (elixir's expert) is fetched the same way; and the
 servers that come with a language toolchain print their install line instead; `typescriptTsdk`
 picks which TypeScript typescript-language-server drives, empty leaving it to the
 server — which prefers the open project's own copy; the servers restart on
-demand, palette → Problems → Restart language servers, and by themselves once a
+demand, palette → Problems → Restart language servers, once an installed
+extension brings servers of its own, and by themselves once a
 dependency directory settles after an install, since druk registers no watched
 files and a server otherwise resolves imports against the `node_modules` it saw
 at startup forever), a language-server status page (palette →
@@ -198,7 +220,8 @@ catalog is reported in the status bar at startup, a file whose language no
 installed extension serves offers the extension that does, and a config naming a theme
 nothing registers is offered its extension back (`extensionUpdates` turns the whole of
 that off, `extensionRegistry` points it at a fork),
-file watching with conflict prompts,
+file watching with conflict prompts, a save-all palette command (every unsaved tab
+through the same clash-safe path the blur autosave uses, skips and failures named),
 per-project session restore, and a startup update check.
 
 **Everything extensible is an extension now, and most of them live in `extensions/`.**

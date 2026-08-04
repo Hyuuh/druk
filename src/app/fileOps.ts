@@ -1,8 +1,9 @@
-import { basename, dirname, join, relative } from 'node:path'
+import { basename, dirname, join, relative, sep } from 'node:path'
 
 import { createSignal } from 'solid-js'
 
 import { copyAll, moveAll, removeAll } from '../core/bulk'
+import { copyToClipboard } from '../core/clipboard'
 import { exists, freePath, rename } from '../core/fs'
 import type { Status } from './status'
 import type { Tree } from './tree'
@@ -14,8 +15,9 @@ export function createFileOps(deps: {
   status: Status
   tree: Tree
   workspace: Workspace
+  renderer: { copyToClipboardOSC52: (text: string) => void }
 }) {
-  const { rootDir, status, tree, workspace } = deps
+  const { rootDir, status, tree, workspace, renderer } = deps
   const { say, setBusy, whileFree } = status
 
   /**
@@ -180,6 +182,29 @@ export function createFileOps(deps: {
     else copyAllInto(from, tree.targetDir())
   }
 
+  /**
+   * Put a file's own path on the system clipboard — the string, not the file, so
+   * this shares nothing with the `x`/`c`/`p` clipboard above. A path outside the
+   * project has no relative form worth pasting (`../../..` to somewhere the reader
+   * cannot see), so `relative` falls back to the absolute path and says so.
+   */
+  const copyPath = (path: string, kind: 'absolute' | 'relative') => {
+    const rel = relative(rootDir, path)
+    // The separator matters: a file the project really holds may be named `..rc`,
+    // and a bare `startsWith('..')` would call it outside and copy it absolute.
+    const outside = rel === '..' || rel.startsWith(`..${sep}`)
+    const text = kind === 'relative' && !outside ? rel : path
+
+    copyToClipboard(text)
+    // Both routes, as the editor's Ctrl+C does, and the return value is ignored for
+    // the same reason: the subprocess reaches this machine's clipboard, the escape
+    // sequence reaches the terminal's own — which over SSH is the one the user is
+    // sitting at, and is the one that worked when no pbcopy/xclip exists here.
+    renderer.copyToClipboardOSC52(text)
+    if (kind === 'relative' && outside) return say(`Copied ${text} — outside the project`, 'warn')
+    say(`Copied ${text}`)
+  }
+
   /** Esc: drop what `x` or `c` took, so `p` no longer fires. */
   const cancelTake = () => {
     const cancelled = clipboard().mode === 'cut' ? 'Move' : 'Copy'
@@ -230,6 +255,7 @@ export function createFileOps(deps: {
     moveAllInto,
     copyAllInto,
     takeForPaste,
+    copyPath,
     paste,
     cancelTake,
     deleteTargets,

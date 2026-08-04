@@ -40,14 +40,18 @@ export const BINDABLE: Bindable[] = [
   { id: 'peek', label: 'Peek at every key', defaults: ['Ctrl+K'] },
   { id: 'open', label: 'Open file…', defaults: ['Ctrl+P', 'Ctrl+O'] },
   { id: 'save', label: 'Save file', defaults: ['Ctrl+S'] },
+  { id: 'file.saveAll', label: 'Save all', defaults: [] },
   { id: 'goto', label: 'Go to line…', defaults: ['Ctrl+G'] },
   { id: 'goto.definition', label: 'Go to definition', defaults: ['F12'] },
   { id: 'goto.file', label: 'Open file under cursor', defaults: [`Ctrl+${ALT}+O`] },
   { id: 'find.file', label: 'Find in current file', defaults: ['Ctrl+F'] },
   { id: 'find.project', label: 'Find in project', defaults: ['Ctrl+R'], also: [`Ctrl+${ALT}+F`] },
   { id: 'find.replace', label: 'Replace in current file', defaults: [] },
+  { id: 'find.replaceProject', label: 'Replace in project', defaults: [] },
   { id: 'file.new', label: 'New file', defaults: ['Ctrl+N'] },
   { id: 'file.newDir', label: 'New folder', defaults: [`Ctrl+${ALT}+N`] },
+  { id: 'file.copyPath', label: 'Copy path', defaults: [`Ctrl+${ALT}+C`] },
+  { id: 'file.copyRelativePath', label: 'Copy relative path', defaults: [] },
   { id: 'tabs.close', label: 'Close tab', defaults: ['Ctrl+W'] },
   { id: 'tabs.reopen', label: 'Reopen closed tab', defaults: [`Ctrl+${ALT}+T`] },
   { id: 'tabs.switch', label: 'Switch to open tab', defaults: ['Ctrl+T'], also: ['Ctrl+↑'] },
@@ -74,9 +78,10 @@ export const BINDABLE: Bindable[] = [
   { id: 'nav.forward', label: 'Go forward', defaults: [`Ctrl+${ALT}+Y`] },
   { id: 'tabs.closeOthers', label: 'Close other tabs', defaults: [] },
   { id: 'tabs.closeAll', label: 'Close all tabs', defaults: [] },
-  // Collapse and expand, since the bracket pair every GUI editor uses for this
-  // is Ctrl+Shift+[ / ] — a shifted Ctrl chord no terminal can deliver.
-  { id: 'editor.fold', label: 'Fold block at cursor', defaults: [`Ctrl+${ALT}+C`] },
+  // Shrink and expand, since the bracket pair every GUI editor uses for this is
+  // Ctrl+Shift+[ / ] — a shifted Ctrl chord no terminal can deliver, and Ctrl+[
+  // is the Escape byte anyway. C, the other obvious letter, is Copy path.
+  { id: 'editor.fold', label: 'Fold block at cursor', defaults: [`Ctrl+${ALT}+S`] },
   { id: 'editor.unfold', label: 'Unfold block at cursor', defaults: [`Ctrl+${ALT}+E`] },
   { id: 'editor.foldAll', label: 'Fold everything', defaults: [] },
   { id: 'editor.unfoldAll', label: 'Unfold everything', defaults: [] },

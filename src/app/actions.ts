@@ -52,6 +52,22 @@ export function createCommands(ctx: AppContext) {
   }
 
   /**
+   * "This file" for the copy-path commands: the row the tree's cursor is on while
+   * the tree has the keyboard, and the open file otherwise — either standing in for
+   * the other when it is empty, so the palette answers with something wherever it
+   * was opened from. The git and extensions panels borrow the tree's focus slot but
+   * have no file under the cursor, hence the view check.
+   */
+  const withCopyTarget = (run: (path: string) => void) => {
+    const onTree = panes.focus() === 'tree' && panes.view() === 'files'
+    const path = onTree
+      ? (tree.selectedPath() ?? workspace.activePath())
+      : (workspace.activePath() ?? tree.selectedPath())
+    if (path) run(path)
+    else say('No file to copy the path of', 'warn')
+  }
+
+  /**
    * Both texts of one file's diff. The new side prefers the open buffer over the
    * disk, so unsaved edits show — that is the diff the user is looking at. Null
    * for a file that cannot be read (binary), which the callers skip.
@@ -175,6 +191,7 @@ export function createCommands(ctx: AppContext) {
 
   const actions = {
     save: workspace.saveActive,
+    saveAll: workspace.saveAll,
     openFile: () => ctx.overlays.setPicker('files'),
     switchTab: () => ctx.overlays.setPicker('tabs'),
     closeOthers: () => {
@@ -222,6 +239,7 @@ export function createCommands(ctx: AppContext) {
     findInFile: () => ctx.overlays.setSearch({ scope: 'file' }),
     findInProject: () => ctx.overlays.setSearch({ scope: 'project' }),
     replaceInFile: () => ctx.overlays.setSearch({ scope: 'file', replacing: true }),
+    replaceInProject: () => ctx.overlays.setSearch({ scope: 'project', replacing: true }),
     newFile: () => ctx.prompts.setPrompt({ kind: 'newFile', dir: tree.targetDir() }),
     newFolder: () => ctx.prompts.setPrompt({ kind: 'newFolder', dir: tree.targetDir() }),
     rename: withNode(n => ctx.prompts.setPrompt({ kind: 'rename', target: n.path })),
@@ -232,6 +250,8 @@ export function createCommands(ctx: AppContext) {
     },
     cutForMove: () => fileOps.takeForPaste('cut'),
     copyForPaste: () => fileOps.takeForPaste('copy'),
+    copyPath: () => withCopyTarget(path => fileOps.copyPath(path, 'absolute')),
+    copyRelativePath: () => withCopyTarget(path => fileOps.copyPath(path, 'relative')),
     paste: fileOps.paste,
     closeTab: () => void (workspace.activePath() && workspace.closeTab(workspace.activePath()!)),
     reopenTab: workspace.reopenTab,

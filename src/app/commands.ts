@@ -30,6 +30,7 @@ export interface Command {
 
 export interface CommandActions {
   save: () => void
+  saveAll: () => void
   openFile: () => void
   switchTab: () => void
   closeOthers: () => void
@@ -42,11 +43,14 @@ export interface CommandActions {
   findInFile: () => void
   findInProject: () => void
   replaceInFile: () => void
+  replaceInProject: () => void
   newFile: () => void
   newFolder: () => void
   rename: () => void
   cutForMove: () => void
   copyForPaste: () => void
+  copyPath: () => void
+  copyRelativePath: () => void
   paste: () => void
   remove: () => void
   closeTab: () => void
@@ -144,18 +148,35 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           hint: 'Ctrl+F then Tab',
           run: actions.replaceInFile,
         },
+        {
+          id: 'find.replaceProject',
+          label: 'Replace in project',
+          run: actions.replaceInProject,
+        },
       ],
     },
     {
       id: 'file',
       label: 'File',
       children: [
+        { id: 'file.saveAll', label: 'Save all', run: actions.saveAll },
         { id: 'file.new', label: 'New file', hint: 'Ctrl+N', run: actions.newFile },
         { id: 'file.newDir', label: 'New folder', hint: `Ctrl+${ALT}+N`, run: actions.newFolder },
         { id: 'file.rename', label: 'Rename…', hint: 'r', run: actions.rename },
         { id: 'file.cut', label: 'Cut for moving', hint: 'x', run: actions.cutForMove },
         { id: 'file.copy', label: 'Copy', hint: 'c', run: actions.copyForPaste },
         { id: 'file.paste', label: 'Paste here', hint: 'p', run: actions.paste },
+        {
+          id: 'file.copyPath',
+          label: 'Copy path',
+          hint: `Ctrl+${ALT}+C`,
+          run: actions.copyPath,
+        },
+        {
+          id: 'file.copyRelativePath',
+          label: 'Copy relative path',
+          run: actions.copyRelativePath,
+        },
         { id: 'file.delete', label: 'Delete…', hint: 'd', run: actions.remove },
       ],
     },
@@ -393,7 +414,7 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
         {
           id: 'editor.fold',
           label: 'Fold block at cursor',
-          hint: `Ctrl+${ALT}+C`,
+          hint: `Ctrl+${ALT}+S`,
           run: () => actions.foldOp('fold'),
         },
         {

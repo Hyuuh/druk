@@ -76,7 +76,8 @@ status bar with the branch, unsaved state and cursor position.
   the palette has it as *View → Collapse folders in sidebar*.
 - Opening a file from the tree previews it: the tab is *italic* and the next file you
   open takes its place. Double-click it, or start editing, and the tab stays for good.
-- `Ctrl+S` saves. Closing a tab with unsaved edits asks first.
+- `Ctrl+S` saves; *File → Save all* in the palette writes every unsaved tab at once.
+  Closing a tab with unsaved edits asks first.
 - `F1` (or `Ctrl+Shift+P` where the terminal can send it) opens the command palette —
   every feature is in there, and typing filters it, so you never have to remember a
   shortcut. `F1` → `Keyboard shortcuts` shows them all.
@@ -109,6 +110,7 @@ status bar with the branch, unsaved state and cursor position.
 | `Opt+Shift+↑` / `↓` | Duplicate line or selection |
 | `Ctrl+Opt+T` | Reopen closed tab |
 | `Ctrl+Opt+←` / `→` | Previous / next tab |
+| `Ctrl+Opt+C` | Copy the path of this file (relative form in the palette) |
 | `Ctrl+Opt+G` | Source control panel (commit / push) |
 | `Ctrl+Opt+M` | Markdown: rendered / source |
 
@@ -156,6 +158,21 @@ the file you are on, so one file with forty hits stops burying the rest.
 
 In file search, `Tab` opens the replace field instead: `Enter` replaces the selected match,
 `Ctrl+A` replaces every match in the file.
+
+The search outlives the panel. `Ctrl+F` reopens carrying the query you last gave it, on
+the match you were last on — so closing the panel to look at the file and opening it again
+costs nothing. The text arrives selected, so typing replaces it and a fresh search is no
+slower than it was. With text selected in the editor, that wins instead: it is what you
+mean now rather than what you meant last time.
+
+The whole project replaces too: *Find → Replace in project* in the palette opens the
+project search with the replace field showing, and every row previews the hit beside what
+would replace it. `Enter` applies the selected match; `Ctrl+A` asks first — the confirm
+names the real match and file counts, beyond the 200 rows the panel shows — then applies
+everywhere. Open files take the edit in their buffer (the tab goes unsaved, and the active
+file can undo it); closed files are written straight to disk, keeping their line endings.
+With the replace field up, `Tab` moves between the two boxes; plain project search keeps
+`Tab` for folding.
 
 `Ctrl+C`, `Ctrl+W` and `Ctrl+R` toggle case-sensitive, whole-word and regex matching
 while the search is open; the active ones are shown beside the match count.

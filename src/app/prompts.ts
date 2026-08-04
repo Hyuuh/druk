@@ -115,6 +115,19 @@ export function createPromptHandlers(deps: {
     }
   }
 
+  /**
+   * Install a missing server with the manager picked from the choice modal.
+   * Takes the id as the string the modal deals in and narrows it here, so the
+   * row a `ChoiceModal` hands back needs no cast on the way through.
+   */
+  const chooseInstallServer = (manager: string) => {
+    const p = prompt()
+    setPrompt(null)
+    if (p?.kind !== 'installServer') return
+    const chosen = p.managers.find(candidate => candidate === manager)
+    if (chosen) void lsp.install(p.id, p.name, p.install, chosen)
+  }
+
   /** Carry out whatever the open confirm prompt was asking about. */
   const confirmPrompt = () => {
     const p = prompt()
@@ -142,8 +155,12 @@ export function createPromptHandlers(deps: {
           touchesTree: true,
           done: () => `Pulled and pushed ${p.branch}`,
         })
+      case 'replaceProject':
+        return workspace.applyProjectReplace(p.paths, p.query, p.replacement, p.options)
+      // An npm server is answered by the manager choice instead, and never
+      // reaches this modal — `confirmation` returns null for it.
       case 'installServer':
-        return void lsp.install(p.id, p.name, p.install)
+        return p.install.kind === 'download' ? void lsp.install(p.id, p.name, p.install) : undefined
       case 'uninstallServer':
         return void lsp.uninstall(p.id)
       case 'installExtension':
@@ -153,6 +170,8 @@ export function createPromptHandlers(deps: {
         // and `lsp.uninstall` reads the spec it is about out of that registry —
         // after the reload there is nothing left to tell it what to delete.
         return void (async () => {
+          // One at a time: the servers share one prefix, and two runs of a
+          // package manager writing that tree at once is one neither can read.
           for (const server of p.servers) await lsp.uninstall(server.id)
           market.remove(p.id)
         })()
@@ -227,6 +246,13 @@ export function createPromptHandlers(deps: {
           danger: true,
           message: `Unsaved edits in ${p.names.join(', ')} will be lost. Quit anyway?`,
         }
+      case 'replaceProject':
+        return {
+          title: 'Replace in project',
+          verb: 'replace',
+          danger: true,
+          message: `Replace ${p.matches} ${p.matches === 1 ? 'match' : 'matches'} in ${p.files} ${p.files === 1 ? 'file' : 'files'}${p.flags}? Closed files are written straight to disk.`,
+        }
       case 'undoCommit':
         return {
           title: 'Undo last commit',
@@ -277,16 +303,12 @@ export function createPromptHandlers(deps: {
               : `Delete ${p.name}? Its folder in the extensions directory goes with it.`,
         }
       case 'installServer':
+        if (p.install.kind !== 'download') return null
         return {
           title: 'Language server missing',
-          verb: 'install it',
+          verb: 'download it',
           danger: false,
-          // Where it lands is the part worth showing: nothing global is touched,
-          // and deleting that one directory undoes the whole thing.
-          message:
-            p.install.kind === 'npm'
-              ? `${p.name} is not installed. Fetch it with npm into ${SERVER_ROOT}?`
-              : `${p.name} is not installed. Download it into ${SERVER_ROOT}?`,
+          message: `${p.name} is not installed. Download it into ${SERVER_ROOT}?`,
         }
       case 'installExtension':
         return {
@@ -313,6 +335,7 @@ export function createPromptHandlers(deps: {
     quit,
     submitPrompt,
     confirmPrompt,
+    chooseInstallServer,
     cancelPrompt,
     promptTitle,
     promptValue,

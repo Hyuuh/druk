@@ -100,7 +100,7 @@ export const KEYS: KeyInfo[] = [
   { key: 'Shift+Tab', label: 'Outdent', section: 'Editing', where: 'editor' },
   { key: 'Ctrl+Space', label: 'Autocomplete (Tab accepts)', section: 'Editing', where: 'editor' },
   {
-    key: `Ctrl+${ALT}+C / E`,
+    key: `Ctrl+${ALT}+S / E`,
     label: 'Fold / unfold block at cursor',
     section: 'Editing',
     where: 'editor',
@@ -142,6 +142,13 @@ export const KEYS: KeyInfo[] = [
     section: 'Files & tabs',
     where: 'all',
     ids: ['file.newDir'],
+  },
+  {
+    key: `Ctrl+${ALT}+C`,
+    label: 'Copy path of this file',
+    section: 'Files & tabs',
+    where: 'all',
+    ids: ['file.copyPath'],
   },
   { key: 'Ctrl+W', label: 'Close tab', section: 'Files & tabs', where: 'all', ids: ['tabs.close'] },
   {
