@@ -18,6 +18,7 @@
  * globbed from the folder.
  */
 import cssManifest from '../../extensions/css/extension.json'
+import dotenvManifest from '../../extensions/dotenv/extension.json'
 import htmlManifest from '../../extensions/html/extension.json'
 import jsonManifest from '../../extensions/json/extension.json'
 import markdownManifest from '../../extensions/markdown/extension.json'
@@ -35,6 +36,7 @@ const MANIFESTS: unknown[] = [
   cssManifest,
   yamlManifest,
   tomlManifest,
+  dotenvManifest,
 ]
 
 /** Where a built-in says it came from, since there is no file to point at. */
