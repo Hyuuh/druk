@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { fillerBg } from '../src/ui/DiffView'
 import {
   launch,
   openDiff,
@@ -20,6 +21,16 @@ interface Span {
   text: string
   fg: unknown
 }
+
+interface Frame {
+  lines: { spans: { text: string; bg?: { buffer: Record<string, number> } }[] }[]
+}
+
+const rgbOf = (color: { buffer: Record<string, number> }) =>
+  [0, 1, 2].map(i => color.buffer[String(i)]).join(',')
+
+const hexToRgb = (hex: string) =>
+  [1, 3, 5].map(i => Number.parseInt(hex.slice(i, i + 2), 16)).join(',')
 
 /** A real repository with committed files. */
 function repo(files: Record<string, string>) {
@@ -120,6 +131,42 @@ test('Tab into the diff, then Tab switches to side-by-side and back', async () =
 
   await press(t, i => i.pressTab())
   expect(t.captureCharFrame()).not.toContain('side-by-side')
+})
+
+test('an added file stays inline in split view — there is no side to compare', async () => {
+  const dir = repo({ 'a.ts': 'alpha\n' })
+  writeFileSync(join(dir, 'b.ts'), 'one\ntwo\n')
+
+  const t = await launch(dir, { diffView: 'split' }, { width: 130 })
+  await openDiff(t)
+  await untilFrame(t, '+ two')
+
+  const frame = t.captureCharFrame()
+  expect(frame).toContain('inline')
+  expect(frame).not.toContain('side-by-side')
+  // Nothing to toggle, so Tab is dead here rather than flipping the setting.
+  expect(frame).not.toContain('Tab layout')
+
+  await press(t, i => i.pressTab())
+  await press(t, i => i.pressTab())
+  expect(t.captureCharFrame()).not.toContain('side-by-side')
+})
+
+test('split view fills the rows it pads a side with', async () => {
+  // One line becomes three: the left pane is padded with two rows the patch has
+  // nothing for, and those are what must not read as blank editor.
+  const dir = repo({ 'a.ts': 'one\ntwo\nthree\n' })
+  writeFileSync(join(dir, 'a.ts'), 'one\nTWO\nthree\nfour\nfive\n')
+
+  const t = await launch(dir, { diffView: 'split' }, { width: 130 })
+  await openDiff(t)
+  await untilFrame(t, '+ five')
+
+  const fill = hexToRgb(fillerBg())
+  const filled = (t.captureSpans() as unknown as Frame).lines.filter(line =>
+    line.spans.some(span => span.bg && rgbOf(span.bg) === fill),
+  )
+  expect(filled.length).toBeGreaterThanOrEqual(2)
 })
 
 test('the panel cursor pages the diff: ↓ to the next change, ↑ back', async () => {

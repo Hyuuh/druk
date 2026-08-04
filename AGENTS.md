@@ -53,7 +53,10 @@ and palette commands for commit/undo/stash/push/fetch/pull — a push origin
 rejects offers to merge origin in and push again, VS Code's prompt, rather than
 naming the two commands and stopping — and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
-side-by-side) for whichever change the panel's cursor is on — the arrows page through
+side-by-side — an added or deleted file is inline whatever `diffView` says, having no
+second side to put beside it, and the rows split view pads a side with are filled
+rather than left reading as blank editor) for whichever change the panel's cursor is
+on — the arrows page through
 them, the panel is the only way in, and the diff is a tab of its own in the strip
 (`⇄ name`), so opening a file switches away from it instead of leaving it on top — a
 comparison base that points marks, gutter, panel and diff at another branch instead of
