@@ -10,6 +10,7 @@ import type { Navigation } from './navigation'
 import type { Overlays } from './Overlays'
 import type { Panes } from './panes'
 import type { PromptHandlers, PromptState } from './prompts'
+import type { Review } from './review'
 import type { Settings } from './settings'
 import type { Status } from './status'
 import type { Tree } from './tree'
@@ -30,6 +31,7 @@ export interface AppContext {
   lsp: Lsp
   market: Market
   extensions: ExtensionsPanel
+  review: Review
   branches: Branches
   comparison: Comparison
   workspace: Workspace

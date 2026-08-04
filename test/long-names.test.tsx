@@ -140,3 +140,33 @@ test('the comparison header keeps its rows beside a long branch', async () => {
   expect(frame).toContain('base  main')
   expect(frame).toContain('[Files]  Commits')
 }, 30000)
+
+test('the review panel gives a long note and a deep path one row each', async () => {
+  const dir = fixture({
+    'src/features/authentication/session/refresh-token-rotation.ts': 'const a = 1\n',
+  })
+  const t = await launch(dir, {}, { width: 100, height: 30 })
+  await runCommand(t, 'Open file…')
+  await press(t, input => void input.typeText('refresh-token'))
+  await press(t, input => input.pressEnter())
+
+  await runCommand(t, 'Note this line as issue')
+  await press(
+    t,
+    input =>
+      void input.typeText(
+        'this rotation window is far too long a sentence to fit in a sidebar column and it ' +
+          'keeps going for a while yet',
+      ),
+  )
+  await press(t, input => input.pressEnter())
+  await runCommand(t, 'Review panel')
+  await untilFrame(t, 'ISSUE 1')
+
+  // One row for the note and one for the file heading it hangs under: a remark
+  // is prose at whatever length it was typed, and the path is four folders deep.
+  // The needle for the heading is the path's head, since the tab strip carries
+  // the file's name too and shortens it itself.
+  expect(rowsWith(t, 'ISSUE 1')).toBe(1)
+  expect(rowsWith(t, 'src/features')).toBe(1)
+}, 20000)

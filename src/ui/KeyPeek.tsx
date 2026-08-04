@@ -28,6 +28,7 @@ const SCOPE_LABELS: Record<KeyScope, string> = {
   tree: 'file tree',
   editor: 'editor',
   git: 'source control',
+  review: 'review',
   extensions: 'extensions',
 }
 

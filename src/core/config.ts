@@ -21,6 +21,8 @@ import { dirname, join } from 'node:path'
 import { isIconThemeName, NO_ICONS } from '../icons'
 import { isThemeName } from '../themes'
 import type { ThemeName } from '../themes'
+import { FORGE_KINDS } from './forge'
+import type { ForgeSetting } from './forge'
 import { MARKET_URL } from './market'
 import { DEFAULT_SCAN_DEPTH } from './repos'
 
@@ -150,6 +152,17 @@ export interface Config {
   showDotfiles: boolean
   /** Hide git-ignored files from the tree. Off by default for the same reason. */
   respectGitignore: boolean
+  /**
+   * Which forge the review panel asks for pull-request comments. `auto` reads
+   * it off the remote's host name, which places github.com, gitlab.com,
+   * bitbucket.org and codeberg.org — a self-hosted GitLab and a self-hosted
+   * Gitea are indistinguishable from the outside, so those have to say which.
+   */
+  reviewForge: ForgeSetting
+  /** Remote whose URL says where the pull request lives. */
+  reviewRemote: string
+  /** Draw a review note's text after the end of its line, as `lspInline` does. */
+  reviewInline: boolean
   /** Language servers: spawn one per language as matching files open. */
   lsp: boolean
   /** Draw the worst problem's message after the end of its line. */
@@ -228,6 +241,9 @@ export const DEFAULTS: Config = {
   gitScanDepth: DEFAULT_SCAN_DEPTH,
   showDotfiles: true,
   respectGitignore: false,
+  reviewForge: 'auto',
+  reviewRemote: 'origin',
+  reviewInline: true,
   lsp: true,
   lspInline: true,
   lspCompletion: true,
@@ -310,6 +326,11 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
     typeof raw === 'number' && raw >= 0 && raw <= 5 ? Math.floor(raw) : undefined,
   showDotfiles: bool,
   respectGitignore: bool,
+  reviewForge: among('auto', ...FORGE_KINDS),
+  // A remote name, so anything git would accept as one. Empty means the panel
+  // has nothing to ask, which is reported when the fetch runs.
+  reviewRemote: text,
+  reviewInline: bool,
   lsp: bool,
   lspInline: bool,
   lspCompletion: bool,

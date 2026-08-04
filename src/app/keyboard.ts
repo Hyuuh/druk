@@ -23,6 +23,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     git,
     comparison,
     extensions,
+    review,
     editorCovered,
   } = ctx
   const { config } = settings
@@ -78,7 +79,11 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'tabs.closeAll': actions.closeAll,
     'view.sidebar': panes.toggleSidebar,
     'view.git': panes.toggleGitView,
+    'view.review': panes.toggleReviewView,
     'view.extensions': panes.toggleExtensionsView,
+    'review.note': actions.reviewNote,
+    'review.fetch': actions.reviewFetch,
+    'review.copy': actions.reviewCopy,
     'view.collapse': actions.collapseSidebar,
     'view.markdown': workspace.toggleRendered,
     'view.wrap': actions.toggleWrap,
@@ -259,6 +264,48 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
       return
     }
 
+    // The review panel borrows the tree's focus slot, as the other two do.
+    if (panes.view() === 'review') {
+      switch (config.vim ? (vimNav[k] ?? k) : k) {
+        case 'tab':
+          if (key.shift) panes.showView('extensions')
+          else if (workspace.activePath() || workspace.diff()) panes.setFocus('editor')
+          break
+        case 'up':
+          review.move(-1)
+          break
+        case 'down':
+          review.move(1)
+          break
+        case 'right':
+          review.fold(false)
+          break
+        case 'left':
+          review.fold(true)
+          break
+        case 'return':
+        case 'enter':
+          actions.reviewActivate(review.cursor())
+          break
+        case 'backspace':
+        case 'delete':
+          review.remove()
+          break
+        case 'f':
+          actions.reviewFetch()
+          break
+        // Yank, as a copy from a list of things is spelled in every modal editor
+        // — and `c` is taken by the git panel's commit, which this sits beside.
+        case 'y':
+          actions.reviewCopy()
+          break
+        case 'escape':
+          panes.toggleReviewView()
+          break
+      }
+      return
+    }
+
     // The source-control panel borrows the tree's focus slot, so its keys replace
     // the tree's while it shows — or `d` would still offer to delete files.
     if (panes.view() === 'git') {
@@ -313,7 +360,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         case 'tab':
           // Shift+Tab walks the tab strip above the sidebar, the way it walks any
           // other one; plain Tab keeps handing the keyboard to the editor.
-          if (key.shift) panes.showView('extensions')
+          if (key.shift) panes.showView('review')
           else if (workspace.activePath() || workspace.diff()) panes.setFocus('editor')
           break
         case 'up':

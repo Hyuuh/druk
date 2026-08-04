@@ -70,7 +70,7 @@ test('the settings page shows the LSP rows and the master toggle flips', async (
   const dir = fixture({ 'a.ts': 'const a = 1\n' })
   // Tall enough for every section: the page windows its rows to what it can draw,
   // and the language-server rows are the last of them.
-  const t = await launch(dir, {}, { height: 40 })
+  const t = await launch(dir, {}, { height: 46 })
 
   await runCommand(t, 'Settings')
   await untilFrame(t, 'LSP diagnostics')

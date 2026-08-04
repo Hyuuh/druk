@@ -60,6 +60,18 @@ comparison base that points marks, gutter, panel and diff at another branch inst
 HEAD (palette → Git → Compare against branch…), branch comparison against the
 repository's default branch or any selected base (palette → Git → Compare branches, or
 `B` in the panel) with merge-base file scoping, a commit list and lazily loaded diffs,
+a review panel — the sidebar's fourth view (`Ctrl+Opt+R`, palette → Review) for reading
+code with an agent beside you: `Ctrl+Opt+A` drops a note on the line or selection under
+the cursor (issue / suggestion / question / note, each spelled out in the palette as
+well as behind the chooser), the notes show as `◆` in the gutter and after the line
+(`reviewInline`) and outlive the session in `review.json` beside the config, `f` in the
+panel fetches the open pull request's comments for the current branch — GitHub, GitLab,
+Gitea/Forgejo and Bitbucket Cloud, told apart by the remote's host, with `reviewForge`
+naming the one a self-hosted host cannot be guessed from and `reviewRemote` saying which
+remote to read; a token comes from `GITHUB_TOKEN` / `GITLAB_TOKEN` / `GITEA_TOKEN` /
+`BITBUCKET_TOKEN` or `DRUK_FORGE_TOKEN`, and a public repository needs none — and `y`
+copies drafts and comments together as one Markdown block ready to paste into a prompt
+(the export is the only way anything leaves: druk reads a forge and never writes to one),
 an image viewer (PNG/JPEG as half-block cells), a PDF viewer (page, zoom and pan controls
 rendered into terminal cells), a rendered view for markdown files (`Ctrl+Opt+M`, palette → View — OpenTUI's
 `<markdown>` renderable over the editor slot, per path so each tab keeps the view it
@@ -396,6 +408,8 @@ dependency rule, and recipes for the extension points:
 | row in the extensions panel | `src/app/extensionsPanel.ts` (the row model, the cursor, the fold state and what Enter does); `src/ui/ExtensionsPanel.tsx` draws whatever `rows()` returns and reports clicks, and the keys live in `src/app/keyboard.ts` beside the tree's and the git panel's |
 | sidebar view | `SidebarView` in `src/ui/SidebarTabs.tsx` (add a `short` initial — the strip falls back to those in a narrow sidebar), a branch in `App.tsx`'s sidebar, one in `keyboard.ts`'s pane switch, a `KeyScope` in `src/ui/keys.ts` with a `SCOPE_LABELS` entry in `KeyPeek.tsx`, and a `toggle…View` on `src/app/panes.ts` |
 | branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
+| forge (pull-request comments) | a `ForgeKind` in `src/core/forge.ts`: the host names it answers to in `kindForHost`, its API base in `apiBase`, the header its token goes in, and a `find…`/`…Comments` pair mapping its JSON onto `PullRequest` / `ForgeComment` — 0-based lines, because that is what the rest of druk counts in. A host no name places is an error naming `reviewForge`, never a guess. Everything is read-only: druk posts no comment and approves nothing |
+| review row or key | `src/app/review.ts` (the notes, the fetched comments, the rows and what Enter does); `ui/ReviewPanel.tsx` draws `rows()` and reports clicks, the keys sit in `keyboard.ts` beside the git panel's, and the export's Markdown shape is `reviewMarkdown` in `src/core/review.ts` |
 | git command | run it in `git.activeRepo()`, never in `rootDir` — the opened folder may hold several repositories and be none itself. A mutation goes through `gitOp`, which refuses when no repository is picked and *hands the chosen one to the callback*; a query asks `git.repoFor(path)` for the repository of the path it is about. Which repositories exist is `discoverRepos` (`src/core/repos.ts`), refreshed in `wireGitEffects` |
 
 Key handlers subscribe through `useKeys` (`src/ui/useKeys.ts`), never OpenTUI's

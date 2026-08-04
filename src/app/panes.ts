@@ -60,6 +60,12 @@ export function createPanes(tree: Tree, initialSidebar: boolean) {
     showView('extensions')
   }
 
+  /** Ctrl+Opt+R: the review notes and the pull request's comments, same in-and-out. */
+  const toggleReviewView = () => {
+    if (sidebar() && view() === 'review') return showView('files')
+    showView('review')
+  }
+
   /** Which keymap is live, for the peek strip: the other views have keys of their
    * own and show under the tree's focus. */
   const keyPane = (): KeyScope => {
@@ -77,6 +83,7 @@ export function createPanes(tree: Tree, initialSidebar: boolean) {
     showView,
     toggleGitView,
     toggleExtensionsView,
+    toggleReviewView,
     keyPane,
     gitCursor,
     setGitCursor,

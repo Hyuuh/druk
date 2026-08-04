@@ -29,10 +29,12 @@ import type { EditorBridge } from './editor'
 import type { Git } from './git'
 import type { Panes } from './panes'
 import type { PromptState } from './prompts'
+import { KIND_CHOICES } from './review'
 import type { Confirmation, Conflict, Prompt } from './types'
 import type { Workspace } from './workspace'
 
 type InstallServerPrompt = Extract<Prompt, { kind: 'installServer' }>
+type ReviewKindPrompt = Extract<Prompt, { kind: 'reviewKind' }>
 
 /** The active search toggles, named in the confirm so what runs is what was agreed to. */
 const searchFlags = (options: SearchOptions) => {
@@ -213,6 +215,11 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
     return ask?.kind === 'installServer' && ask.install.kind === 'npm' ? ask : null
   })
 
+  const reviewKind = createMemo<ReviewKindPrompt | null>(() => {
+    const ask = prompts.prompt()
+    return ask?.kind === 'reviewKind' ? ask : null
+  })
+
   return (
     <>
       <Show when={prompts.promptTitle()}>
@@ -232,6 +239,17 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
             message={`${ask().name} is not installed. Choose a package manager:`}
             choices={ask().managers.map(manager => ({ id: manager, label: manager }))}
             onPick={prompts.chooseInstallServer}
+            onCancel={prompts.cancelPrompt}
+          />
+        )}
+      </Show>
+      <Show when={reviewKind()}>
+        {(ask: () => ReviewKindPrompt) => (
+          <ChoiceModal
+            title="Review note"
+            message={`What kind of remark is this, on ${basename(ask().path)}:${ask().line + 1}?`}
+            choices={KIND_CHOICES}
+            onPick={prompts.chooseReviewKind}
             onCancel={prompts.cancelPrompt}
           />
         )}

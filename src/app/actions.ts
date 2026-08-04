@@ -19,6 +19,7 @@ import {
 } from '../core/git'
 import type { FileStatus } from '../core/git'
 import { pathTokenAt, resolveImportPath } from '../core/imports'
+import type { NoteKind } from '../core/review'
 import type { DiffFile } from '../ui/DiffView'
 import { buildCommands } from './commands'
 import type { Command } from './commands'
@@ -176,6 +177,22 @@ export function createCommands(ctx: AppContext) {
     return workspace.buffers[path]?.content.split('\n')[at.line] ?? ''
   }
 
+  /**
+   * The lines a review note would attach to: the editor's selection while there
+   * is one, else the line the caret is on. A note is about code, so there has to
+   * be a file open — the tree's selection is a filename, not a line.
+   */
+  const noteTarget = (run: (target: { path: string; line: number; endLine: number }) => void) => {
+    const path = workspace.activePath()
+    if (!path) return say('Open a file to note a line in it', 'warn')
+    const span = editor.selection()
+    const line = span ? span.from : editor.cursor().line
+    run({ path, line, endLine: span ? span.to : line })
+  }
+
+  /** Enter in the review panel: land on the line a remark is about. */
+  const openNote = (path: string, line: number) => openAt(path, line, 0)
+
   /** Jump to the neighbouring problem and read it out in the status bar. */
   const jumpProblem = (direction: 1 | -1) => {
     const path = workspace.activePath()
@@ -261,9 +278,13 @@ export function createCommands(ctx: AppContext) {
     navForward: ctx.navigation.forward,
     toggleFocus: () => (panes.focus() === 'tree' ? panes.setFocus('editor') : panes.focusTree()),
     toggleSidebar: panes.toggleSidebar,
-    // One command for the button both sidebar views carry: which of them is up
+    // One command for the button every sidebar view carries: which of them is up
     // is what "collapse everything" means.
-    collapseSidebar: () => (panes.view() === 'git' ? gitCollapseAll() : tree.collapseAll()),
+    collapseSidebar: () => {
+      if (panes.view() === 'git') return gitCollapseAll()
+      if (panes.view() === 'review') return ctx.review.collapseAll()
+      tree.collapseAll()
+    },
     gitCollapseAll,
     toggleGitView: panes.toggleGitView,
     toggleMarkdown: workspace.toggleRendered,
@@ -437,6 +458,19 @@ export function createCommands(ctx: AppContext) {
     gitRenameBranch: () => ctx.branches.open('rename'),
     gitDeleteBranch: () => ctx.branches.open('delete'),
     gitDeleteBranchForce: () => ctx.branches.open('deleteForce'),
+    openReview: panes.toggleReviewView,
+    reviewNote: () =>
+      noteTarget(target => ctx.prompts.setPrompt({ kind: 'reviewKind', ...target })),
+    reviewNoteOf: (kind: NoteKind) =>
+      noteTarget(target =>
+        ctx.prompts.setPrompt({ kind: 'reviewNote', ...target, noteKind: kind }),
+      ),
+    reviewFetch: ctx.review.fetchPullRequest,
+    reviewCopy: ctx.review.copyForAgent,
+    reviewClear: ctx.review.clear,
+    reviewMoveTo: (row: number) => ctx.review.moveTo(row),
+    reviewActivate: (row: number) => ctx.review.activate(row, openNote),
+    reviewCollapseAll: ctx.review.collapseAll,
     openExtensions: panes.toggleExtensionsView,
     reloadExtensions: ctx.extensions.reload,
     updateExtensions: ctx.extensions.updateAll,

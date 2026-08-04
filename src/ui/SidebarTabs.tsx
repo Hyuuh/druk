@@ -3,7 +3,7 @@ import { For } from 'solid-js'
 
 import { ui } from '../themes'
 
-export type SidebarView = 'files' | 'git' | 'extensions'
+export type SidebarView = 'files' | 'git' | 'review' | 'extensions'
 
 export interface SidebarTabsProps {
   view: SidebarView
@@ -17,12 +17,19 @@ export interface SidebarTabsProps {
 const TABS: { id: SidebarView; label: string; short: string }[] = [
   { id: 'files', label: 'Files', short: 'F' },
   { id: 'git', label: 'Git', short: 'G' },
+  { id: 'review', label: 'Rev', short: 'R' },
   { id: 'extensions', label: 'Ext', short: 'E' },
 ]
 
-/** A button costs its label plus a column of padding either side and one of gutter. */
-const stripWidth = (labels: string[]) =>
-  1 + labels.reduce((sum, label) => sum + label.length + 3, 0)
+/**
+ * A button costs its label, a column of gutter, and — unless the strip has run
+ * out of room — one of padding either side.
+ */
+const stripWidth = (labels: string[], padding: number) =>
+  1 + labels.reduce((sum, label) => sum + label.length + 1 + 2 * padding, 0)
+
+const NAMES = TABS.map(tab => tab.label)
+const INITIALS = TABS.map(tab => tab.short)
 
 /**
  * The sidebar's views as a row of buttons: the one on screen is the pressed
@@ -36,9 +43,14 @@ const stripWidth = (labels: string[]) =>
  * changes mid-way would move the divider the resize code and its tests look for.
  */
 export function SidebarTabs(props: SidebarTabsProps) {
-  // Initials beside a narrow sidebar, as the settings page's hints do it: the
-  // strip cannot wrap, and overflowing it paints the buttons over the editor.
-  const long = () => stripWidth(TABS.map(tab => tab.label)) <= props.width
+  // Initials beside a narrow sidebar, as the settings page's hints do it, and
+  // then initials with the padding dropped: the strip cannot wrap, and
+  // overflowing it paints the buttons over whatever is in the editor's slot.
+  // Both fallbacks are needed at four views — padded initials want 17 columns
+  // and a sidebar may be pinned to 15.
+  const long = () => stripWidth(NAMES, 1) <= props.width
+  const padded = () => long() || stripWidth(INITIALS, 1) <= props.width
+  const pad = () => (padded() ? 1 : 0)
   return (
     <box height={1} flexDirection="row" flexShrink={0} backgroundColor={ui.barBg}>
       <box width={1} flexShrink={0} backgroundColor={ui.barBg} />
@@ -56,8 +68,8 @@ export function SidebarTabs(props: SidebarTabsProps) {
                 flexDirection="row"
                 flexShrink={0}
                 backgroundColor={bg()}
-                paddingLeft={1}
-                paddingRight={1}
+                paddingLeft={pad()}
+                paddingRight={pad()}
                 onMouseDown={() => props.onSelect(tab.id)}
               >
                 <text

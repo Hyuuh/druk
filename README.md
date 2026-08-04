@@ -112,6 +112,8 @@ status bar with the branch, unsaved state and cursor position.
 | `Ctrl+Opt+←` / `→` | Previous / next tab |
 | `Ctrl+Opt+C` | Copy the path of this file (relative form in the palette) |
 | `Ctrl+Opt+G` | Source control panel (commit / push) |
+| `Ctrl+Opt+R` | Review panel (notes + pull-request comments) |
+| `Ctrl+Opt+A` | Note this line for a review |
 | `Ctrl+Opt+M` | Markdown: rendered / source |
 
 In the tree: `a` new file, `A` new folder, `r` rename, `d` delete, `x` cut, `c` copy,
@@ -207,6 +209,37 @@ switches branch, and `Esc` puts the file tree back. *Git → Diff current file* 
 palette opens the panel on the file you are editing; commit, pull, fetch, stash,
 undo-commit and the branch commands live beside it.
 
+## Review
+
+Reading a change with an AI agent beside you means copying paths, line numbers and
+snippets into a prompt. `Ctrl+Opt+A` does that part for you: it notes the line — or the
+selection — the cursor is on as an **issue**, **suggestion**, **question** or **note**,
+and the remark shows as `◆` in the gutter and after the line. Notes are per project and
+survive a restart.
+
+`Ctrl+Opt+R` opens the review panel beside the tree: every note under the file it is
+about, `Enter` jumps to the line, `Backspace` drops one. `f` fetches the comments on the
+pull request open for the current branch, which then read in the same list and beside the
+same lines. `y` copies the lot — your notes and the comments — as one Markdown block,
+ready to paste into an agent:
+
+```markdown
+I reviewed the diff and need you to address the following items:
+
+1. **[ISSUE]** `src/auth.ts:49`
+> ```typescript
+> const claims = decodeToken(token)
+> ```
+**Instruction:** Surface the timestamp when claims expire so the error has the context.
+```
+
+The pull request can be on **GitHub, GitLab, Gitea/Forgejo or Bitbucket Cloud** — druk
+reads the remote's URL to know which, self-hosted instances included. A private
+repository wants a token in `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`,
+`BITBUCKET_TOKEN` or `DRUK_FORGE_TOKEN`; a public one needs none. druk only ever *reads*
+a forge: nothing is posted, approved or resolved, and the clipboard is the only way
+anything leaves the editor.
+
 ## Settings
 
 Open the settings page from the palette (`F1` → `Settings`): one row per option,
@@ -231,6 +264,9 @@ instead of breaking startup.
 | `showDotfiles` | `true` | set `false` to hide dotfiles in the file tree |
 | `respectGitignore` | `false` | set `true` to hide git-ignored files in the file tree |
 | `diffView` | `"inline"` | `inline` or `split` — how the diff view lays out changes |
+| `reviewForge` | `"auto"` | where pull-request comments come from: read off the remote's host, or pin `github` / `gitlab` / `gitea` / `bitbucket` for a self-hosted one, whose name says nothing about which it runs |
+| `reviewRemote` | `"origin"` | which remote's URL says where the pull request lives |
+| `reviewInline` | `true` | set `false` to keep review notes out of the text and in the gutter and panel only |
 | `extensionUpdates` | `true` | check the extension market at startup: update notices, and the offer of an extension for a language or theme you are missing. `false` never contacts it |
 | `extensionRegistry` | druk's own | an https folder holding `index.json` and `<id>/extension.json` — point it at a fork if you keep your own market |
 

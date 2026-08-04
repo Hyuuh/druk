@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { launch, openDiff, openFile, press, runCommand, untilFrame } from './helpers'
+import { launch, openDiff, openFile, press, pressTimes, runCommand, untilFrame } from './helpers'
 import type { Harness } from './helpers'
 
 /** A repository with two committed, then modified, files. */
@@ -40,9 +40,8 @@ test('opening a file from the tree closes the diff — it is a tab, not a layer'
 
   // Back to the file tree, then open a file with the keyboard: the page used to
   // stay up over it, so the editor showed a diff of whatever was open before.
-  // Git → Ext → Files: the strip is a cycle, and the sidebar has three views.
-  await press(t, i => i.pressTab({ shift: true }))
-  await press(t, i => i.pressTab({ shift: true }))
+  // Git → Rev → Ext → Files: the strip is a cycle over the sidebar's views.
+  await pressTimes(t, 3, i => i.pressTab({ shift: true }))
   await press(t, i => i.pressArrow('down'))
   await press(t, i => i.pressEnter())
 
@@ -75,9 +74,8 @@ test('the diff tab survives switching the sidebar back to the tree', async () =>
   await openDiff(t)
   await untilFrame(t, '+ ALPHA')
 
-  // Git → Ext → Files: the strip is a cycle, and the sidebar has three views.
-  await press(t, i => i.pressTab({ shift: true }))
-  await press(t, i => i.pressTab({ shift: true }))
+  // Git → Rev → Ext → Files: the strip is a cycle over the sidebar's views.
+  await pressTimes(t, 3, i => i.pressTab({ shift: true }))
   const frame = t.captureCharFrame()
   expect(frame).toContain('explorer') // the tree is back in the sidebar…
   expect(frame).toContain('+ ALPHA') // …and the diff is still the open tab

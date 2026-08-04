@@ -4,6 +4,7 @@ import { createMemo, createSignal } from 'solid-js'
 
 import { createDir, createFile, isDirectory } from '../core/fs'
 import { commitPaths, pullAndPush, PUSH_REJECTED, undoLastCommit } from '../core/git'
+import { NOTE_KINDS, NOTE_LABELS } from '../core/review'
 import { SERVER_ROOT } from '../lsp/install'
 import { installHint } from '../lsp/servers'
 import type { Branches } from './branches'
@@ -13,6 +14,7 @@ import type { GitOp } from './git'
 import type { Lsp } from './lsp'
 import type { Market } from './market'
 import type { Panes } from './panes'
+import type { Review } from './review'
 import type { Status } from './status'
 import type { Tree } from './tree'
 import type { Confirmation, Prompt, PromptKind } from './types'
@@ -31,6 +33,7 @@ const PROMPT_TITLES: Partial<Record<PromptKind, string>> = {
   commit: 'Commit message',
   newBranch: 'New branch name',
   renameBranch: 'Rename branch to',
+  reviewNote: 'Review note',
 }
 
 /**
@@ -58,9 +61,10 @@ export function createPromptHandlers(deps: {
   branches: Branches
   lsp: Lsp
   market: Market
+  review: Review
 }) {
   const { renderer, state, status, tree, panes, editor, workspace } = deps
-  const { fileOps, gitOp, branches, lsp, market } = deps
+  const { fileOps, gitOp, branches, lsp, market, review } = deps
   const { prompt, setPrompt } = state
   const { say } = status
 
@@ -112,7 +116,27 @@ export function createPromptHandlers(deps: {
       branches.create(name, p.from)
     } else if (p.kind === 'renameBranch') {
       branches.rename(p.from, name)
+    } else if (p.kind === 'reviewNote') {
+      // `value`, not the trimmed `name`: a remark is prose, and the only thing
+      // trimming it can do is lose an intended line break at the end of one.
+      review.add({
+        path: p.path,
+        line: p.line,
+        endLine: p.endLine,
+        kind: p.noteKind,
+        body: value.trim(),
+      })
     }
+  }
+
+  /** The kind chosen: the same prompt again, now asking for the words. */
+  const chooseReviewKind = (kind: string) => {
+    const p = prompt()
+    setPrompt(null)
+    if (p?.kind !== 'reviewKind') return
+    const noteKind = NOTE_KINDS.find(candidate => candidate === kind)
+    if (!noteKind) return
+    setPrompt({ kind: 'reviewNote', path: p.path, line: p.line, endLine: p.endLine, noteKind })
   }
 
   /**
@@ -202,6 +226,12 @@ export function createPromptHandlers(deps: {
     // The start point is the whole point of "New branch from…", so it belongs in
     // the title; the entry in PROMPT_TITLES is still what makes this a text prompt.
     if (p.kind === 'newBranch' && p.from) return `New branch from ${p.from}`
+    // Which of the four, and which line — a note written against the wrong line
+    // is worse than no note, and this is the last moment to notice.
+    if (p.kind === 'reviewNote') {
+      const span = p.endLine > p.line ? `${p.line + 1}-${p.endLine + 1}` : `${p.line + 1}`
+      return `${NOTE_LABELS[p.noteKind]} · ${basename(p.path)}:${span}`
+    }
     return PROMPT_TITLES[p.kind]
   }
   const promptValue = () => {
@@ -336,6 +366,7 @@ export function createPromptHandlers(deps: {
     submitPrompt,
     confirmPrompt,
     chooseInstallServer,
+    chooseReviewKind,
     cancelPrompt,
     promptTitle,
     promptValue,
