@@ -342,6 +342,31 @@ test('the gap the card sits in never reaches the file, and closes on the editor'
   expect(t.captureCharFrame()).toContain('const c = 3')
 })
 
+test('leaving the panel takes the gap back out of the buffer', async () => {
+  const dir = fixture({ 'a.ts': 'const a = 1\nconst b = 2\nconst c = 3\n' })
+  const t = await launch(dir, {}, { width: 100, height: 24 })
+  await openFile(t, 'a.ts')
+  await noteLine(t, 'issue', 'first')
+
+  await runCommand(t, 'Review panel')
+  await untilFrame(t, '◆ ISSUE')
+
+  // Closing the panel is the pass with no view left holding the file, so the
+  // buffer had to be compared against `props.content` rather than against
+  // itself — it used to keep the blank rows for good, which reads in the editor
+  // as the code below the note having been pushed down and renumbered.
+  await pressEscape(t)
+  await untilGone(t, '◆ ISSUE')
+  const back = t.captureCharFrame()
+  expect(back).toContain('const b = 2')
+  // Line 2 is `const b = 2` again, not three rows of nothing.
+  expect(back).toMatch(/2\s+const b = 2/)
+
+  await runCommand(t, 'Save file')
+  await settle(t, 200)
+  expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('const a = 1\nconst b = 2\nconst c = 3\n')
+})
+
 test('opening the panel fetches by itself, and is quiet where the key is loud', async () => {
   const t = await launch(fixture(PROJECT), {}, { width: 100, height: 24 })
   await runCommand(t, 'Review panel')

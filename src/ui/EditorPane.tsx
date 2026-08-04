@@ -1384,11 +1384,17 @@ export function EditorPane(props: EditorPaneProps) {
    * Open and close the card's gap in the buffer, the same way a fold is applied
    * — a rewrite that does not read as an edit of the file. Driven by `cardGap`
    * alone, so an ordinary keystroke never reaches it.
+   *
+   * `props.content` is what the buffer holds without a gap, and it has to be
+   * asked rather than `docText()`: on the closing pass there is no view left to
+   * hold the file, so `docText()` falls through to the buffer — which is the
+   * gapped text this is here to take away. Comparing it against itself left the
+   * blank rows in, and the next read of the buffer made them part of the file.
    */
   createEffect(
     on(cardGap, () => {
       if (!editor) return
-      const wanted = folded()?.text ?? docText()
+      const wanted = folded()?.text ?? baseFold()?.text ?? props.content
       if (editor.plainText === wanted) return
       const at = editor.cursorOffset
       keepingView(() => {
