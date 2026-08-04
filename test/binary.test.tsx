@@ -61,6 +61,41 @@ test('it can never be written back to disk, because it is never a buffer', async
   expect(readFileSync(join(dir, '.DS_Store'))).toEqual(before)
 })
 
+test('a stray NUL past the header does not make a source file binary', async () => {
+  const dir = project()
+  // A sentinel in a string literal, the way `src/core/mermaid/graph.ts` carried
+  // one: git calls this binary, every editor opens it, and so must druk.
+  const source = `${'// pad\n'.repeat(80)}const id = '\0dummy'\nconst tail = 2\n`
+  writeFileSync(join(dir, 'stray.ts'), source)
+
+  // Tall enough for the NUL's own line to be on screen: it sits past the 512-byte
+  // header window, which is 74 lines of padding down.
+  const t = await launch(dir, {}, { height: 100 })
+  await openFile(t, 'stray.ts')
+
+  expect(t.captureCharFrame()).not.toContain('cannot be shown')
+  // The text *after* the NUL is the assertion: a C-string truncation anywhere in
+  // the read/parse path would drop it and a save would then write the loss out.
+  expect(t.captureCharFrame()).toContain('const tail = 2')
+
+  await press(t, i => i.pressKey('s', { ctrl: true }))
+  await settle(t)
+  expect(readFileSync(join(dir, 'stray.ts'), 'utf8')).toBe(source)
+})
+
+test('NULs dense enough to be data are still refused, header or no header', async () => {
+  const dir = project()
+  // A text-looking header over compressed-ish bytes: nothing in the first 512,
+  // then every 50th byte a NUL — 2%, well past what a sentinel reaches.
+  const body = Buffer.alloc(4096, 0x41)
+  for (let i = 600; i < body.length; i += 50) body[i] = 0
+  writeFileSync(join(dir, 'dense.bin'), Buffer.concat([Buffer.from('#!/text\n'), body]))
+
+  const t = await launch(dir)
+  await openFile(t, 'dense.bin')
+  expect(t.captureCharFrame()).toContain('cannot be shown')
+})
+
 test('text files still open normally afterwards', async () => {
   const t = await launch(project())
   await press(t, i => i.pressArrow('down'))

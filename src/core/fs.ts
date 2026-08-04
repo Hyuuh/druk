@@ -260,10 +260,32 @@ export function encodeText(text: string, encoding: TextEncoding): string {
   return encoding.bom ? `\uFEFF${body}` : body
 }
 
+const SNIFF = 8192
+/**
+ * How far in a real binary format is allowed to hide its first NUL. Every one of
+ * them puts a length, a magic number or a padded field near the top — PNG at byte
+ * 8, JPEG at 4, wasm at 1, gzip at 3, tar in its padded name field, UTF-16 at 1 —
+ * so a window this small catches them all while leaving a stray NUL deep inside
+ * an otherwise-text file alone. VS Code sniffs 512 bytes for the same reason.
+ */
+const NUL_HEADER = 512
+/**
+ * NUL share of the sniffed bytes that says binary even with a text-looking header.
+ * Compressed content averages 1/256 zero bytes (~0.4%), so this sits above the
+ * noise a header-less deflate stream would produce and far above what a text file
+ * carrying a sentinel or two ever reaches.
+ */
+const NUL_DENSITY = 0.01
+
 /**
  * Read a text file with the BOM and the CRs taken off, reporting both so a save
- * can put them back, and refusing binary content — a NUL byte in the first 8 KB,
- * the same heuristic git uses.
+ * can put them back, and refusing binary content.
+ *
+ * Deliberately *not* git's rule — a NUL anywhere in the first 8 KB. A source file
+ * with one NUL in a string literal is text that every other editor opens, and
+ * refusing all of it over one byte is the worse answer; git only has to decide
+ * whether to print a diff. So: a NUL in the header, or NULs dense enough to be
+ * data rather than a stray.
  *
  * The sniff is a positional read rather than a slice of the whole file: the tree
  * happily offers a 2 GB video, and reading it before rejecting it would allocate
@@ -272,9 +294,13 @@ export function encodeText(text: string, encoding: TextEncoding): string {
 export function readTextFile(path: string): { text: string; encoding: TextEncoding } {
   const fd = fs.openSync(path, 'r')
   try {
-    const head = Buffer.alloc(8192)
-    const read = fs.readSync(fd, head, 0, 8192, 0)
-    if (head.subarray(0, read).includes(0)) throw new BinaryFileError()
+    const buffer = Buffer.alloc(SNIFF)
+    const read = fs.readSync(fd, buffer, 0, SNIFF, 0)
+    const head = buffer.subarray(0, read)
+    if (head.subarray(0, NUL_HEADER).includes(0)) throw new BinaryFileError()
+    let nuls = 0
+    for (const byte of head) if (byte === 0) nuls++
+    if (nuls > 0 && nuls >= read * NUL_DENSITY) throw new BinaryFileError()
   } finally {
     fs.closeSync(fd)
   }
@@ -284,6 +310,15 @@ export function readTextFile(path: string): { text: string; encoding: TextEncodi
 /** As `readTextFile`, for the readers with nothing to write back. */
 export function readFile(path: string): string {
   return readTextFile(path).text
+}
+
+/** Size in bytes, or 0 when the file is missing/unreadable. */
+export function sizeOf(path: string): number {
+  try {
+    return fs.statSync(path).size
+  } catch {
+    return 0
+  }
 }
 
 /** Last-modified time in ms, or 0 when the file is missing/unreadable. */
