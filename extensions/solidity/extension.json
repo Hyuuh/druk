@@ -1,0 +1,27 @@
+{
+  "id": "solidity",
+  "name": "Solidity",
+  "version": "1.0.0",
+  "description": "Solidity highlighting and the Nomic Foundation language server.",
+  "languages": [
+    {
+      "id": "solidity",
+      "lineComment": "//",
+      "grammar": {
+        "vendored": "solidity"
+      },
+      "extensions": [".sol"]
+    }
+  ],
+  "languageServers": [
+    {
+      "id": "solidity",
+      "command": ["nomicfoundation-solidity-language-server", "--stdio"],
+      "filetypes": ["solidity"],
+      "install": {
+        "kind": "npm",
+        "packages": ["@nomicfoundation/solidity-language-server"]
+      }
+    }
+  ]
+}
