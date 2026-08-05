@@ -668,6 +668,14 @@ function pathInHead(repo: string, path: string): boolean {
   return git(repo, ['cat-file', '-e', `HEAD:./${path}`], 3000).status === 0
 }
 
+/**
+ * A path after `--` is a pathspec, where `[`, `*` and `?` are glob metacharacters:
+ * `git clean -f -- '[id].tsx'` deletes `i.tsx` too, and the route files every
+ * Next.js and SvelteKit project is full of are named exactly that. Every path
+ * here came from porcelain and means itself alone.
+ */
+const literal = (path: string) => `:(literal)${path}`
+
 function discardMode(repo: string, entry: PorcelainEntry): DiscardMode {
   if (entry.xy[0] === 'R') return 'restore'
   if (entry.xy[0] === 'C' || entry.xy === '??') return 'delete'
@@ -678,7 +686,7 @@ function discardMode(repo: string, entry: PorcelainEntry): DiscardMode {
 function discardFingerprint(repo: string, entry: PorcelainEntry): string | null {
   const paths = entry.source ? [entry.path, entry.source] : [entry.path]
   const head = git(repo, ['rev-parse', '--verify', 'HEAD'])
-  const index = git(repo, ['ls-files', '--stage', '-z', '--', ...paths])
+  const index = git(repo, ['ls-files', '--stage', '-z', '--', ...paths.map(literal)])
   const worktree = git(repo, [
     'diff',
     '--binary',
@@ -686,7 +694,7 @@ function discardFingerprint(repo: string, entry: PorcelainEntry): string | null 
     '--no-ext-diff',
     '--no-textconv',
     '--',
-    ...paths,
+    ...paths.map(literal),
   ])
   if (index.status !== 0 || worktree.status !== 0) return null
 
@@ -1217,26 +1225,40 @@ export async function discardChange(target: DiscardTarget): Promise<GitResult> {
   }
 
   if (current.xy[0] === 'R' && current.source) {
-    const reset = await mutate(target.repo, ['reset', '-q', '--', current.source, current.path])
+    const paths = [literal(current.source), literal(current.path)]
+    const reset = await mutate(target.repo, ['reset', '-q', '--', ...paths])
     if (!reset.ok) return reset
-    const restore = await mutate(target.repo, ['checkout', '-q', 'HEAD', '--', current.source])
+    const restore = await mutate(target.repo, [
+      'checkout',
+      '-q',
+      'HEAD',
+      '--',
+      literal(current.source),
+    ])
     if (!restore.ok) return restore
-    return mutate(target.repo, ['clean', '-q', '-f', '--', current.path])
+    return mutate(target.repo, ['clean', '-q', '-f', '--', literal(current.path)])
   }
 
   if (target.mode === 'delete') {
     if (current.xy !== '??') {
-      const unstage = await mutate(target.repo, ['rm', '-q', '--cached', '-f', '--', current.path])
+      const unstage = await mutate(target.repo, [
+        'rm',
+        '-q',
+        '--cached',
+        '-f',
+        '--',
+        literal(current.path),
+      ])
       if (!unstage.ok) return unstage
     }
-    return mutate(target.repo, ['clean', '-q', '-f', '--', current.path])
+    return mutate(target.repo, ['clean', '-q', '-f', '--', literal(current.path)])
   }
 
   const inHead = pathInHead(target.repo, current.path)
-  if (inHead) return mutate(target.repo, ['checkout', '-q', 'HEAD', '--', current.path])
-  const reset = await mutate(target.repo, ['reset', '-q', 'HEAD', '--', current.path])
+  if (inHead) return mutate(target.repo, ['checkout', '-q', 'HEAD', '--', literal(current.path)])
+  const reset = await mutate(target.repo, ['reset', '-q', 'HEAD', '--', literal(current.path)])
   if (!reset.ok) return reset
-  return mutate(target.repo, ['clean', '-q', '-f', '--', current.path])
+  return mutate(target.repo, ['clean', '-q', '-f', '--', literal(current.path)])
 }
 
 /** Stage and commit exactly `paths`; anything staged for other paths stays staged. */

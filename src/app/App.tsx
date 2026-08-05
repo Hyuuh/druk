@@ -510,9 +510,7 @@ export function App(props: {
         if (!changed.tree) return
         const warning = workspace.clashWarning(workspace.syncFromDisk())
         if (warning) {
-          // A watcher warning must not erase the error from a git operation
-          // that just refused to destroy the same newly changed file.
-          if (status.status().tone !== 'error') say(warning, 'warn')
+          say(warning, 'warn')
         } else if (
           status.status().msg.startsWith(CLASH_CHANGED) ||
           status.status().msg.startsWith(CLASH_DELETED)

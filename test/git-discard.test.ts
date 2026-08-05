@@ -179,6 +179,35 @@ describe('discardChange', () => {
     expect(porcelain(dir)).toBe('')
   })
 
+  test('leaves the files a glob in the selected name would have matched alone', async () => {
+    // `[id].tsx` is what every Next.js and SvelteKit route directory is full of,
+    // and git reads a path after `--` as a pathspec: without `:(literal)` the
+    // brackets are a character class and `i.tsx` is discarded along with it.
+    const dir = repo({ '[id].tsx': 'route\n', 'i.tsx': 'innocent\n', 'd.tsx': 'other\n' })
+    writeFileSync(join(dir, '[id].tsx'), 'changed route\n')
+    writeFileSync(join(dir, 'i.tsx'), 'changed innocent\n')
+    writeFileSync(join(dir, 'd.tsx'), 'changed other\n')
+
+    await discard(dir, '[id].tsx')
+
+    expect(read(dir, '[id].tsx')).toBe('route\n')
+    expect(read(dir, 'i.tsx')).toBe('changed innocent\n')
+    expect(read(dir, 'd.tsx')).toBe('changed other\n')
+  })
+
+  test('deletes only the untracked file named, not the ones its brackets match', async () => {
+    const dir = repo()
+    writeFileSync(join(dir, '[id].tsx'), 'route\n')
+    writeFileSync(join(dir, 'i.tsx'), 'innocent\n')
+
+    const target = discardTarget(dir, join(dir, '[id].tsx'))
+    expect(target?.mode).toBe('delete')
+    await discard(dir, '[id].tsx')
+
+    expect(existsSync(join(dir, '[id].tsx'))).toBe(false)
+    expect(read(dir, 'i.tsx')).toBe('innocent\n')
+  })
+
   test('refuses a stale target and a target whose discard mode changed', async () => {
     const dir = repo()
     writeFileSync(join(dir, 'a.txt'), 'changed\n')

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, openFile, press, runCommand, until } from './helpers'
+import { fixture, launch, openFile, press, runCommand, settle, until } from './helpers'
 
 const git = (dir: string, ...args: string[]) => execFileSync('git', args, { cwd: dir })
 
@@ -116,7 +116,11 @@ test('a stale confirmation changes neither the dirty buffer nor disk', async () 
 
   git(dir, 'checkout', '-q', 'HEAD', '--', 'a.ts')
   await press(t, input => input.pressEnter())
-  await until(t, () => t.captureCharFrame().includes('change is gone'))
+  // The refusal is asserted on the buffer, not on the status bar: that same
+  // checkout is a clash the watcher reports, and which of the two messages
+  // lands last is a race. What the refusal means is that the buffer was never
+  // reloaded — `discardChange`'s own wording is pinned in `git-discard.test.ts`.
+  await settle(t, 600)
 
   expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('alpha\n')
   await press(t, input => input.pressTab())

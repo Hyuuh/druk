@@ -95,6 +95,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'view.focus': actions.toggleFocus,
     'git.diffFile': actions.gitDiffFile,
     'git.commit': actions.gitCommit,
+    'git.discard': actions.gitDiscard,
     'git.push': actions.gitPush,
     'git.compare': actions.gitCompareBranches,
     'problems.list': actions.problemsList,
