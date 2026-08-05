@@ -81,7 +81,6 @@ export function createOverlays(deps: {
   const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
   /** The problems list, jumping to a diagnostic on Enter. */
   const [problemsOpen, setProblemsOpen] = createSignal(false)
-
   /** True while a modal or overlay owns the keyboard. One list, two readers. */
   const overlay = createMemo(
     () =>
@@ -420,7 +419,7 @@ export function OverlayStack(props: { ctx: AppContext; commands: Accessor<Comman
           onCancel={() => overlays.setProblemsOpen(false)}
         />
       </Show>
-      <Show when={workspace.conflict()}>
+      <Show when={prompts.prompt()?.kind === 'discardChange' ? null : workspace.conflict()}>
         {(c: () => Conflict) => (
           <ChoiceModal
             title={c().deleted ? 'File deleted on disk' : 'File changed on disk'}

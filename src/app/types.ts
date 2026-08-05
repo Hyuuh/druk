@@ -1,4 +1,5 @@
 import type { TextEncoding } from '../core/fs'
+import type { DiscardTarget } from '../core/git'
 import type { NoteKind } from '../core/review'
 import type { SearchOptions } from '../core/search'
 import type { PackageManager } from '../lsp/install'
@@ -43,6 +44,7 @@ export type Prompt =
   | { kind: 'quitDirty'; names: string[] }
   | { kind: 'commit'; paths: string[] }
   | { kind: 'undoCommit'; subject: string }
+  | { kind: 'discardChange'; target: DiscardTarget }
   /** `from` is the branch to start at, or null for HEAD. */
   | { kind: 'newBranch'; from: string | null }
   | { kind: 'renameBranch'; from: string }

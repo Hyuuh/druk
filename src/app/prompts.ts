@@ -3,7 +3,7 @@ import { basename, dirname, join } from 'node:path'
 import { createMemo, createSignal } from 'solid-js'
 
 import { createDir, createFile, isDirectory } from '../core/fs'
-import { commitPaths, pullAndPush, PUSH_REJECTED, undoLastCommit } from '../core/git'
+import { commitPaths, discardChange, pullAndPush, PUSH_REJECTED, undoLastCommit } from '../core/git'
 import { NOTE_KINDS, NOTE_LABELS } from '../core/review'
 import { SERVER_ROOT } from '../lsp/install'
 import { installHint } from '../lsp/servers'
@@ -169,6 +169,12 @@ export function createPromptHandlers(deps: {
         return gitOp('Undoing commit', repo => undoLastCommit(repo), {
           done: () => `Undid "${p.subject}" — its changes are staged`,
         })
+      case 'discardChange':
+        return gitOp('Discarding', () => discardChange(p.target), {
+          repo: p.target.repo,
+          touchesTree: { kind: 'followDisk', paths: p.target.affectedPaths },
+          done: () => `Discarded changes in ${basename(p.target.path)}`,
+        })
       case 'deleteBranch':
         return branches.remove(p.name, p.force)
       case 'mergeBranch':
@@ -176,7 +182,7 @@ export function createPromptHandlers(deps: {
       case 'pullPush':
         // touchesTree: the pull half rewrites files under open buffers.
         return gitOp('Pulling and pushing', repo => pullAndPush(repo, p.branch, p.hasUpstream), {
-          touchesTree: true,
+          touchesTree: { kind: 'sync' },
           done: () => `Pulled and pushed ${p.branch}`,
         })
       case 'replaceProject':
@@ -269,6 +275,20 @@ export function createPromptHandlers(deps: {
           danger: true,
           message: `Unsaved edits in ${p.names.join(', ')} will be lost. Close anyway?`,
         }
+      case 'discardChange': {
+        const source = p.target.affectedPaths[1]
+        return {
+          title: 'Discard changes',
+          verb: 'discard',
+          danger: true,
+          message:
+            source !== undefined
+              ? `Discard rename "${basename(p.target.path)}" and restore "${basename(source)}" from HEAD? Staged and working-tree changes are lost. Unsaved edits in either open buffer will also be lost.`
+              : p.target.mode === 'delete'
+                ? `Discard changes in "${basename(p.target.path)}" and permanently delete it? Unsaved edits in its open buffer will also be lost.`
+                : `Restore "${basename(p.target.path)}" from HEAD? Staged and working-tree changes are lost. Unsaved edits in its open buffer will also be lost.`,
+        }
+      }
       case 'quitDirty':
         return {
           title: 'Unsaved changes',

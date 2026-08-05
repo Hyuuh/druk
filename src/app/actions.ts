@@ -6,6 +6,7 @@ import { ancestorDirs } from '../core/changeTree'
 import { readFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import {
+  discardTarget,
   fetchRemote,
   lastCommitSubject,
   pull,
@@ -144,6 +145,22 @@ export function createCommands(ctx: AppContext) {
     const top = rel ? (ancestorDirs(rel)[0] ?? rel) : null
     const at = rows.findIndex(r => (r.kind === 'dir' ? r.rel : r.change.rel) === top)
     panes.setGitCursor(at >= 0 ? at : Math.min(panes.gitCursor(), Math.max(0, rows.length - 1)))
+  }
+
+  const offerDiscard = () => {
+    if (comparison.active()) return say('Discard is unavailable while comparing branches', 'warn')
+    if (git.gitBusy()) return say('A git command is already running — let it finish', 'warn')
+    if (panes.view() !== 'git') {
+      return say('Open the Git panel and select a changed file', 'warn')
+    }
+    const row = git.rows()[panes.gitCursor()]
+    if (row?.kind === 'dir') return say('Select a changed file, not a folder', 'warn')
+    const path = row?.kind === 'file' ? row.change.path : null
+    const repo = path ? git.repoFor(path) : null
+    if (!path || !repo) return say('Select a changed file in the Git panel', 'warn')
+    const target = discardTarget(repo, path)
+    if (!target) return say('That change is stale — refresh and select it again', 'warn')
+    ctx.prompts.setPrompt({ kind: 'discardChange', target })
   }
 
   /** A click: a file diffs, a folder folds. */
@@ -413,6 +430,7 @@ export function createCommands(ctx: AppContext) {
     gitMoveTo,
     gitActivateRow,
     gitOpenRow,
+    gitDiscard: () => offerDiscard(),
     /**
      * "Diff current file" — the palette's way into the panel: it opens the
      * source-control view with the cursor on the file being edited, so the
@@ -511,9 +529,10 @@ export function createCommands(ctx: AppContext) {
       })
     },
     gitFetch: () => gitOp('Fetching', repo => fetchRemote(repo), { done: () => 'Fetched' }),
-    gitPull: () => gitOp('Pulling', repo => pull(repo), { touchesTree: true }),
-    gitStash: () => gitOp('Stashing', repo => stashPush(repo), { touchesTree: true }),
-    gitStashPop: () => gitOp('Popping stash', repo => stashPop(repo), { touchesTree: true }),
+    gitPull: () => gitOp('Pulling', repo => pull(repo), { touchesTree: { kind: 'sync' } }),
+    gitStash: () => gitOp('Stashing', repo => stashPush(repo), { touchesTree: { kind: 'sync' } }),
+    gitStashPop: () =>
+      gitOp('Popping stash', repo => stashPop(repo), { touchesTree: { kind: 'sync' } }),
     gitSwitchBranch: () => ctx.branches.open('switch'),
     gitNewBranch: ctx.branches.newBranch,
     gitNewBranchFrom: () => ctx.branches.open('from'),

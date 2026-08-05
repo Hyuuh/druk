@@ -623,8 +623,11 @@ is just a diff against the empty tree.
   tree marks and finish in milliseconds. Everything that writes (commit, push, stash,
   checkout, merge, branch create/rename/delete) goes through the async `mutate`, because a
   push talks to the network and would freeze the TUI for its duration. `createGitOp`
-  serialises them, and anything that rewrites the working tree passes `touchesTree` so
-  open buffers are pulled back from disk rather than waiting for the watcher.
+  serialises them, and anything that rewrites the working tree passes a `touchesTree`
+  strategy so open buffers are pulled back from disk rather than waiting for the watcher.
+  Pulls, stashes and branch operations use clash-safe whole-tree sync; a confirmed
+  file-level discard forces only the paths belonging to that row to follow disk, because
+  the confirmation has already authorized losing their unsaved buffers.
 - **Branch comparison is the one read-only query that runs off the render thread.** A
   branch's worth of changed files is more than a frame's worth of subprocess, so its five
   queries go through `gitAsync` rather than the synchronous `git` every other query uses.

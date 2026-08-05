@@ -104,7 +104,7 @@ export function createBranches(deps: {
 
   const create = (name: string, from: string | null) =>
     gitOp('Creating branch', repo => createBranch(repo, name, from), {
-      touchesTree: true,
+      touchesTree: { kind: 'sync' },
       done: () => `On ${name}`,
     })
 
@@ -120,7 +120,7 @@ export function createBranches(deps: {
     switch (mode) {
       case 'switch':
         return gitOp('Switching branch', repo => switchBranch(repo, branch.name, branch.remote), {
-          touchesTree: true,
+          touchesTree: { kind: 'sync' },
           done: () => `On ${localBranchName(branch.name)}`,
         })
       case 'from':
@@ -156,7 +156,7 @@ export function createBranches(deps: {
 
   const merge = (name: string) =>
     gitOp('Merging', repo => mergeBranch(repo, name), {
-      touchesTree: true,
+      touchesTree: { kind: 'sync' },
       // git's own summary ("Fast-forward", "Merge made by the 'ort' strategy")
       // says more about what happened than any sentence here could.
       done: result => result.detail || `Merged ${name}`,

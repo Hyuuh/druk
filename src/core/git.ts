@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { lstatSync, realpathSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 
 import { decodeText } from './fs'
 // Not `run`: every query in this file names its own result `run`, and the two
@@ -621,6 +622,124 @@ function keyBase(cwd: string): string | null {
 const STATUS_ARGS = ['status', '--porcelain', '-z', '-uall']
 const UNTRACKED_ARGS = ['ls-files', '--others', '--exclude-standard', '-z']
 
+export interface PorcelainEntry {
+  /** The index and working-tree columns exactly as git reported them. */
+  readonly xy: string
+  /** Repository-relative destination path, never an absolute path. */
+  readonly path: string
+  /** Repository-relative source of a rename or copy. */
+  readonly source: string | null
+}
+
+export type DiscardMode = 'restore' | 'delete'
+
+export interface DiscardTarget {
+  readonly repo: string
+  readonly path: string
+  /** Absolute working-tree paths changed when this row is discarded. */
+  readonly affectedPaths: readonly string[]
+  readonly mode: DiscardMode
+  /** The status row approved by the user, retained so execution can reject drift. */
+  readonly entry: PorcelainEntry
+  /** Identity of HEAD, the index entry, and the working-tree change at confirmation time. */
+  readonly fingerprint: string
+}
+
+/** Parse porcelain without throwing away either status column or rename/copy source. */
+function parsePorcelainEntries(stdout: string): PorcelainEntry[] {
+  const parsed: PorcelainEntry[] = []
+  const entries = stdout.split('\0')
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!
+    if (entry.length < 4) continue
+    const xy = entry.slice(0, 2)
+    const source = xy[0] === 'R' || xy[0] === 'C' ? (entries[++i] ?? null) : null
+    parsed.push({ xy, path: entry.slice(3), source })
+  }
+  return parsed
+}
+
+function porcelainEntries(cwd: string): PorcelainEntry[] {
+  const run = git(cwd, STATUS_ARGS)
+  return run.status === 0 ? parsePorcelainEntries(run.stdout) : []
+}
+
+function pathInHead(repo: string, path: string): boolean {
+  return git(repo, ['cat-file', '-e', `HEAD:./${path}`], 3000).status === 0
+}
+
+/**
+ * A path after `--` is a pathspec, where `[`, `*` and `?` are glob metacharacters:
+ * `git clean -f -- '[id].tsx'` deletes `i.tsx` too, and the route files every
+ * Next.js and SvelteKit project is full of are named exactly that. Every path
+ * here came from porcelain and means itself alone.
+ */
+const literal = (path: string) => `:(literal)${path}`
+
+function discardMode(repo: string, entry: PorcelainEntry): DiscardMode {
+  if (entry.xy[0] === 'R') return 'restore'
+  if (entry.xy[0] === 'C' || entry.xy === '??') return 'delete'
+  return pathInHead(repo, entry.path) ? 'restore' : 'delete'
+}
+
+/** Hash every part of the selected change whose replacement the user is approving. */
+function discardFingerprint(repo: string, entry: PorcelainEntry): string | null {
+  const paths = entry.source ? [entry.path, entry.source] : [entry.path]
+  const head = git(repo, ['rev-parse', '--verify', 'HEAD'])
+  const index = git(repo, ['ls-files', '--stage', '-z', '--', ...paths.map(literal)])
+  const worktree = git(repo, [
+    'diff',
+    '--binary',
+    '--full-index',
+    '--no-ext-diff',
+    '--no-textconv',
+    '--',
+    ...paths.map(literal),
+  ])
+  if (index.status !== 0 || worktree.status !== 0) return null
+
+  let untracked = ''
+  if (entry.xy === '??') {
+    const content = git(repo, ['hash-object', '--no-filters', '--', entry.path])
+    if (content.status !== 0) return null
+    untracked = content.stdout
+  }
+
+  return createHash('sha256')
+    .update(head.status === 0 ? head.stdout : 'unborn')
+    .update('\0')
+    .update(index.stdout)
+    .update('\0')
+    .update(worktree.stdout)
+    .update('\0')
+    .update(untracked)
+    .digest('hex')
+}
+
+/** Pin the exact row and repository a discard confirmation is about. */
+export function discardTarget(repo: string, path: string): DiscardTarget | null {
+  const base = keyBase(repo)
+  if (base === null) return null
+  const rel = relative(base, path)
+  if (!rel || isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) return null
+  const gitPath = rel.split(sep).join('/')
+  const entry = porcelainEntries(repo).find(candidate => candidate.path === gitPath)
+  if (!entry) return null
+  const fingerprint = discardFingerprint(repo, entry)
+  if (fingerprint === null) return null
+  const affectedPaths = Object.freeze(
+    entry.xy[0] === 'R' && entry.source ? [path, join(base, entry.source)] : [path],
+  )
+  return Object.freeze({
+    repo,
+    path,
+    affectedPaths,
+    mode: discardMode(repo, entry),
+    entry: Object.freeze(entry),
+    fingerprint,
+  })
+}
+
 /**
  * `git status --porcelain -z -uall`. `-z` because the default output C-quotes and
  * octal-escapes any path that is not plain ASCII; unquoting that by hand loses
@@ -629,16 +748,11 @@ const UNTRACKED_ARGS = ['ls-files', '--others', '--exclude-standard', '-z']
  */
 function parsePorcelain(stdout: string, base: string): Map<string, FileStatus> {
   const statuses = new Map<string, FileStatus>()
-  const entries = stdout.split('\0')
-  for (let i = 0; i < entries.length; i++) {
-    const entry = entries[i]!
-    if (entry.length < 4) continue
+  for (const entry of parsePorcelainEntries(stdout)) {
     // Both porcelain columns mean "differs from HEAD"; staged wins when both are set.
-    const code = entry[0] !== ' ' ? entry[0]! : entry[1]!
-    // A rename or copy spends a second field on the path it came from.
-    if (entry[0] === 'R' || entry[0] === 'C') i++
+    const code = entry.xy[0] !== ' ' ? entry.xy[0]! : entry.xy[1]!
     const status = STATUS_BY_CODE[code]
-    if (status) statuses.set(join(base, entry.slice(3)), status)
+    if (status) statuses.set(join(base, entry.path), status)
   }
   return statuses
 }
@@ -1085,6 +1199,66 @@ async function mutate(cwd: string, args: string[]): Promise<GitResult> {
     ? `Timed out after ${MUTATE_TIMEOUT / 1000}s and was stopped`
     : explain(result.stderr, result.stdout)
   return { ok: false, detail }
+}
+
+const sameEntry = (before: PorcelainEntry, after: PorcelainEntry) =>
+  before.xy === after.xy && before.path === after.path && before.source === after.source
+
+/**
+ * Discard one pinned porcelain row without disturbing any other index or
+ * working-tree entry. The row is read again at the last possible moment: a
+ * confirmation left open while git changes must never execute against the new
+ * meaning of the same path.
+ */
+export async function discardChange(target: DiscardTarget): Promise<GitResult> {
+  const current = porcelainEntries(target.repo).find(entry => entry.path === target.entry.path)
+  if (!current) return { ok: false, detail: 'That change is gone — refresh and try again' }
+  const mode = discardMode(target.repo, current)
+  if (mode !== target.mode) {
+    return { ok: false, detail: 'That change changed how it would be discarded — try again' }
+  }
+  if (!sameEntry(target.entry, current)) {
+    return { ok: false, detail: 'That change changed while the confirmation was open — try again' }
+  }
+  if (discardFingerprint(target.repo, current) !== target.fingerprint) {
+    return { ok: false, detail: 'That change changed while the confirmation was open — try again' }
+  }
+
+  if (current.xy[0] === 'R' && current.source) {
+    const paths = [literal(current.source), literal(current.path)]
+    const reset = await mutate(target.repo, ['reset', '-q', '--', ...paths])
+    if (!reset.ok) return reset
+    const restore = await mutate(target.repo, [
+      'checkout',
+      '-q',
+      'HEAD',
+      '--',
+      literal(current.source),
+    ])
+    if (!restore.ok) return restore
+    return mutate(target.repo, ['clean', '-q', '-f', '--', literal(current.path)])
+  }
+
+  if (target.mode === 'delete') {
+    if (current.xy !== '??') {
+      const unstage = await mutate(target.repo, [
+        'rm',
+        '-q',
+        '--cached',
+        '-f',
+        '--',
+        literal(current.path),
+      ])
+      if (!unstage.ok) return unstage
+    }
+    return mutate(target.repo, ['clean', '-q', '-f', '--', literal(current.path)])
+  }
+
+  const inHead = pathInHead(target.repo, current.path)
+  if (inHead) return mutate(target.repo, ['checkout', '-q', 'HEAD', '--', literal(current.path)])
+  const reset = await mutate(target.repo, ['reset', '-q', 'HEAD', '--', literal(current.path)])
+  if (!reset.ok) return reset
+  return mutate(target.repo, ['clean', '-q', '-f', '--', literal(current.path)])
 }
 
 /** Stage and commit exactly `paths`; anything staged for other paths stays staged. */
