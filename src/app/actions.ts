@@ -70,11 +70,45 @@ export function createCommands(ctx: AppContext) {
   }
 
   /**
+   * The panel's cursor calls `diffFileFor` on every landing, and the old side is
+   * a `git show` subprocess — 20ms of spawn for a text that cannot have changed
+   * unless something bumped `revision`. The key is everything the texts are made
+   * from; a hit also returns the *same object*, which is what lets the page
+   * downstream skip its own recomputation and the renderable its rebuild.
+   */
+  interface DiffFileSlot {
+    revision: number
+    reloadKey: number
+    base: string | null
+    buffer: string | undefined
+    status: FileStatus
+    file: DiffFile | null
+  }
+  const diffFileCache = new Map<string, DiffFileSlot>()
+  const DIFF_FILE_CACHE_LIMIT = 4
+
+  /**
    * Both texts of one file's diff. The new side prefers the open buffer over the
    * disk, so unsaved edits show — that is the diff the user is looking at. Null
    * for a file that cannot be read (binary), which the callers skip.
    */
   const diffFileFor = (path: string, fileStatus: FileStatus): DiffFile | null => {
+    const revision = git.revision()
+    const reloadKey = editor.reloadKey()
+    const base = git.diffBase()
+    const buffer = workspace.buffers[path]?.content
+    const hit = diffFileCache.get(path)
+    if (
+      hit &&
+      hit.revision === revision &&
+      hit.reloadKey === reloadKey &&
+      hit.base === base &&
+      hit.buffer === buffer &&
+      hit.status === fileStatus
+    ) {
+      return hit.file
+    }
+
     // Two spellings of the same path: the repository's, which is what git can be
     // asked about, and the opened folder's, which is what a row says — and with
     // several repositories open those are not the same string.
@@ -83,12 +117,11 @@ export function createCommands(ctx: AppContext) {
     const oldText =
       fileStatus === 'untracked' || repo === null
         ? ''
-        : (refText(repo, relative(repo, path), git.diffBase() ?? 'HEAD') ?? '')
+        : (refText(repo, relative(repo, path), base ?? 'HEAD') ?? '')
     let newText = ''
     if (fileStatus !== 'deleted') {
-      const open = workspace.buffers[path]
-      if (open) {
-        newText = open.content
+      if (buffer !== undefined) {
+        newText = buffer
       } else {
         try {
           newText = readFile(path)
@@ -97,7 +130,15 @@ export function createCommands(ctx: AppContext) {
         }
       }
     }
-    return { path, rel, status: fileStatus, oldText, newText }
+    const file: DiffFile = { path, rel, status: fileStatus, oldText, newText }
+    diffFileCache.delete(path)
+    diffFileCache.set(path, { revision, reloadKey, base, buffer, status: fileStatus, file })
+    // Oldest out first — the texts are the whole file twice over, so the cap is
+    // what bounds a walk across many huge changes.
+    while (diffFileCache.size > DIFF_FILE_CACHE_LIMIT) {
+      diffFileCache.delete(diffFileCache.keys().next().value!)
+    }
+    return file
   }
 
   /**

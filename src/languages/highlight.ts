@@ -204,9 +204,18 @@ export interface Segment {
   line: number
 }
 
+/** Memoized per group: `prepare` asks hundreds of thousands of times per parse,
+ * and the distinct capture names number a few dozen. */
+const specCache = new Map<string, number>()
+
 /** More dots = more specific scope: "type.builtin" (2) beats "type" (1). */
 function specificity(group: string): number {
-  return group.split('.').length
+  let spec = specCache.get(group)
+  if (spec === undefined) {
+    spec = group.split('.').length
+    specCache.set(group, spec)
+  }
+  return spec
 }
 
 function lineStarts(content: string): number[] {
@@ -390,10 +399,21 @@ function prepare(
   content: string,
   raw: ReadonlyArray<readonly [number, number, string, ...unknown[]]>,
 ): Highlighted {
-  const ordered = raw
-    .map(([start, end, group]) => ({ start, end, group, ord: 0 }))
-    .filter(h => h.end > h.start)
-    .toSorted((a, b) => specificity(a.group) - specificity(b.group))
+  // Counting sort by specificity: stable exactly the way `toSorted` is — equal
+  // levels keep tree-sitter's order — without a comparator that costs a string
+  // split per comparison, which on a lock-file-sized capture list was most of
+  // this function's time.
+  const levels: Capture[][] = []
+  for (const [start, end, group] of raw) {
+    if (end <= start) continue
+    const spec = specificity(group)
+    ;(levels[spec] ??= []).push({ start, end, group, ord: 0 })
+  }
+  const ordered: Capture[] = []
+  for (const level of levels) {
+    if (!level) continue
+    for (const capture of level) ordered.push(capture)
+  }
   const starts = lineStarts(content)
   const byLine: (Capture[] | undefined)[] = Array.from({ length: starts.length })
   const wide: Capture[] = []

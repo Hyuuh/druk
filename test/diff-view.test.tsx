@@ -406,3 +406,75 @@ test('unsaved edits diff against HEAD before the file is saved', async () => {
   expect(frame).toContain('- alpha')
   expect(frame).toContain('+ typed saved')
 })
+
+/** A package-lock-sized document: 6000 entries are two ~0.6 MB sides, over the 1 MB line. */
+function lock(v: (i: number) => string, count = 6000): string {
+  const entry = (i: number) =>
+    `    "node_modules/pkg-${i}": { "version": "${v(i)}", "integrity": "sha512-${'x'.repeat(40)}" }`
+  return `{\n  "packages": {\n${Array.from({ length: count }, (_, i) => entry(i)).join(',\n')}\n  }\n}\n`
+}
+
+test('a huge change renders plain and cut instead of stalling on syntax color', async () => {
+  // Past DIFF_HIGHLIGHT_LIMIT the renderable's per-span native pipeline used
+  // to stall the main thread for minutes (#66) — and past DIFF_MAX_LINES the
+  // patch itself is cut, which is what keeps the panel's arrows moving.
+  const dir = repo({ 'package-lock.json': lock(i => `1.0.${i}`) })
+  writeFileSync(
+    join(dir, 'package-lock.json'),
+    lock(i => (i % 2 ? `1.0.${i}` : `2.0.${i}`)),
+  )
+
+  // Wide: at 80 columns the version number sits past the pane's right edge.
+  const t = await launch(dir, {}, { width: 130 })
+  await openDiff(t)
+  // The header says what happened; without the gate this frame never arrives.
+  // The counts beside it stay the change's own (+5999 −5999), not the cut's.
+  await untilFrame(t, '−5999 · first 10000 lines')
+  // A rewrite-shaped hunk leads with its removals: the old versions are the top rows.
+  await untilFrame(t, '"1.0.0"')
+
+  // And the page still scrolls: into it with Tab, then a page down.
+  await press(t, i => i.pressTab())
+  await press(t, i => void i.pressKeys(['[6~']))
+  await untilGone(t, '"1.0.0"')
+})
+
+test('a patch of thousands of rows goes plain even under the byte limit', async () => {
+  // 1500 entries are ~0.36 MB across the sides — the byte gate stays quiet, but
+  // the ~3000-row rewrite crosses DIFF_HIGHLIGHT_MAX_LINES: span cost is per
+  // pane row, and even this much color blocks the main thread for a second.
+  const dir = repo({ 'package-lock.json': lock(i => `1.0.${i}`, 1500) })
+  writeFileSync(
+    join(dir, 'package-lock.json'),
+    lock(i => (i % 2 ? `1.0.${i}` : `2.0.${i}`), 1500),
+  )
+
+  const t = await launch(dir, {}, { width: 130 })
+  await openDiff(t)
+  await untilFrame(t, 'plain (large file)')
+  expect(t.captureCharFrame()).not.toContain('first 10000 lines') // under the cut, over the color line
+})
+
+test('paging between a small and a huge change turns syntax off and back on', async () => {
+  // The panes are reused across the panel's cursor moves, so the plain gate has
+  // to reach the pane a highlighted change already configured — and let go again.
+  const dir = repo({ 'a.ts': 'const a = 1\n', 'package-lock.json': lock(i => `1.0.${i}`) })
+  writeFileSync(join(dir, 'a.ts'), 'const a = 2\n')
+  writeFileSync(
+    join(dir, 'package-lock.json'),
+    lock(i => (i % 2 ? `1.0.${i}` : `2.0.${i}`)),
+  )
+
+  const t = await launch(dir, {}, { width: 130 })
+  await openDiff(t)
+  await untilFrame(t, '+ const a = 2')
+  expect(t.captureCharFrame()).not.toContain('first 10000 lines')
+
+  await press(t, i => i.pressArrow('down'))
+  await untilFrame(t, 'first 10000 lines')
+  await untilFrame(t, '"1.0.0"')
+
+  await press(t, i => i.pressArrow('up'))
+  await untilFrame(t, '+ const a = 2')
+  expect(t.captureCharFrame()).not.toContain('first 10000 lines')
+})

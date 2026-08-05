@@ -76,9 +76,13 @@ rejects offers to merge origin in and push again, VS Code's prompt, rather than
 naming the two commands and stopping — and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or
 side-by-side — an added or deleted file is inline whatever `diffView` says, having no
-second side to put beside it, and the rows split view pads a side with are hatched
+second side to put beside it, the rows split view pads a side with are hatched
 rather than left reading as blank editor — a terminal has no fill patterns, so the
-strokes are written into the pane's own content) for whichever change the panel's cursor is
+strokes are written into the pane's own content — and a big change draws plain, the
+header saying so: the renderable applies syntax as one native edit per span, and a
+package-lock-sized document feeds it millions, minutes of frozen editor, so color
+stops past a megabyte of sides or a thousand patch rows, and past ten thousand rows
+the patch itself is cut with the header keeping the change's true counts) for whichever change the panel's cursor is
 on — the arrows page through
 them and Enter opens the changed file itself over the diff (a folder row folds
 instead), the panel is the only way in, and the diff is a tab of its own in the strip

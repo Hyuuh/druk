@@ -3,6 +3,7 @@ import { useTerminalDimensions } from '@opentui/solid'
 import { createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js'
 
 import { unifiedDiff } from '../core/diff'
+import type { UnifiedDiff } from '../core/diff'
 import type { ComparisonFileStatus, FileStatus } from '../core/git'
 import {
   computeHighlights,
@@ -10,7 +11,6 @@ import {
   filetypeForPath,
   getSyntaxStyle,
   highlightClient,
-  lineOfOffset,
   STALE,
 } from '../languages/highlight'
 import type { Highlighted } from '../languages/highlight'
@@ -51,6 +51,32 @@ export interface DiffViewProps {
   /** What Esc does now, for the hint line — the caller owns the behaviour. */
   escLabel?: string
 }
+
+/**
+ * Past this many bytes across the two sides, syntax color is off for the page:
+ * the renderable applies highlights as one native span edit per capture, and a
+ * package-lock-sized document feeds it millions — the main thread stalls for
+ * minutes, which reads as a crash (issue #66). GitHub draws the same line at
+ * 512 KB per file. Bytes, not lines, because a minified bundle is one line.
+ */
+export const DIFF_HIGHLIGHT_LIMIT = 1024 * 1024
+
+/**
+ * Syntax is also off past this many patch rows, whatever the sides weigh: the
+ * renderable's span application costs ~0.4ms per dense row on the main thread
+ * (measured — 1,500 lock-file rows block for half a second, 2,500 for a full
+ * one), so this is the row count that keeps the one-time cost of color under
+ * a few hundred milliseconds.
+ */
+export const DIFF_HIGHLIGHT_MAX_LINES = 1000
+
+/**
+ * Rows the page will show of a monster patch. A lock-file rewrite is a hundred
+ * thousand rows nobody scrolls, and the pane's native buffer, per-line maps and
+ * hatch pass all pay per row — the cap is what keeps the panel's arrows moving.
+ * The header carries the true `+N −M` and says the patch was cut.
+ */
+export const DIFF_MAX_LINES = 10_000
 
 /** The panel and the page mark a comparison row the same way. */
 export function diffMark(status: DiffFileStatus): string {
@@ -98,6 +124,15 @@ export const HATCH = '╱'
 /** `[startOffset, endOffset, captureGroup]` in the pane document's coordinates. */
 type PaneHighlight = [number, number, string]
 
+/**
+ * What plain mode answers a highlight pass with. Assigned rather than left off:
+ * paging from a highlighted change reuses the panes, and the renderable only
+ * forwards a *defined* filetype to them — a pass started under the stale one
+ * must land as "no spans" (the cheap setText path), not as the parse's raw
+ * captures, which are the very span flood the plain gate exists to avoid.
+ */
+const NO_HIGHLIGHTS: OnHighlight = () => Promise.resolve([])
+
 type OnHighlight = (
   given: PaneHighlight[],
   context: { content: string },
@@ -109,6 +144,7 @@ interface CodePane {
   /** Columns the code itself owns — the side minus its gutter. */
   width: number
   content: string
+  filetype: string | undefined
   onHighlight?: OnHighlight
 }
 
@@ -208,20 +244,17 @@ export function DiffView(props: DiffViewProps) {
   }
 
   /**
-   * The same change re-read is not a new one: `refreshDiff` hands the page a
-   * fresh object on every git revision — a commit anywhere, a save in another
-   * file — and rebuilding everything below for identical texts drops the syntax
-   * colors until the async pass lands again.
-   */
-  const file = createMemo(() => props.file, undefined, {
-    equals: (a, b) => a.path === b.path && a.oldText === b.oldText && a.newText === b.newText,
-  })
-
-  /**
-   * Everything derived from the change on screen: its patch, and the highlight
-   * pass each pane runs. Rebuilt whole when the panel's cursor moves to another
-   * file — or re-reads this one with different texts, which is why none of it
-   * may be cached by path.
+   * Everything derived from one change: its patch, and the highlight pass each
+   * pane runs.
+   *
+   * Cached per path, texts and all, because the page is fed the same changes
+   * over and over with nothing new in them: `refreshDiff` hands it a fresh
+   * object on every git revision, and the panel's arrows land on a file the
+   * cursor already visited. A big lock file's patch costs real milliseconds,
+   * and returning the *same value* is also what lets the effect below and the
+   * renderable's own `diff` setter skip their work entirely. The texts are
+   * compared by content — the cheap identity check first, since `diffFileFor`
+   * hands back its own cached object for an unchanged file.
    *
    * The panes hold fragments — hunk lines glued together — and tree-sitter's
    * error recovery on such a fragment drops or misreads captures (JSX attribute
@@ -230,9 +263,23 @@ export function DiffView(props: DiffViewProps) {
    * captures onto the fragment's lines. The callbacks are cached per pane/view
    * because reassigning `onHighlight` re-runs the pass.
    */
-  const current = createMemo(() => {
-    const f = file()
-    const diff = unifiedDiff(f.rel, f.oldText, f.newText)
+  interface Derived {
+    diff: UnifiedDiff
+    highlighter: (which: 'left' | 'right', view: 'unified' | 'split') => OnHighlight
+  }
+  const derivedCache = new Map<string, { file: DiffFile; value: Derived }>()
+  const DERIVED_CACHE_LIMIT = 4
+
+  const current = createMemo((): Derived => {
+    const f = props.file
+    const hit = derivedCache.get(f.path)
+    if (
+      hit &&
+      (hit.file === f || (hit.file.oldText === f.oldText && hit.file.newText === f.newText))
+    ) {
+      return hit.value
+    }
+    const diff = unifiedDiff(f.rel, f.oldText, f.newText, DIFF_MAX_LINES)
 
     const docs = new Map<string, Promise<Highlighted | null>>()
     const fullDoc = (side: 'old' | 'new') => {
@@ -281,30 +328,48 @@ export function DiffView(props: DiffViewProps) {
               : context.content.length
           if (to > from) out.push([from, to, DIFF_FILLER])
         })
+        // Walk the pane's own lines and pull each one's captures from the
+        // per-line buckets, rather than scanning the document's whole capture
+        // list: a small change in a big file has a handful of rows against
+        // hundreds of thousands of captures. Buckets are in paint order, and
+        // spans from different source lines can never overlap on the pane, so
+        // per-line order is the only order the painter needs. The `wide`
+        // captures live outside the buckets and are merged back by `ord`.
         const emit = (doc: Highlighted | null, side: 'old' | 'new') => {
           if (!doc || bySource[side].size === 0) return
-          // `ordered` runs least specific first and the painter applies in
-          // order, so walking it keeps the most specific capture on top.
-          for (const capture of doc.ordered) {
+          const paint = (
+            capture: { start: number; end: number; group: string },
+            lineStart: number,
+            lineEnd: number,
+            rows: number[],
+          ) => {
             // Guides carry a background fill that would stamp over the diff's.
-            if (capture.group === 'indent.guide') continue
-            for (
-              let line = lineOfOffset(doc.starts, capture.start);
-              line < doc.starts.length && doc.starts[line]! < capture.end;
-              line++
-            ) {
-              const rows = bySource[side].get(line)
-              if (!rows) continue
-              const lineStart = doc.starts[line]!
-              const lineEnd =
-                line + 1 < doc.starts.length ? doc.starts[line + 1]! - 1 : doc.content.length
-              const from = Math.max(capture.start, lineStart)
-              const to = Math.min(capture.end, lineEnd)
-              if (to <= from) continue
-              for (const paneLine of rows) {
-                const base = paneStarts[paneLine]!
-                out.push([base + (from - lineStart), base + (to - lineStart), capture.group])
-              }
+            if (capture.group === 'indent.guide') return
+            const from = Math.max(capture.start, lineStart)
+            const to = Math.min(capture.end, lineEnd)
+            if (to <= from) return
+            for (const paneLine of rows) {
+              const base = paneStarts[paneLine]!
+              out.push([base + (from - lineStart), base + (to - lineStart), capture.group])
+            }
+          }
+          for (const [line, rows] of bySource[side]) {
+            if (line >= doc.starts.length) continue
+            const lineStart = doc.starts[line]!
+            const lineEnd =
+              line + 1 < doc.starts.length ? doc.starts[line + 1]! - 1 : doc.content.length
+            const bucket = doc.byLine[line] ?? []
+            const wides = doc.wide.filter(w => w.start < lineEnd && w.end > lineStart)
+            if (wides.length === 0) {
+              for (const capture of bucket) paint(capture, lineStart, lineEnd, rows)
+              continue
+            }
+            let b = 0
+            let w = 0
+            while (b < bucket.length || w < wides.length) {
+              const takeWide =
+                b >= bucket.length || (w < wides.length && wides[w]!.ord < bucket[b]!.ord)
+              paint(takeWide ? wides[w++]! : bucket[b++]!, lineStart, lineEnd, rows)
             }
           }
         }
@@ -316,10 +381,29 @@ export function DiffView(props: DiffViewProps) {
       return cb
     }
 
-    return { diff, highlighter }
+    const value: Derived = { diff, highlighter }
+    derivedCache.delete(f.path)
+    derivedCache.set(f.path, { file: f, value })
+    // Oldest out first: each entry pins its texts and patch, so the cap is what
+    // bounds a walk across many huge changes.
+    while (derivedCache.size > DERIVED_CACHE_LIMIT) {
+      derivedCache.delete(derivedCache.keys().next().value!)
+    }
+    return value
   })
 
   const diff = () => current().diff
+
+  /** See DIFF_HIGHLIGHT_LIMIT and DIFF_HIGHLIGHT_MAX_LINES: past either the
+   * page renders plain — the add/remove row backgrounds, signs and numbers are
+   * per-line and stay. */
+  const plain = createMemo(() => {
+    const f = props.file
+    return (
+      f.oldText.length + f.newText.length > DIFF_HIGHLIGHT_LIMIT ||
+      current().diff.lines > DIFF_HIGHLIGHT_MAX_LINES
+    )
+  })
 
   /**
    * An added or deleted file has one side and nothing to put beside it: split
@@ -382,9 +466,22 @@ export function DiffView(props: DiffViewProps) {
       setTimeout(() => {
         const host = pane as unknown as DiffSides | undefined
         if (!host) return
-        if (host.leftCodeRenderable) host.leftCodeRenderable.onHighlight = highlighter('left', view)
-        if (host.rightCodeRenderable) {
-          host.rightCodeRenderable.onHighlight = highlighter('right', view)
+        if (plain()) {
+          // The prop already keeps the filetype off the renderable, but a pane
+          // reused from the previous change keeps the one it had (see
+          // NO_HIGHLIGHTS) — clearing it here is what stops the parse itself.
+          for (const code of [host.leftCodeRenderable, host.rightCodeRenderable]) {
+            if (!code) continue
+            code.filetype = undefined
+            code.onHighlight = NO_HIGHLIGHTS
+          }
+        } else {
+          if (host.leftCodeRenderable) {
+            host.leftCodeRenderable.onHighlight = highlighter('left', view)
+          }
+          if (host.rightCodeRenderable) {
+            host.rightCodeRenderable.onHighlight = highlighter('right', view)
+          }
         }
         paintHatch(host, view)
       }, 0)
@@ -451,7 +548,12 @@ export function DiffView(props: DiffViewProps) {
    */
   const header = () => {
     const d = diff()
-    const tail = ` · +${d.adds} −${d.dels}`
+    const note = d.truncated
+      ? ` · first ${DIFF_MAX_LINES} lines`
+      : plain()
+        ? ' · plain (large file)'
+        : ''
+    const tail = ` · +${d.adds} −${d.dels}${note}`
     const room = Math.max(8, props.width - hints().length - tail.length - 3)
     let rel =
       props.file.oldPath && props.file.oldPath !== props.file.rel
@@ -469,7 +571,11 @@ export function DiffView(props: DiffViewProps) {
       backgroundColor={ui.solidBg}
       onMouseDown={() => props.onFocus()}
     >
-      <box flexDirection="row" backgroundColor={ui.solidBarBg}>
+      {/* Pinned: the pane below measures as tall as the whole patch, and yoga
+          would otherwise shrink this row to nothing on a diff of thousands of
+          lines — the spans inside are already flexShrink={0}, which only stops
+          them being cut, not their row being crushed. */}
+      <box flexDirection="row" flexShrink={0} backgroundColor={ui.solidBarBg}>
         <text
           fg={diffStatusColor(props.file.status)}
           bg={ui.solidBarBg}
@@ -494,7 +600,7 @@ export function DiffView(props: DiffViewProps) {
           ref={(el: DiffRenderable) => (pane = el)}
           diff={diff().patch}
           view={mode() === 'split' ? 'split' : 'unified'}
-          filetype={filetypeForPath(props.file.path)}
+          filetype={plain() ? undefined : filetypeForPath(props.file.path)}
           syntaxStyle={getSyntaxStyle()}
           treeSitterClient={client() ?? undefined}
           syncScroll
