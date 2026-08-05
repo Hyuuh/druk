@@ -62,8 +62,10 @@ test('comparing against a branch shows work that is already committed', async ()
   await press(t, i => void i.typeText('main'))
   await press(t, i => i.pressEnter())
 
-  await untilFrame(t, 'vs main')
-  expect(frame(t)).toContain('b.ts')
+  // `vs main` paints as soon as the base is set; the file list waits on the
+  // async status query, so poll for the row rather than the header.
+  await untilFrame(t, 'b.ts')
+  expect(frame(t)).toContain('vs main')
 
   // And the diff page is against that branch too, not against HEAD.
   await press(t, i => i.pressArrow('up'))

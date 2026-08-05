@@ -95,6 +95,9 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'view.focus': actions.toggleFocus,
     'git.diffFile': actions.gitDiffFile,
     'git.commit': actions.gitCommit,
+    'git.stage': actions.gitStageToggle,
+    'git.stageAll': actions.gitStageAll,
+    'git.unstageAll': actions.gitUnstageAll,
     'git.discard': actions.gitDiscard,
     'git.push': actions.gitPush,
     'git.compare': actions.gitCompareBranches,
@@ -392,6 +395,9 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
           break
         case 'd':
           actions.gitDiscard()
+          break
+        case 's':
+          actions.gitStageToggle()
           break
         case 'p':
           actions.gitPush()

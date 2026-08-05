@@ -1,4 +1,4 @@
-import { dirname, relative } from 'node:path'
+import { basename, dirname, relative } from 'node:path'
 
 import { createMemo } from 'solid-js'
 
@@ -13,10 +13,12 @@ import {
   push,
   PUSH_REJECTED,
   refText,
+  stagePaths,
   stagedPaths,
   stashPop,
   stashPush,
   statusMap,
+  unstagePaths,
 } from '../core/git'
 import type { FileStatus } from '../core/git'
 import { pathTokenAt, resolveImportPath } from '../core/imports'
@@ -180,11 +182,13 @@ export function createCommands(ctx: AppContext) {
    */
   const gitCollapseAll = () => {
     const row = git.rows()[panes.gitCursor()]
-    const rel = row ? (row.kind === 'dir' ? row.rel : row.change.rel) : null
+    const rel = row?.kind === 'dir' ? row.rel : row?.kind === 'file' ? row.change.rel : null
     git.collapseAll()
     const rows = git.rows()
     const top = rel ? (ancestorDirs(rel)[0] ?? rel) : null
-    const at = rows.findIndex(r => (r.kind === 'dir' ? r.rel : r.change.rel) === top)
+    const at = rows.findIndex(r =>
+      r.kind === 'dir' ? r.rel === top : r.kind === 'file' ? r.change.rel === top : false,
+    )
     panes.setGitCursor(at >= 0 ? at : Math.min(panes.gitCursor(), Math.max(0, rows.length - 1)))
   }
 
@@ -195,13 +199,76 @@ export function createCommands(ctx: AppContext) {
       return say('Open the Git panel and select a changed file', 'warn')
     }
     const row = git.rows()[panes.gitCursor()]
-    if (row?.kind === 'dir') return say('Select a changed file, not a folder', 'warn')
-    const path = row?.kind === 'file' ? row.change.path : null
-    const repo = path ? git.repoFor(path) : null
-    if (!path || !repo) return say('Select a changed file in the Git panel', 'warn')
+    if (row?.kind !== 'file') return say('Select a changed file in the Git panel', 'warn')
+    const path = row.change.path
+    const repo = git.repoFor(path)
+    if (!repo) return say('Select a changed file in the Git panel', 'warn')
     const target = discardTarget(repo, path)
     if (!target) return say('That change is stale — refresh and select it again', 'warn')
     ctx.prompts.setPrompt({ kind: 'discardChange', target })
+  }
+
+  /** Stage or unstage by the row's `side` — pinned to that path's repository. */
+  const gitStageToggle = () => {
+    if (comparison.active()) return say('Stage is unavailable while comparing branches', 'warn')
+    if (git.diffBase() !== null) {
+      return say('Stage is unavailable while comparing against a branch', 'warn')
+    }
+    if (git.gitBusy()) return say('A git command is already running — let it finish', 'warn')
+    if (panes.view() !== 'git') {
+      return say('Open the Git panel and select a changed file', 'warn')
+    }
+    const row = git.rows()[panes.gitCursor()]
+    if (row?.kind !== 'file') return say('Select a changed file in the Git panel', 'warn')
+    const path = row.change.path
+    const repo = git.repoFor(path)
+    if (!repo) return say(noRepository(git), 'warn')
+    if (row.change.side === 'staged') {
+      return gitOp('Unstaging', r => unstagePaths(r, [path]), {
+        repo,
+        done: () => `Unstaged ${basename(path)}`,
+      })
+    }
+    return gitOp('Staging', r => stagePaths(r, [path]), {
+      repo,
+      done: () => `Staged ${basename(path)}`,
+    })
+  }
+
+  const gitStageAll = () => {
+    if (comparison.active()) return say('Stage is unavailable while comparing branches', 'warn')
+    if (git.diffBase() !== null) {
+      return say('Stage is unavailable while comparing against a branch', 'warn')
+    }
+    const repo = git.activeRepo()
+    if (repo === null) return say(noRepository(git), 'warn')
+    const paths = git
+      .unstagedChanges()
+      .filter(c => git.repoFor(c.path) === repo)
+      .map(c => c.path)
+    if (paths.length === 0) return say('Nothing to stage')
+    gitOp('Staging', r => stagePaths(r, paths), {
+      repo,
+      done: () => `Staged ${paths.length} file${paths.length === 1 ? '' : 's'}`,
+    })
+  }
+
+  const gitUnstageAll = () => {
+    if (comparison.active()) return say('Unstage is unavailable while comparing branches', 'warn')
+    if (git.diffBase() !== null) {
+      return say('Unstage is unavailable while comparing against a branch', 'warn')
+    }
+    const repo = git.activeRepo()
+    if (repo === null) return say(noRepository(git), 'warn')
+    const paths = git
+      .stagedChanges()
+      .filter(c => git.repoFor(c.path) === repo)
+      .map(c => c.path)
+    if (paths.length === 0) return say('Nothing to unstage')
+    gitOp('Unstaging', r => unstagePaths(r, paths), {
+      repo,
+      done: () => `Unstaged ${paths.length} file${paths.length === 1 ? '' : 's'}`,
+    })
   }
 
   /** A click: a file diffs, a folder folds. */
@@ -221,7 +288,7 @@ export function createCommands(ctx: AppContext) {
     const rows = git.rows()
     const at = Math.max(0, Math.min(row, rows.length - 1))
     const target = rows[at]
-    if (!target) return
+    if (!target || target.kind === 'section') return
     panes.setGitCursor(at)
     if (target.kind === 'dir') return git.toggleCollapsed(target.rel)
     if (target.change.status === 'deleted') return say('File was deleted', 'warn')
@@ -472,6 +539,9 @@ export function createCommands(ctx: AppContext) {
     gitActivateRow,
     gitOpenRow,
     gitDiscard: () => offerDiscard(),
+    gitStageToggle,
+    gitStageAll,
+    gitUnstageAll,
     /**
      * "Diff current file" — the palette's way into the panel: it opens the
      * source-control view with the cursor on the file being edited, so the
@@ -523,22 +593,22 @@ export function createCommands(ctx: AppContext) {
     gitCommit: () => {
       const repo = git.activeRepo()
       if (repo === null) return say(noRepository(git), 'warn')
-      // A hand-built index is a selection already made, so the picker mirrors
-      // it: staged files start checked, the rest unchecked. With nothing
-      // staged there is no selection to respect and everything starts checked.
-      const staged = stagedPaths(repo)
-      // One repository's changes: a commit is one repository's, and offering
-      // another's files would stage nothing and fail on the path.
-      //
       // Deliberately not `git.diffBase()`: the index is built against HEAD no
-      // matter which branch is being reviewed, so offering the files that differ
-      // from some other branch would stage work that is already committed.
+      // matter which branch is being reviewed.
+      const staged = stagedPaths(repo)
+      // A non-empty index is the selection already made — commit it as-is, without
+      // re-adding from the working tree (which would pull later edits into the
+      // commit). With nothing staged, the picker offers every change.
+      if (staged.size > 0) {
+        ctx.prompts.setPrompt({ kind: 'commit' })
+        return
+      }
       const changes = [...statusMap(repo)]
         .map(([path, fileStatus]) => ({
           path,
           rel: relative(rootDir, path),
           status: fileStatus,
-          checked: staged.size === 0 || staged.has(path),
+          checked: true,
         }))
         .toSorted((a, b) => a.rel.localeCompare(b.rel))
       if (changes.length === 0) return say('Nothing to commit — working tree clean')

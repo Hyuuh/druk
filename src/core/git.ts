@@ -757,6 +757,73 @@ function parsePorcelain(stdout: string, base: string): Map<string, FileStatus> {
   return statuses
 }
 
+export interface IndexSides {
+  /** Status of the index column, or null when that side matches HEAD. */
+  staged: FileStatus | null
+  /** Status of the working-tree column, or null when that side matches the index. */
+  unstaged: FileStatus | null
+}
+
+function statusForCode(code: string): FileStatus | null {
+  if (code === ' ' || code === '') return null
+  return STATUS_BY_CODE[code] ?? null
+}
+
+/**
+ * Index and working-tree sides of each porcelain row, keyed like `statusMap`.
+ * A path can be on both sides at once (`MM`, `AM`, …); untracked is unstaged
+ * only until `git add`.
+ */
+function parseIndexSides(stdout: string, base: string): Map<string, IndexSides> {
+  const sides = new Map<string, IndexSides>()
+  for (const entry of parsePorcelainEntries(stdout)) {
+    const path = join(base, entry.path)
+    if (entry.xy === '??') {
+      sides.set(path, { staged: null, unstaged: 'untracked' })
+      continue
+    }
+    sides.set(path, {
+      staged: statusForCode(entry.xy[0]!),
+      unstaged: statusForCode(entry.xy[1]!),
+    })
+  }
+  return sides
+}
+
+/**
+ * Staged and unstaged status per absolute path. Empty outside a repository.
+ * Against a comparison base there is no index to split — callers that review a
+ * branch keep using `statusMap` alone.
+ */
+export function indexSidesMap(cwd: string): Map<string, IndexSides> {
+  const base = keyBase(cwd)
+  if (base === null) return new Map()
+  const run = git(cwd, STATUS_ARGS)
+  return run.status === 0 ? parseIndexSides(run.stdout, base) : new Map()
+}
+
+/** `indexSidesMap` off the render thread — same cadence as `statusMapAsync`. */
+export async function indexSidesMapAsync(cwd: string): Promise<Map<string, IndexSides>> {
+  const top = await gitAsync(cwd, ['rev-parse', '--show-toplevel'])
+  if (top.status !== 0) return new Map()
+  const base = sameOrRoot(cwd, top.stdout.trim())
+  const run = await gitAsync(cwd, STATUS_ARGS)
+  return run.status === 0 ? parseIndexSides(run.stdout, base) : new Map()
+}
+
+/** Repo-relative pathspecs for `paths`, refused when any falls outside `cwd`'s root. */
+function pathspecs(cwd: string, paths: string[]): string[] | null {
+  const base = keyBase(cwd)
+  if (base === null) return null
+  const specs: string[] = []
+  for (const path of paths) {
+    const rel = relative(base, path)
+    if (!rel || isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) return null
+    specs.push(literal(rel.split(sep).join('/')))
+  }
+  return specs
+}
+
 /**
  * `git diff --name-status -z`. `-z` drops the tab between the code and the path
  * as well, so the fields arrive as a flat alternating list rather than one
@@ -1267,10 +1334,34 @@ export async function commitPaths(
   message: string,
   paths: string[],
 ): Promise<GitResult> {
+  const specs = pathspecs(cwd, paths)
+  if (specs === null) return { ok: false, detail: 'Not a git repository' }
+  if (specs.length === 0) return { ok: false, detail: 'Nothing to commit' }
   // -A scoped to the paths: it is what stages a deletion or an untracked file.
-  const add = await mutate(cwd, ['add', '-A', '--', ...paths])
+  const add = await mutate(cwd, ['add', '-A', '--', ...specs])
   if (!add.ok) return add
-  return mutate(cwd, ['commit', '-m', message, '--', ...paths])
+  return mutate(cwd, ['commit', '-m', message, '--', ...specs])
+}
+
+/** Stage working-tree changes for `paths` into the index. */
+export async function stagePaths(cwd: string, paths: string[]): Promise<GitResult> {
+  const specs = pathspecs(cwd, paths)
+  if (specs === null) return { ok: false, detail: 'Not a git repository' }
+  if (specs.length === 0) return { ok: false, detail: 'Nothing to stage' }
+  return mutate(cwd, ['add', '-A', '--', ...specs])
+}
+
+/** Remove `paths` from the index; the working tree is left alone. */
+export async function unstagePaths(cwd: string, paths: string[]): Promise<GitResult> {
+  const specs = pathspecs(cwd, paths)
+  if (specs === null) return { ok: false, detail: 'Not a git repository' }
+  if (specs.length === 0) return { ok: false, detail: 'Nothing to unstage' }
+  return mutate(cwd, ['restore', '--staged', '--', ...specs])
+}
+
+/** Commit whatever is in the index, without refreshing it from the working tree. */
+export async function commitIndex(cwd: string, message: string): Promise<GitResult> {
+  return mutate(cwd, ['commit', '-m', message])
 }
 
 /** Soft reset: the commit is gone, its changes stay staged. */

@@ -78,6 +78,24 @@ test('Enter opens the changed file itself, over the diff the cursor showed', asy
   expect(shown).toContain('a.ts')
 })
 
+test('s stages the file under the cursor and splits the panel into Staged / Changes', async () => {
+  const dir = repo()
+  writeFileSync(join(dir, 'b.ts'), 'beta changed\n')
+  const t = await launch(dir)
+  await press(t, i => void i.pressKeys([TOGGLE]))
+  await untilFrame(t, 'a.ts')
+  // Nothing staged yet: one list, no section headers.
+  expect(frame(t)).not.toContain('STAGED')
+
+  await press(t, i => i.pressArrow('up')) // land on a.ts
+  await press(t, i => void i.typeText('s'))
+  await untilFrame(t, 'STAGED')
+  expect(frame(t)).toContain('CHANGES')
+  expect(frame(t)).toContain('s stage')
+  const status = Bun.spawnSync(['git', 'status', '--porcelain'], { cwd: dir })
+  expect(status.stdout.toString()).toMatch(/^M {2}a\.ts/m)
+}, 20000)
+
 test('c commits the change from the panel, p reports on push', async () => {
   const dir = repo()
   const t = await launch(dir)
@@ -110,7 +128,7 @@ test('the peek strip advertises the panel keys, not the tree ones', async () => 
   const peek = frame(t)
   expect(peek).toContain('Keys · source control')
   expect(peek).toContain('↑↓ · Enter')
-  expect(peek).toContain('c d p b B r E')
+  expect(peek).toContain('s c d p b B r')
   expect(peek).not.toContain('a / A')
 })
 

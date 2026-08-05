@@ -96,6 +96,9 @@ export interface CommandActions {
   gitActivateRow: (row: number) => void
   gitOpenRow: (row: number) => void
   gitDiscard: () => void
+  gitStageToggle: () => void
+  gitStageAll: () => void
+  gitUnstageAll: () => void
   /** Not a command: `App` runs it when git or a buffer moves under an open diff. */
   refreshDiff: () => void
   gitCommit: () => void
@@ -210,6 +213,14 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           hint: 'd in source control',
           run: actions.gitDiscard,
         },
+        {
+          id: 'git.stage',
+          label: 'Stage / unstage file',
+          hint: 's in source control',
+          run: actions.gitStageToggle,
+        },
+        { id: 'git.stageAll', label: 'Stage all changes', run: actions.gitStageAll },
+        { id: 'git.unstageAll', label: 'Unstage all', run: actions.gitUnstageAll },
         // What the whole editor compares against — the panel names the branch
         // while one is picked, so the pair reads as a mode you are in or out of.
         { id: 'git.diffBase', label: 'Compare against branch…', run: actions.gitDiffBase },

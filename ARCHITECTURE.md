@@ -64,6 +64,7 @@ scripts/
                      dialects, graph.ts lays out anything that is boxes and edges,
                      sequence.ts and pie.ts render their own, canvas.ts is the cell grid
     git.ts           queries, mutations, and async branch-comparison metadata/blob reads
+    changeTree.ts    source-control panel rows: file/folder/section, tree or list
     repos.ts         which repositories the opened folder holds, and which one a path
                      is in — filesystem-only, so the tree may ask per row
     forge.ts         a remote URL -> which forge, and its open pull request's
@@ -679,6 +680,13 @@ is just a diff against the empty tree.
   other way would be one the arrows could not move from. Inside the page the arrows scroll
   and Tab toggles the layout — the panel and the page each own their arrows, so neither
   needs a chord, and that split only holds while the panel keeps the focus.
+- **Staging is the index, not the collapsed status mark.** Tree/gutter still use
+  `statusMap` ("differs from HEAD"). The panel reads `indexSidesMap` — both porcelain
+  columns — and draws Staged / Changes once anything is staged (`sectionedChangeRows`).
+  `s` stages or unstages by the row's `side`, pinned to that path's repository; `c`
+  commits the index as-is when it is non-empty (no re-add), or opens the picker when
+  it is empty. Against a comparison base the panel stays a single review list and
+  staging is refused — the index is always against HEAD.
 - **Branch comparison replaces the panel rather than sitting beside it.** `app/comparison.ts`
   owns its own file, commit and commit-file cursors and its caches; uppercase `B` enters it
   or picks a new base, lowercase `b` stays branch switching. Its detail page is layered over

@@ -2,17 +2,19 @@ import { join, relative } from 'node:path'
 
 import { createEffect, createMemo, createSignal, on, onCleanup } from 'solid-js'
 
-import { ancestorDirs, changeRows } from '../core/changeTree'
+import { ancestorDirs, changeRows, sectionedChangeRows } from '../core/changeTree'
+import type { Change } from '../core/changeTree'
 import type { Config } from '../core/config'
 import {
   currentBranch,
   diffLines,
   ignoredAmong,
+  indexSidesMapAsync,
   inRepository,
   statusMapAsync,
   upstreamOf,
 } from '../core/git'
-import type { FileStatus, GitResult, LineChange, Upstream } from '../core/git'
+import type { FileStatus, GitResult, IndexSides, LineChange, Upstream } from '../core/git'
 import { discoverRepos, groupByRepo, repoOf } from '../core/repos'
 import type { CommitFile } from '../ui/CommitModal'
 import type { EditorBridge } from './editor'
@@ -42,6 +44,12 @@ export function createGit(
   /** Bumped when something may have changed what git would report. */
   const [revision, setRevision] = createSignal(0)
   const [gitStatus, setGitStatus] = createSignal<Map<string, FileStatus>>(new Map())
+  /**
+   * Index vs working-tree split for the source-control panel. Null while
+   * comparing against a branch — that list is a review of the branch, not an
+   * index to stage into.
+   */
+  const [indexSides, setIndexSides] = createSignal<Map<string, IndexSides> | null>(null)
   /** Visible tree paths that `.gitignore` excludes — dimmed in the sidebar. */
   const [gitIgnored, setGitIgnored] = createSignal<Set<string>>(new Set())
   // Starts null and is filled by `wireGitEffects` after the first frame: reading
@@ -83,6 +91,21 @@ export function createGit(
       .toSorted((a, b) => a.rel.localeCompare(b.rel)),
   )
 
+  const toChanges = (side: 'staged' | 'unstaged'): Change[] => {
+    const sides = indexSides()
+    if (!sides) return []
+    return [...sides]
+      .flatMap(([path, entry]) => {
+        const status = entry[side]
+        if (!status) return []
+        return [{ path, rel: relative(rootDir, path), status, side }]
+      })
+      .toSorted((a, b) => a.rel.localeCompare(b.rel))
+  }
+
+  const stagedChanges = createMemo(() => toChanges('staged'))
+  const unstagedChanges = createMemo(() => toChanges('unstaged'))
+
   /** Folders the panel's tree has folded away, by path relative to the root. */
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set())
 
@@ -91,7 +114,13 @@ export function createGit(
    * caller works in row indices: `changes` is no longer addressable by cursor,
    * because in tree mode most rows are not files.
    */
-  const rows = createMemo(() => changeRows(changes(), panelView(), collapsed()))
+  const rows = createMemo(() => {
+    // Compare-base review: one list against that ref, no index sections.
+    if (diffBase() !== null || indexSides() === null) {
+      return changeRows(changes(), panelView(), collapsed())
+    }
+    return sectionedChangeRows(stagedChanges(), unstagedChanges(), panelView(), collapsed())
+  })
 
   /** Which repository a path belongs to — the innermost, so a nested one wins. */
   const repoFor = (path: string) => repoOf(path, repos())
@@ -101,7 +130,7 @@ export function createGit(
     const at = panelCursor()
     if (at === null) return null
     const row = rows()[Math.max(0, Math.min(at, rows().length - 1))]
-    if (!row) return null
+    if (!row || row.kind === 'section') return null
     return repoFor(row.kind === 'file' ? row.change.path : join(rootDir, row.rel))
   })
 
@@ -130,10 +159,16 @@ export function createGit(
    * a chain of single-child folders is drawn as one row keyed on the outermost of
    * them, so a deeper rel in the set would hide a subtree leaving no row to press.
    */
-  const collapseAll = () =>
-    setCollapsed(
-      new Set(changeRows(changes(), 'tree').flatMap(row => (row.kind === 'dir' ? [row.rel] : []))),
-    )
+  const collapseAll = () => {
+    const dirs =
+      diffBase() === null && indexSides() !== null
+        ? [
+            ...changeRows(stagedChanges(), 'tree'),
+            ...changeRows(unstagedChanges(), 'tree'),
+          ].flatMap(row => (row.kind === 'dir' ? [row.rel] : []))
+        : changeRows(changes(), 'tree').flatMap(row => (row.kind === 'dir' ? [row.rel] : []))
+    setCollapsed(new Set(dirs))
+  }
 
   /** Unfold every folder on the way to `rel`, so its row is on screen to land on. */
   const revealChange = (rel: string) =>
@@ -152,6 +187,10 @@ export function createGit(
     bump,
     gitStatus,
     setGitStatus,
+    indexSides,
+    setIndexSides,
+    stagedChanges,
+    unstagedChanges,
     gitIgnored,
     setGitIgnored,
     branch,
@@ -367,6 +406,21 @@ export function wireGitEffects(deps: {
       }
       git.setGitStatus(merged)
     })
+
+    // The index split is only meaningful against HEAD. A comparison base turns
+    // the panel into a review list, and staging into that list would be a lie.
+    if (base !== null) {
+      git.setIndexSides(null)
+    } else {
+      void Promise.all(git.repos().map(repo => indexSidesMapAsync(repo))).then(maps => {
+        if (run !== generation) return
+        const merged = new Map<string, IndexSides>()
+        for (const map of maps) {
+          for (const [path, sides] of map) merged.set(path, sides)
+        }
+        git.setIndexSides(merged)
+      })
+    }
 
     // With the rows hidden outright there is nothing left to dim, and the
     // subprocess would answer "none of these" on every filesystem event.

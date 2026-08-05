@@ -42,7 +42,11 @@ export type Prompt =
   | { kind: 'delete'; targets: string[] }
   | { kind: 'closeDirty'; paths: string[]; names: string[] }
   | { kind: 'quitDirty'; names: string[] }
-  | { kind: 'commit'; paths: string[] }
+  /**
+   * Commit message prompt. `paths` present means stage-and-commit those paths
+   * (the picker); omitted means commit the index as it stands.
+   */
+  | { kind: 'commit'; paths?: string[] }
   | { kind: 'undoCommit'; subject: string }
   | { kind: 'discardChange'; target: DiscardTarget }
   /** `from` is the branch to start at, or null for HEAD. */

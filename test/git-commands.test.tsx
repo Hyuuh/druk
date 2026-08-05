@@ -89,26 +89,26 @@ test('the picker refuses an empty selection and A toggles everything', async () 
   expect(t.captureCharFrame()).toContain('1 of 1 files')
 }, 20000)
 
-test('a hand-built index prefills the picker, and Enter commits just that', async () => {
+test('a non-empty index skips the picker and commits the index as-is', async () => {
   const dir = repo('one\n')
   writeFileSync(join(dir, 'a.ts'), 'two\n')
   execFileSync('git', ['add', 'a.ts'], { cwd: dir })
+  // A later edit must not ride into the commit — that is what commitIndex guards.
+  writeFileSync(join(dir, 'a.ts'), 'three\n')
   writeFileSync(join(dir, 'b.ts'), 'new\n')
 
   const t = await launch(dir)
   await runCommand(t, 'Commit')
-  const picker = t.captureCharFrame()
-  expect(picker).toContain('1 of 2 files')
-  expect(picker).toContain('[x] M a.ts')
-  expect(picker).toContain('[ ] U b.ts')
+  expect(t.captureCharFrame()).toContain('Commit message')
+  expect(t.captureCharFrame()).not.toContain('of 2 files')
 
-  await press(t, i => i.pressEnter())
   await press(t, i => void i.typeText('staged only'))
   await press(t, i => i.pressEnter())
 
   await until(t, () => subject(dir) === 'staged only')
+  expect(execFileSync('git', ['show', 'HEAD:a.ts'], { cwd: dir }).toString()).toBe('two\n')
   expect(porcelain(dir)).toContain('?? b.ts')
-  expect(porcelain(dir)).not.toContain('a.ts')
+  expect(porcelain(dir)).toContain(' M a.ts')
 }, 20000)
 
 test('undo last commit asks first, then leaves the changes staged', async () => {

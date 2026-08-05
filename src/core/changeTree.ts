@@ -6,6 +6,11 @@ export interface Change {
   /** Relative to the project root, `/`-separated — what the tree is built from. */
   rel: string
   status: FileStatus
+  /**
+   * Which index side this row is about. Omitted when the panel is a single list
+   * (compare-base review). A partially staged path appears once per side.
+   */
+  side?: 'staged' | 'unstaged'
 }
 
 /**
@@ -31,7 +36,16 @@ export interface DirRow {
   files: number
 }
 
-export type ChangeRow = FileRow | DirRow
+export interface SectionRow {
+  kind: 'section'
+  id: 'staged' | 'changes'
+  label: string
+  count: number
+  /** Always 0 — sections sit at the top of each list, never nested. */
+  depth: 0
+}
+
+export type ChangeRow = FileRow | DirRow | SectionRow
 
 /** Every folder on the way to `rel`, outermost first: `a/b/c.ts` → `a`, `a/b`. */
 export function ancestorDirs(rel: string): string[] {
@@ -102,6 +116,29 @@ export function changeRows(
 }
 
 /**
+ * Staged and unstaged lists as the source-control panel draws them.
+ *
+ * With nothing staged the panel stays a single list — the everyday case, and the
+ * same shape it had before staging existed. Headers appear the moment the index
+ * holds something, so a partial stage is readable as two groups.
+ */
+export function sectionedChangeRows(
+  staged: readonly Change[],
+  unstaged: readonly Change[],
+  mode: 'list' | 'tree',
+  collapsed: ReadonlySet<string> = new Set(),
+): ChangeRow[] {
+  if (staged.length === 0 && unstaged.length === 0) return []
+  if (staged.length === 0) return changeRows(unstaged, mode, collapsed)
+  return [
+    { kind: 'section', id: 'staged', label: 'STAGED', count: staged.length, depth: 0 },
+    ...changeRows(staged, mode, collapsed),
+    { kind: 'section', id: 'changes', label: 'CHANGES', count: unstaged.length, depth: 0 },
+    ...changeRows(unstaged, mode, collapsed),
+  ]
+}
+
+/**
  * `dir` extended through every folder that is its only child: the rel path of the
  * deepest folder that carries all of `dir`'s files.
  */
@@ -130,6 +167,9 @@ export function parentRow(rows: readonly ChangeRow[], at: number): number {
   const depth = rows[at]?.depth ?? 0
   for (let up = at - 1; up >= 0; up--) {
     const row = rows[up]!
+    // A section ends the walk: the file belongs to the group below it, not to a
+    // folder drawn for the group above.
+    if (row.kind === 'section') return at
     if (row.kind === 'dir' && row.depth < depth) return up
   }
   return at

@@ -69,9 +69,16 @@ worktrees) is scanned `gitScanDepth` levels down and every repository found is q
 in its own root, with the status bar and the panel header naming it (`beta/main`)
 and each command acting on the *active* one — the repository of the change under the
 panel's cursor, else of the open file, else the only one there is;
-and file-level discard from a changed row (`d` or palette → Git → Discard changes,
-all confirmed and scoped to that row's repository), plus palette
-commands for commit/undo/stash/push/fetch/pull — a push origin
+file-level stage and unstage from a changed row (`s` toggles by section, or
+palette → Git → Stage / unstage file — plus Stage all / Unstage all), with the
+panel splitting into Staged and Changes once anything is in the index (a path
+can appear in both when only some of its edits are staged; against a comparison
+base the list stays a single review and staging is refused), commit of the index
+as it stands when something is staged (`c` / palette → Commit… — no re-add from
+the working tree) or the file picker when the index is empty, file-level discard
+from a changed row (`d` or palette → Git → Discard changes, all confirmed and
+scoped to that row's repository), plus palette commands for
+undo/stash/push/fetch/pull — a push origin
 rejects offers to merge origin in and push again, VS Code's prompt, rather than
 naming the two commands and stopping — and for branches
 (switch, create, create-from, merge, rename, delete), a diff view (inline or

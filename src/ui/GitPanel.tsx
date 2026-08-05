@@ -1,7 +1,7 @@
 import { TextAttributes } from '@opentui/core'
 import { createEffect, createMemo, For, on, Show } from 'solid-js'
 
-import type { ChangeRow, DirRow, FileRow } from '../core/changeTree'
+import type { ChangeRow, DirRow, FileRow, SectionRow } from '../core/changeTree'
 import { iconFor } from '../icons'
 import { ui } from '../themes'
 import { MARKS, statusColor } from './FileTree'
@@ -11,6 +11,7 @@ import { createScrollList, rowBg, scrollbarOptions } from './list'
  * (or nothing) so the block inside needs no cast. */
 const dirRow = (row: ChangeRow) => (row.kind === 'dir' ? row : undefined)
 const fileRow = (row: ChangeRow) => (row.kind === 'file' ? row : undefined)
+const sectionRow = (row: ChangeRow) => (row.kind === 'section' ? row : undefined)
 
 /**
  * The name an icon theme is keyed by. A folder row's label is a *joined* chain
@@ -53,9 +54,10 @@ export interface GitPanelProps {
 
 /**
  * The sidebar's source-control view — VS Code's left-hand git panel, sized down:
- * the changed files under the branch, the cursor paging the diff page beside it,
- * `c` to commit, `p` to push. Keys are handled in `app/keyboard.ts` beside the
- * tree's, so this renders and reports clicks, nothing more.
+ * the changed files under the branch (Staged / Changes once anything is in the
+ * index), the cursor paging the diff page beside it, `s` to stage, `c` to
+ * commit, `p` to push. Keys are handled in `app/keyboard.ts` beside the tree's,
+ * so this renders and reports clicks, nothing more.
  */
 export function GitPanel(props: GitPanelProps) {
   const cursor = () => Math.max(0, Math.min(props.cursor, props.rows.length - 1))
@@ -108,7 +110,7 @@ export function GitPanel(props: GitPanelProps) {
         />
         <box flexGrow={1} backgroundColor={ui.sidebarBg} />
         {/* Only tree view has folders to fold, and only while one is open: the
-            flat list draws no folder rows at all. */}
+            flat list draws no folder rows at all. Section headers are not folders. */}
         <Show when={props.rows.some(row => row.kind === 'dir' && !row.collapsed)}>
           <box flexShrink={0} backgroundColor={ui.sidebarBg} onMouseDown={props.onCollapseAll}>
             <text fg={ui.dim} bg={ui.sidebarBg} content="▴ " />
@@ -173,11 +175,13 @@ export function GitPanel(props: GitPanelProps) {
                * the two views line their names up whether icons are on or off.
                */
               const icon = () =>
-                iconFor(props.iconTheme, {
-                  name: iconName(row),
-                  isDir: row.kind === 'dir',
-                  expanded: row.kind === 'dir' && !row.collapsed,
-                })
+                row.kind === 'section'
+                  ? null
+                  : iconFor(props.iconTheme, {
+                      name: iconName(row),
+                      isDir: row.kind === 'dir',
+                      expanded: row.kind === 'dir' && !row.collapsed,
+                    })
               const glyph = () =>
                 icon()?.glyph ?? (row.kind === 'dir' ? (row.collapsed ? '▸' : '▾') : '')
               const glyphColor = () => icon()?.color ?? (row.kind === 'dir' ? ui.dim : ui.faint)
@@ -191,44 +195,70 @@ export function GitPanel(props: GitPanelProps) {
                   // the arrows page the diff from here.
                   onMouseDown={() => props.onActivate(index())}
                 >
-                  {/* Indent and glyph never give, as in the tree: shrinking them
-                      slid every row's marks a column left. The name is the only
-                      thing allowed to give. */}
-                  <text
-                    fg={ui.faint}
-                    bg={bg()}
-                    flexShrink={0}
-                    content={` ${'│ '.repeat(row.depth)}`}
-                  />
-                  <text fg={glyphColor()} bg={bg()} flexShrink={0} content={`${glyph()} `} />
-                  <box flexGrow={1} flexDirection="row" backgroundColor={bg()}>
-                    <text
-                      fg={row.kind === 'dir' ? ui.folder : ui.text}
-                      bg={bg()}
-                      content={row.label}
-                      attributes={row.kind === 'dir' ? TextAttributes.BOLD : undefined}
-                    />
-                  </box>
-                  {/* A folded folder says how many changes it is hiding, so the row
-                      still carries its files' worth of information while it is shut. */}
-                  <Show when={dirRow(row)}>
-                    {(dir: () => DirRow) => (
-                      <text
-                        fg={ui.faint}
-                        bg={bg()}
-                        flexShrink={0}
-                        content={dir().collapsed ? `${dir().files} ` : ' '}
-                      />
-                    )}
-                  </Show>
-                  <Show when={fileRow(row)}>
-                    {(file: () => FileRow) => (
-                      <text
-                        fg={statusColor(file().change.status)}
-                        bg={bg()}
-                        flexShrink={0}
-                        content={`${MARKS[file().change.status]} `}
-                      />
+                  <Show
+                    when={sectionRow(row)}
+                    fallback={
+                      <>
+                        {/* Indent and glyph never give, as in the tree: shrinking them
+                            slid every row's marks a column left. The name is the only
+                            thing allowed to give. */}
+                        <text
+                          fg={ui.faint}
+                          bg={bg()}
+                          flexShrink={0}
+                          content={` ${'│ '.repeat(row.depth)}`}
+                        />
+                        <text fg={glyphColor()} bg={bg()} flexShrink={0} content={`${glyph()} `} />
+                        <box flexGrow={1} flexDirection="row" backgroundColor={bg()}>
+                          <text
+                            fg={row.kind === 'dir' ? ui.folder : ui.text}
+                            bg={bg()}
+                            content={row.label}
+                            attributes={row.kind === 'dir' ? TextAttributes.BOLD : undefined}
+                          />
+                        </box>
+                        {/* A folded folder says how many changes it is hiding, so the row
+                            still carries its files' worth of information while it is shut. */}
+                        <Show when={dirRow(row)}>
+                          {(dir: () => DirRow) => (
+                            <text
+                              fg={ui.faint}
+                              bg={bg()}
+                              flexShrink={0}
+                              content={dir().collapsed ? `${dir().files} ` : ' '}
+                            />
+                          )}
+                        </Show>
+                        <Show when={fileRow(row)}>
+                          {(file: () => FileRow) => (
+                            <text
+                              fg={statusColor(file().change.status)}
+                              bg={bg()}
+                              flexShrink={0}
+                              content={`${MARKS[file().change.status]} `}
+                            />
+                          )}
+                        </Show>
+                      </>
+                    }
+                  >
+                    {(section: () => SectionRow) => (
+                      <>
+                        <text
+                          fg={ui.dim}
+                          bg={bg()}
+                          flexGrow={1}
+                          wrapMode="none"
+                          content={` ${section().label}`}
+                          attributes={TextAttributes.BOLD}
+                        />
+                        <text
+                          fg={ui.faint}
+                          bg={bg()}
+                          flexShrink={0}
+                          content={`${section().count} `}
+                        />
+                      </>
                     )}
                   </Show>
                 </box>
@@ -247,7 +277,7 @@ export function GitPanel(props: GitPanelProps) {
           <text
             fg={ui.faint}
             bg={ui.sidebarBg}
-            content="↑↓ diff · →← fold · d discard · c commit · p push · B compare"
+            content="↑↓ diff · s stage · →← fold · d discard · c commit · p push · B compare"
           />
         </box>
       </Show>
