@@ -34,9 +34,9 @@ describe('recognising env files', () => {
 })
 
 describe('files named after what they are', () => {
-  test('bun.lock is json, wherever it sits', () => {
-    expect(filetypeForPath('bun.lock')).toBe('json')
-    expect(filetypeForPath('packages/api/bun.lock')).toBe('json')
+  test('bun.lock is jsonc, wherever it sits', () => {
+    expect(filetypeForPath('bun.lock')).toBe('jsonc')
+    expect(filetypeForPath('packages/api/bun.lock')).toBe('jsonc')
   })
 
   test('and only that name', () => {

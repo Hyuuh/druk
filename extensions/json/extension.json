@@ -1,15 +1,14 @@
 {
   "id": "json",
   "name": "JSON",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "JSON and JSONC highlighting and the VS Code JSON server. Also reads `bun.lock`.",
   "languages": [
     {
       "id": "json",
       "grammar": {
         "vendored": "json"
-      },
-      "filenames": ["bun.lock"]
+      }
     },
     {
       "id": "jsonc",
@@ -17,6 +16,7 @@
         "vendored": "json"
       },
       "extensions": [".jsonc"],
+      "filenames": ["bun.lock"],
       "lineComment": "//"
     }
   ],
@@ -25,6 +25,17 @@
       "id": "json",
       "command": ["vscode-json-language-server", "--stdio"],
       "filetypes": ["json", "jsonc"],
+      "settings": {
+        "json": {
+          "validate": { "enable": true },
+          "schemas": [
+            {
+              "fileMatch": ["bun.lock"],
+              "schema": { "allowTrailingCommas": true, "allowComments": true }
+            }
+          ]
+        }
+      },
       "install": {
         "kind": "npm",
         "packages": ["vscode-langservers-extracted"]

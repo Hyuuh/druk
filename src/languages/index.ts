@@ -43,7 +43,7 @@ export interface Language {
    * Without one of these the patterns never run and the file renders plain.
    */
   extensions?: string[]
-  /** Whole file names — `bun.lock` is JSON however its extension reads. */
+  /** Whole file names — `bun.lock` is jsonc however its extension reads. */
   filenames?: string[]
   /** Name pattern for the files an extension cannot describe (`.env.local`). */
   filenamePattern?: RegExp
