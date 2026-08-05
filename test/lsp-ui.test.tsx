@@ -254,7 +254,25 @@ test('installing dependencies restarts the servers by itself', async () => {
   mkdirSync(join(dir, 'node_modules', 'left-pad'), { recursive: true })
   writeFileSync(join(dir, 'node_modules', 'left-pad', 'index.js'), 'module.exports = 1\n')
 
-  await until(t, () => spawns(marker) === 2, LSP_WAIT)
+  // A real install is a storm of events; this is one burst, and macOS can drop
+  // a lone burst that lands while a previous event's callback is dispatching
+  // (reproducible under CPU load — the restart then never comes). Touch the
+  // tree again until the restart is seen, slower than the 2s dependency-quiet
+  // window: a faster cadence would reset the debounce on every touch and hold
+  // the restart off forever.
+  let touched = Date.now()
+  await until(
+    t,
+    () => {
+      if (spawns(marker) >= 2) return true
+      if (Date.now() - touched > 2_500) {
+        touched = Date.now()
+        writeFileSync(join(dir, 'node_modules', 'left-pad', 'index.js'), 'module.exports = 1\n')
+      }
+      return false
+    },
+    LSP_WAIT,
+  )
   expect(t.captureCharFrame()).toContain('Dependencies changed')
 }, 30_000)
 
