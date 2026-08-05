@@ -27,6 +27,7 @@ import pythonWasm from 'tree-sitter-wasms/out/tree-sitter-python.wasm' with { ty
 import rubyWasm from 'tree-sitter-wasms/out/tree-sitter-ruby.wasm' with { type: 'file' }
 import rustWasm from 'tree-sitter-wasms/out/tree-sitter-rust.wasm' with { type: 'file' }
 import scalaWasm from 'tree-sitter-wasms/out/tree-sitter-scala.wasm' with { type: 'file' }
+import solidityWasm from 'tree-sitter-wasms/out/tree-sitter-solidity.wasm' with { type: 'file' }
 import swiftWasm from 'tree-sitter-wasms/out/tree-sitter-swift.wasm' with { type: 'file' }
 import tomlWasm from 'tree-sitter-wasms/out/tree-sitter-toml.wasm' with { type: 'file' }
 import tsxWasm from 'tree-sitter-wasms/out/tree-sitter-tsx.wasm' with { type: 'file' }
@@ -50,6 +51,7 @@ import pythonQuery from './queries/python.scm' with { type: 'file' }
 import rubyQuery from './queries/ruby.scm' with { type: 'file' }
 import rustQuery from './queries/rust.scm' with { type: 'file' }
 import scalaQuery from './queries/scala.scm' with { type: 'file' }
+import solidityQuery from './queries/solidity.scm' with { type: 'file' }
 import swiftQuery from './queries/swift.scm' with { type: 'file' }
 import tomlQuery from './queries/toml.scm' with { type: 'file' }
 import tsxQuery from './queries/tsx.scm' with { type: 'file' }
@@ -81,6 +83,7 @@ export const GRAMMARS = {
   ruby: { wasm: rubyWasm, query: rubyQuery },
   rust: { wasm: rustWasm, query: rustQuery },
   scala: { wasm: scalaWasm, query: scalaQuery },
+  solidity: { wasm: solidityWasm, query: solidityQuery },
   swift: { wasm: swiftWasm, query: swiftQuery },
   toml: { wasm: tomlWasm, query: tomlQuery },
   tsx: { wasm: tsxWasm, query: tsxQuery },

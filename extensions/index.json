@@ -633,6 +633,23 @@
       ]
     },
     {
+      "id": "solidity",
+      "name": "Solidity",
+      "version": "1.0.0",
+      "description": "Solidity highlighting and the Nomic Foundation language server.",
+      "provides": {
+        "themes": [],
+        "icons": [],
+        "filetypes": [
+          "solidity"
+        ]
+      },
+      "categories": [
+        "language",
+        "lsp"
+      ]
+    },
+    {
       "id": "sql",
       "name": "SQL",
       "version": "1.0.0",
