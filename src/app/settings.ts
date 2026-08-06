@@ -13,7 +13,6 @@ import {
   sidebarColumns,
   SIDEBAR_MIN,
   SIDEBAR_MAX,
-  SIDEBAR_POSITIONS,
 } from '../core/config'
 import type { Config, ConfigScope, SidebarPosition } from '../core/config'
 import { FORGE_KINDS } from '../core/forge'
@@ -818,19 +817,15 @@ export function createSettings(deps: {
       },
     },
     {
+      // Two values: a list to choose between them is more ceremony than the
+      // flip is worth, so this stays a step like the booleans above.
       section: 'Files',
       key: 'sidebarPosition',
       label: 'Sidebar position',
       value: view().sidebarPosition,
       cycle: toggleSidebarPosition,
-      select: {
-        options: [...SIDEBAR_POSITIONS],
-        pick: at => applySidebarPosition(SIDEBAR_POSITIONS[at]!),
-      },
     },
     {
-      // Two values: a list to choose between them is more ceremony than the
-      // flip is worth, so this stays a step like the booleans above.
       section: 'Git',
       key: 'diffView',
       label: 'Diff layout',

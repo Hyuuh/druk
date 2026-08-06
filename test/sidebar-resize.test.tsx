@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 import { SIDEBAR_MIN } from '../src/core/config'
 import { ui } from '../src/themes'
-import { fixture, launch, openFile, press, settle } from './helpers'
+import { fixture, launch, openFile, press, pressEscape, runCommand, settle } from './helpers'
 import type { Harness } from './helpers'
 
 const PROJECT = { 'alpha.ts': 'const a = 1\n', 'beta.ts': 'const b = 2\n' }
@@ -167,6 +167,46 @@ describe('sidebar on the right', () => {
     expect(sidebarStart(t)).toBe(50)
     // Left side is not the tree — the first column is the editor background.
     expect(dividerAt(t)).toBe(-1)
+  })
+
+  test('the palette command moves it to the other edge and back', async () => {
+    const t = await launch(fixture(PROJECT), { sidebarWidth: 30 })
+    expect(dividerAt(t)).toBe(30)
+    expect(sidebarStart(t)).toBe(-1)
+
+    await runCommand(t, 'Toggle sidebar position')
+    expect(dividerAt(t)).toBe(-1)
+    expect(sidebarStart(t)).toBe(50)
+
+    await runCommand(t, 'Toggle sidebar position')
+    expect(dividerAt(t)).toBe(30)
+    expect(sidebarStart(t)).toBe(-1)
+  })
+
+  test('flipping the settings row moves the panel on screen', async () => {
+    const t = await launch(fixture(PROJECT), { sidebarWidth: 30 })
+    expect(dividerAt(t)).toBe(30)
+
+    await runCommand(t, 'Settings')
+    let onRow = false
+    for (let step = 0; step < 40; step++) {
+      const row = t
+        .captureCharFrame()
+        .split('\n')
+        .find(line => line.includes('Sidebar position'))
+      if (row?.includes('▌')) {
+        onRow = true
+        break
+      }
+      await press(t, i => i.pressArrow('down'))
+    }
+    expect(onRow).toBe(true)
+    await press(t, i => i.pressArrow('right'))
+    await pressEscape(t)
+    await settle(t)
+
+    expect(dividerAt(t)).toBe(-1)
+    expect(sidebarStart(t)).toBe(50)
   })
 
   test('dragging the divider sets the width from the right edge', async () => {
