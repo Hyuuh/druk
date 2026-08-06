@@ -253,6 +253,7 @@ instead of breaking startup.
 | `wrap` | `true` | set `false` to keep each line on one row — the tail of a long line is then reached by moving the cursor into it (palette → View → Toggle word wrap) |
 | `vim` | `false` | normal / insert / visual modes, `hjkl w b 0 $ gg G`, counts, `i a o`, `x dd dw cw`, `v` + `d y c`, `yy p P`, `u` / `Ctrl+R` |
 | `sidebarWidth` | `"auto"` | a quarter of the window, or pin 15–80 columns |
+| `sidebarPosition` | `"left"` | `left` or `right` — which side of the editor the Files / Git / Extensions sidebar sits on |
 | `trimOnSave` | `false` | on save: strip trailing spaces and end the file with one newline |
 | `autoSaveOnBlur` | `true` | save unsaved tabs when switching tabs or when the terminal window loses focus |
 | `showDotfiles` | `true` | set `false` to hide dotfiles in the file tree |

@@ -136,6 +136,71 @@ describe('resizing the sidebar', () => {
   })
 })
 
+/**
+ * Column the tree starts at when it sits on the right — where panel colour
+ * begins after the editor and runs to the edge. The tab strip's own cells are
+ * interrupted by accent/bar colours, so only a solid run to the end counts.
+ */
+function sidebarStart(t: Harness): number {
+  const frame = t.captureSpans() as unknown as { lines: { spans: Span[] }[] }
+  const panel = ui.panelBg.toLowerCase()
+  for (const line of frame.lines) {
+    let column = 0
+    let start = -1
+    for (const span of line.spans) {
+      if (hex(span.bg) === panel) {
+        if (start < 0) start = column
+      } else if (start >= 0) {
+        start = -1
+      }
+      column += span.text.length
+    }
+    if (start > 0) return start
+  }
+  return -1
+}
+
+describe('sidebar on the right', () => {
+  test('the panel sits at the terminal edge, past the editor', async () => {
+    const t = await launch(fixture(PROJECT), { sidebarPosition: 'right', sidebarWidth: 30 })
+    // 80-column terminal: editor, one-column divider, then 30 of sidebar.
+    expect(sidebarStart(t)).toBe(50)
+    // Left side is not the tree — the first column is the editor background.
+    expect(dividerAt(t)).toBe(-1)
+  })
+
+  test('dragging the divider sets the width from the right edge', async () => {
+    const t = await launch(fixture(PROJECT), { sidebarPosition: 'right', sidebarWidth: 30 })
+    expect(sidebarStart(t)).toBe(50)
+
+    // Pointer at column 39 → width = 80 − 39 − 1 = 40, sidebar starts at 40.
+    await t.mockMouse.drag(sidebarStart(t) - 1, 5, 39, 5)
+    await settle(t)
+    expect(sidebarStart(t)).toBe(40)
+
+    // Pointer at column 57 → width = 22, sidebar starts at 58.
+    await t.mockMouse.drag(sidebarStart(t) - 1, 5, 57, 5)
+    await settle(t)
+    expect(sidebarStart(t)).toBe(58)
+  })
+
+  test('] and [ still widen and narrow from the tree', async () => {
+    const t = await launch(fixture(PROJECT), { sidebarPosition: 'right', sidebarWidth: 30 })
+    const start = sidebarStart(t)
+
+    await press(t, input => void input.typeText(']'))
+    await settle(t)
+    // Wider sidebar starts further left.
+    const wider = sidebarStart(t)
+    expect(wider).toBeLessThan(start)
+
+    await press(t, input => void input.typeText('['))
+    await press(t, input => void input.typeText('['))
+    await settle(t)
+    expect(sidebarStart(t)).toBeGreaterThan(wider)
+  })
+})
+
 describe('what must not move when the sidebar does', () => {
   test('the tab bar is unaffected — it spans the terminal, above the tree', async () => {
     const files: Record<string, string> = {}
@@ -162,6 +227,7 @@ describe('what must not move when the sidebar does', () => {
     git('init', '-q', '-b', 'main')
     git('config', 'user.email', 't@e.com')
     git('config', 'user.name', 'T')
+    git('config', 'commit.gpgsign', 'false')
     writeFileSync(join(dir, 'tracked.ts'), 'const a = 1\n')
     writeFileSync(join(dir, 'a-much-longer-name.ts'), 'const b = 2\n')
     git('add', '.')

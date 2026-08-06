@@ -13,8 +13,9 @@ import {
   sidebarColumns,
   SIDEBAR_MIN,
   SIDEBAR_MAX,
+  SIDEBAR_POSITIONS,
 } from '../core/config'
-import type { Config, ConfigScope } from '../core/config'
+import type { Config, ConfigScope, SidebarPosition } from '../core/config'
 import { FORGE_KINDS } from '../core/forge'
 import type { ForgeSetting } from '../core/forge'
 import { FILE_TOKEN } from '../core/format'
@@ -621,6 +622,14 @@ export function createSettings(deps: {
     status.say(`Sidebar width: ${view().sidebarWidth}`)
   }
 
+  const applySidebarPosition = (position: SidebarPosition) => {
+    patchConfig({ sidebarPosition: position })
+    status.say(`Sidebar on the ${config.sidebarPosition}`)
+  }
+
+  const toggleSidebarPosition = () =>
+    applySidebarPosition(view().sidebarPosition === 'left' ? 'right' : 'left')
+
   /** The rows as this module declares them: what the page draws, plus the key it edits. */
   type RowSpec = Omit<SettingRow, 'local' | 'clear'> & { key: keyof Config }
 
@@ -806,6 +815,17 @@ export function createSettings(deps: {
           '"auto" takes a share of the terminal',
         ],
         apply: values => applySidebarWidth(values[0] ?? ''),
+      },
+    },
+    {
+      section: 'Files',
+      key: 'sidebarPosition',
+      label: 'Sidebar position',
+      value: view().sidebarPosition,
+      cycle: toggleSidebarPosition,
+      select: {
+        options: [...SIDEBAR_POSITIONS],
+        pick: at => applySidebarPosition(SIDEBAR_POSITIONS[at]!),
       },
     },
     {
@@ -1059,6 +1079,8 @@ export function createSettings(deps: {
     setFormatter,
     setServerCommand,
     applySidebarWidth,
+    applySidebarPosition,
+    toggleSidebarPosition,
     rows,
     treeWidth,
     resizeSidebar,
