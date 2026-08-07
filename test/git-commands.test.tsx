@@ -90,6 +90,31 @@ test('the picker refuses an empty selection and A toggles everything', async () 
   expect(t.captureCharFrame()).toContain('1 of 1 files')
 }, 20000)
 
+test('Stage all / Unstage all move every visible change through the index', async () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, 'a.ts'), 'two\n')
+  writeFileSync(join(dir, 'b.ts'), 'new\n')
+
+  const t = await launch(dir)
+  await runCommand(t, 'Stage all changes')
+  await until(
+    t,
+    () =>
+      porcelain(dir).includes('M  a.ts') &&
+      porcelain(dir).includes('A  b.ts') &&
+      t.captureCharFrame().includes('Staged 2 files'),
+  )
+
+  await runCommand(t, 'Unstage all')
+  await until(
+    t,
+    () =>
+      porcelain(dir).includes(' M a.ts') &&
+      porcelain(dir).includes('?? b.ts') &&
+      t.captureCharFrame().includes('Unstaged 2 files'),
+  )
+}, 20000)
+
 test('a non-empty index skips the picker and commits the index as-is', async () => {
   const dir = repo('one\n')
   writeFileSync(join(dir, 'a.ts'), 'two\n')

@@ -71,9 +71,10 @@ and each command acting on the *active* one — the repository of the change und
 panel's cursor, else of the open file, else the only one there is;
 file-level stage and unstage from a changed row (`s` toggles by section, or
 palette → Git → Stage / unstage file — plus Stage all / Unstage all), with the
-panel splitting into Staged and Changes once anything is in the index (a path
-can appear in both when only some of its edits are staged; against a comparison
-base the list stays a single review and staging is refused), commit of the index
+panel splitting into Staged and Changes while both sides have rows (a path can
+appear in both when only some of its edits are staged; an empty side is omitted;
+against a comparison base the list stays a single review and staging is refused),
+commit of the index
 as it stands when something is staged (`c` / palette → Commit… — no re-add from
 the working tree) or the file picker when the index is empty, file-level discard
 from a changed row (`d` or palette → Git → Discard changes, all confirmed and

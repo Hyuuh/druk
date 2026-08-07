@@ -279,6 +279,35 @@ export function createCommands(ctx: AppContext) {
     })
   }
 
+  /**
+   * Paths to stage in `repo`. Prefer the index split when it has loaded; until
+   * then the panel still lists `changes()` from the collapsed status, and that
+   * is what the user is staring at.
+   */
+  const pathsToStage = (repo: string): string[] => {
+    if (git.indexSides() !== null) {
+      return git
+        .unstagedChanges()
+        .filter(c => git.repoFor(c.path) === repo)
+        .map(c => c.path)
+    }
+    return git
+      .changes()
+      .filter(c => git.repoFor(c.path) === repo)
+      .map(c => c.path)
+  }
+
+  /** Paths to unstage in `repo`. Ask git directly while the split is still loading. */
+  const pathsToUnstage = (repo: string): string[] => {
+    if (git.indexSides() !== null) {
+      return git
+        .stagedChanges()
+        .filter(c => git.repoFor(c.path) === repo)
+        .map(c => c.path)
+    }
+    return [...stagedPaths(repo)]
+  }
+
   const gitStageAll = () => {
     if (comparison.active()) return say('Stage is unavailable while comparing branches', 'warn')
     if (git.diffBase() !== null) {
@@ -286,10 +315,7 @@ export function createCommands(ctx: AppContext) {
     }
     const repo = git.activeRepo()
     if (repo === null) return say(noRepository(git), 'warn')
-    const paths = git
-      .unstagedChanges()
-      .filter(c => git.repoFor(c.path) === repo)
-      .map(c => c.path)
+    const paths = pathsToStage(repo)
     if (paths.length === 0) return say('Nothing to stage')
     gitOp('Staging', r => stagePaths(r, paths), {
       repo,
@@ -304,10 +330,7 @@ export function createCommands(ctx: AppContext) {
     }
     const repo = git.activeRepo()
     if (repo === null) return say(noRepository(git), 'warn')
-    const paths = git
-      .stagedChanges()
-      .filter(c => git.repoFor(c.path) === repo)
-      .map(c => c.path)
+    const paths = pathsToUnstage(repo)
     if (paths.length === 0) return say('Nothing to unstage')
     gitOp('Unstaging', r => unstagePaths(r, paths), {
       repo,

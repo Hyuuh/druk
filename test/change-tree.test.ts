@@ -84,6 +84,14 @@ test('a non-empty index draws Staged and Changes sections', () => {
   ])
 })
 
+test('with nothing left unstaged the empty Changes section is omitted', () => {
+  const staged = changes('a.ts').map(c => ({ ...c, side: 'staged' as const }))
+  expect(shape(sectionedChangeRows(staged, [], 'list'))).toEqual([
+    'section:STAGED@1',
+    'file:a.ts@0',
+  ])
+})
+
 test('← stops at a section rather than walking into the group above', () => {
   const staged = changes('a.ts').map(c => ({ ...c, side: 'staged' as const }))
   const unstaged = changes('src/b.ts').map(c => ({ ...c, side: 'unstaged' as const }))

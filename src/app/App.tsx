@@ -266,15 +266,21 @@ export function App(props: {
 
   // `revision` covers saves, git commands and anything the watcher sees in .git;
   // `reloadKey` covers a buffer replaced from disk; `diffBase` covers the branch
-  // being compared against moving under it. `refreshDiff` returns at once when no
-  // diff is open, so the subprocess it needs is only ever spawned for a page that
-  // is actually on screen.
-  //
-  // It reads `gitStatus`, which `wireGitEffects` fills from the same three — and
-  // does so first, since effects run in creation order and that call is above.
+  // being compared against moving under it. `gitStatus` / `indexSides` land from
+  // the same refresh a tick later (async), and a staged page reads the split — so
+  // those have to retrigger too, or the tab stays on the pre-operation side.
+  // `refreshDiff` returns at once when no diff is open, so the subprocess it needs
+  // is only ever spawned for a page that is actually on screen.
   createEffect(
     on(
-      () => [git.revision(), editor.reloadKey(), git.diffBase()] as const,
+      () =>
+        [
+          git.revision(),
+          editor.reloadKey(),
+          git.diffBase(),
+          git.gitStatus(),
+          git.indexSides(),
+        ] as const,
       () => {
         actions.refreshDiff()
         comparison.refresh()

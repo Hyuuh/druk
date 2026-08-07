@@ -119,8 +119,9 @@ export function changeRows(
  * Staged and unstaged lists as the source-control panel draws them.
  *
  * With nothing staged the panel stays a single list — the everyday case, and the
- * same shape it had before staging existed. Headers appear the moment the index
- * holds something, so a partial stage is readable as two groups.
+ * same shape it had before staging existed. Headers appear only while both sides
+ * have rows, so a partial stage is readable as two groups; once everything is in
+ * the index the empty Changes section is omitted rather than left as a 0.
  */
 export function sectionedChangeRows(
   staged: readonly Change[],
@@ -130,6 +131,12 @@ export function sectionedChangeRows(
 ): ChangeRow[] {
   if (staged.length === 0 && unstaged.length === 0) return []
   if (staged.length === 0) return changeRows(unstaged, mode, collapsed)
+  if (unstaged.length === 0) {
+    return [
+      { kind: 'section', id: 'staged', label: 'STAGED', count: staged.length, depth: 0 },
+      ...changeRows(staged, mode, collapsed),
+    ]
+  }
   return [
     { kind: 'section', id: 'staged', label: 'STAGED', count: staged.length, depth: 0 },
     ...changeRows(staged, mode, collapsed),

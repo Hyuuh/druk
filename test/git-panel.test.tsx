@@ -2,7 +2,16 @@ import { expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { fixture, launch, press, pressEscape, runCommand, settle, untilFrame } from './helpers'
+import {
+  fixture,
+  launch,
+  press,
+  pressEscape,
+  runCommand,
+  settle,
+  until,
+  untilFrame,
+} from './helpers'
 import type { Harness } from './helpers'
 
 const ESC = String.fromCharCode(27)
@@ -118,6 +127,33 @@ test('a partially staged file pages index↔HEAD on Staged and WT↔index on Cha
   await untilFrame(t, 'alpha working')
   expect(frame(t)).toContain('alpha working')
   expect(frame(t)).toContain('alpha staged')
+}, 20000)
+
+test('staging the open Changes row closes that page once the index catches up', async () => {
+  const dir = repo()
+  writeFileSync(join(dir, 'a.ts'), 'alpha staged\n')
+  git(dir, 'add', 'a.ts')
+  writeFileSync(join(dir, 'a.ts'), 'alpha working\n')
+  const t = await launch(dir)
+  await press(t, i => void i.pressKeys([TOGGLE]))
+  await untilFrame(t, 'STAGED')
+  await press(t, i => i.pressArrow('down')) // staged file
+  await press(t, i => i.pressArrow('down')) // CHANGES header
+  await press(t, i => i.pressArrow('down')) // unstaged file
+  await untilFrame(t, 'alpha working')
+
+  // Stage the remaining WT edit: the unstaged side is gone, so the page that
+  // belonged to it must close — not stay on the pre-stage texts. Wait for the
+  // index split too: revision bumps before indexSides lands.
+  await press(t, i => void i.typeText('s'))
+  await until(t, () => {
+    const shown = frame(t)
+    const status = Bun.spawnSync(['git', 'status', '--porcelain'], { cwd: dir }).stdout.toString()
+    return (
+      status.includes('M  a.ts') && !shown.includes('CHANGES') && !shown.includes('alpha working')
+    )
+  })
+  expect(frame(t)).toContain('STAGED')
 }, 20000)
 
 test('c commits the change from the panel, p reports on push', async () => {
