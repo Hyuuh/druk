@@ -623,7 +623,7 @@ export function createSettings(deps: {
 
   const applySidebarPosition = (position: SidebarPosition) => {
     patchConfig({ sidebarPosition: position })
-    status.say(`Sidebar on the ${config.sidebarPosition}`)
+    status.say(`Sidebar position: ${view().sidebarPosition}`)
   }
 
   const toggleSidebarPosition = () =>
@@ -817,8 +817,6 @@ export function createSettings(deps: {
       },
     },
     {
-      // Two values: a list to choose between them is more ceremony than the
-      // flip is worth, so this stays a step like the booleans above.
       section: 'Files',
       key: 'sidebarPosition',
       label: 'Sidebar position',
@@ -826,6 +824,8 @@ export function createSettings(deps: {
       cycle: toggleSidebarPosition,
     },
     {
+      // Two values: a list to choose between them is more ceremony than the
+      // flip is worth, so this stays a step like the booleans above.
       section: 'Git',
       key: 'diffView',
       label: 'Diff layout',

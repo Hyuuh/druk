@@ -59,9 +59,10 @@ import { createStatus, READY } from './status'
 import { createTree, hiddenNodes } from './tree'
 import { CLASH_CHANGED, CLASH_DELETED, createWorkspace, restoreWorkspace } from './workspace'
 
-/** The divider draws its edge against the sidebar; a box border spans the height. */
+/** The divider draws its own left edge; a box border is how it spans the height.
+    One side only, and the grip is one column wide, so the border lands on that
+    column whichever side names it — there is no right-hand variant to add. */
 const BORDER_LEFT: BorderSides[] = ['left']
-const BORDER_RIGHT: BorderSides[] = ['right']
 
 /** Bounds on the drawn part of the divider: shorter reads as dirt, longer as chrome. */
 const GRIP_MIN = 3
@@ -715,7 +716,7 @@ export function App(props: {
               height={gripHeight()}
               flexShrink={0}
               backgroundColor={ui.bg}
-              border={config.sidebarPosition === 'right' ? BORDER_RIGHT : BORDER_LEFT}
+              border={BORDER_LEFT}
               borderColor={resizing() ? ui.accent : ui.border}
               onMouseDown={startResize}
             />
