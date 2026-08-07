@@ -90,7 +90,9 @@ header saying so: the renderable applies syntax as one native edit per span, and
 package-lock-sized document feeds it millions, minutes of frozen editor, so color
 stops past a megabyte of sides or a thousand patch rows, and past ten thousand rows
 the patch itself is cut with the header keeping the change's true counts) for whichever change the panel's cursor is
-on — the arrows page through
+on — a Staged row is index↔HEAD and a Changes row is working tree↔index, so a path
+in both sections has two pages; against a comparison base the page stays working
+tree↔that ref — the arrows page through
 them and Enter opens the changed file itself over the diff (a folder row folds
 instead), the panel is the only way in, and the diff is a tab of its own in the strip
 (`⇄ name`), so opening a file switches away from it instead of leaving it on top — a

@@ -4,7 +4,15 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { commitIndex, indexSidesMap, stagePaths, stagedPaths, unstagePaths } from '../src/core/git'
+import {
+  commitIndex,
+  indexSidesMap,
+  indexText,
+  refText,
+  stagePaths,
+  stagedPaths,
+  unstagePaths,
+} from '../src/core/git'
 
 function repo(committed: string) {
   const dir = mkdtempSync(join(tmpdir(), 'druk-stage-'))
@@ -12,6 +20,7 @@ function repo(committed: string) {
   git('init', '-q', '-b', 'main')
   git('config', 'user.email', 'test@example.com')
   git('config', 'user.name', 'Test')
+  git('config', 'commit.gpgsign', 'false')
   writeFileSync(join(dir, 'a.ts'), committed)
   git('add', '.')
   git('commit', '-q', '-m', 'init')
@@ -59,4 +68,15 @@ test('commitIndex commits the index without pulling later working-tree edits', a
   expect(subject).toBe('staged only')
   expect(execFileSync('git', ['show', 'HEAD:a.ts'], { cwd: dir }).toString()).toBe('two\n')
   expect(porcelain(dir)).toContain(' M a.ts')
+})
+
+test('indexText is the staged blob, distinct from HEAD and the working tree', () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, 'a.ts'), 'two\n')
+  execFileSync('git', ['add', 'a.ts'], { cwd: dir })
+  writeFileSync(join(dir, 'a.ts'), 'three\n')
+
+  expect(refText(dir, 'a.ts', 'HEAD')).toBe('one\n')
+  expect(indexText(dir, 'a.ts')).toBe('two\n')
+  expect(indexText(dir, 'missing.ts')).toBeNull()
 })

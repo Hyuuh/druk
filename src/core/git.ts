@@ -997,6 +997,16 @@ export function refText(cwd: string, relPath: string, ref = 'HEAD'): string | nu
   return run.status === 0 ? decodeText(run.stdout).text : null
 }
 
+/**
+ * The file's content in the index, or null when the index has no such path
+ * (untracked, staged deletion, outside a repository). Same `./` spelling as
+ * `refText`, so a path under a subdirectory cwd still resolves.
+ */
+export function indexText(cwd: string, relPath: string): string | null {
+  const run = git(cwd, ['show', `:./${relPath}`], 3000)
+  return run.status === 0 ? decodeText(run.stdout).text : null
+}
+
 export interface Upstream {
   /** `origin/main`, or null when the branch was never pushed. */
   name: string | null

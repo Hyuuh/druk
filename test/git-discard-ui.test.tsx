@@ -12,6 +12,7 @@ function repo() {
   git(dir, 'init', '-q', '-b', 'main')
   git(dir, 'config', 'user.email', 'druk@test')
   git(dir, 'config', 'user.name', 'druk')
+  git(dir, 'config', 'commit.gpgsign', 'false')
   git(dir, 'add', '.')
   git(dir, 'commit', '-qm', 'init')
   writeFileSync(join(dir, 'a.ts'), 'changed\n')
@@ -34,8 +35,8 @@ test('d and the panel-only palette command share the discard confirmation', asyn
     expect(confirm).toContain('Unsaved edits in its open buffer')
     expect(confirm).toContain('also be lost')
     await press(t, input => input.pressEnter())
-    await until(t, () => readFileSync(join(dir, 'a.ts'), 'utf8') === 'alpha\n')
-    expect(t.captureCharFrame()).toContain('Discarded changes in a.ts')
+    await until(t, () => t.captureCharFrame().includes('Discarded changes in a.ts'))
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('alpha\n')
   }
 }, 20_000)
 

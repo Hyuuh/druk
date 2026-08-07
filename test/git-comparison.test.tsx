@@ -19,6 +19,7 @@ function repo(initial = 'trunk') {
   git('init', '-q', '-b', initial)
   git('config', 'user.email', 'test@example.com')
   git('config', 'user.name', 'Test')
+  git('config', 'commit.gpgsign', 'false')
   writeFileSync(join(dir, 'seed.txt'), 'seed\n')
   git('add', '.')
   git('commit', '-q', '-m', 'seed')

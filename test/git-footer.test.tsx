@@ -24,6 +24,7 @@ function remoteSetup() {
     execFileSync('git', ['clone', '-q', origin, dir])
     git(dir, 'config', 'user.email', `${name}@example.com`)
     git(dir, 'config', 'user.name', name)
+    git(dir, 'config', 'commit.gpgsign', 'false')
     return dir
   }
 
@@ -80,7 +81,8 @@ describe('the footer', () => {
     await until(t, () => footer(t).includes('~1'))
 
     git(mine, 'commit', '-aqm', 'done')
-    await until(t, () => footer(t).includes('↑1'))
-    expect(footer(t)).not.toMatch(/~\d/)
+    // Ahead and the change count refresh on separate passes — wait until both
+    // have settled, or ↑1 can appear while ~1 is still on screen.
+    await until(t, () => footer(t).includes('↑1') && !/~\d/.test(footer(t)))
   })
 })

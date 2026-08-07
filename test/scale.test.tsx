@@ -75,7 +75,17 @@ describe('git output size', () => {
     execFileSync('git', ['add', '-A'], { cwd: dir })
     execFileSync(
       'git',
-      ['-c', 'user.email=t@e.com', '-c', 'user.name=T', 'commit', '-qm', 'init'],
+      [
+        '-c',
+        'user.email=t@e.com',
+        '-c',
+        'user.name=T',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '-qm',
+        'init',
+      ],
       {
         cwd: dir,
       },

@@ -13,6 +13,7 @@ function repo(files: Record<string, string> = { 'a.txt': 'base\n', 'other.txt': 
   git(dir, 'init', '-q', '-b', 'main')
   git(dir, 'config', 'user.email', 'druk@test')
   git(dir, 'config', 'user.name', 'druk')
+  git(dir, 'config', 'commit.gpgsign', 'false')
   for (const [path, content] of Object.entries(files)) writeFileSync(join(dir, path), content)
   git(dir, 'add', '.')
   git(dir, 'commit', '-qm', 'init')

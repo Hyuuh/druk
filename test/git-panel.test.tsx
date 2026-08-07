@@ -96,6 +96,30 @@ test('s stages the file under the cursor and splits the panel into Staged / Chan
   expect(status.stdout.toString()).toMatch(/^M {2}a\.ts/m)
 }, 20000)
 
+test('a partially staged file pages index↔HEAD on Staged and WT↔index on Changes', async () => {
+  const dir = repo()
+  // HEAD is "alpha\n"; stage "alpha staged\n", leave WT at "alpha working\n".
+  writeFileSync(join(dir, 'a.ts'), 'alpha staged\n')
+  git(dir, 'add', 'a.ts')
+  writeFileSync(join(dir, 'a.ts'), 'alpha working\n')
+  const t = await launch(dir)
+  await press(t, i => void i.pressKeys([TOGGLE]))
+  await untilFrame(t, 'STAGED')
+
+  // Cursor starts on the STAGED header; ↓ lands on the staged file row.
+  await press(t, i => i.pressArrow('down'))
+  await untilFrame(t, 'alpha staged')
+  expect(frame(t)).toContain('alpha staged')
+  expect(frame(t)).not.toContain('alpha working')
+
+  // Skip the CHANGES header onto the same path's unstaged row: WT vs index.
+  await press(t, i => i.pressArrow('down'))
+  await press(t, i => i.pressArrow('down'))
+  await untilFrame(t, 'alpha working')
+  expect(frame(t)).toContain('alpha working')
+  expect(frame(t)).toContain('alpha staged')
+}, 20000)
+
 test('c commits the change from the panel, p reports on push', async () => {
   const dir = repo()
   const t = await launch(dir)

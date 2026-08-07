@@ -162,6 +162,7 @@ describe('what must not move when the sidebar does', () => {
     git('init', '-q', '-b', 'main')
     git('config', 'user.email', 't@e.com')
     git('config', 'user.name', 'T')
+    git('config', 'commit.gpgsign', 'false')
     writeFileSync(join(dir, 'tracked.ts'), 'const a = 1\n')
     writeFileSync(join(dir, 'a-much-longer-name.ts'), 'const b = 2\n')
     git('add', '.')

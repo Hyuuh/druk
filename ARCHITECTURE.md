@@ -686,7 +686,9 @@ is just a diff against the empty tree.
   `s` stages or unstages by the row's `side`, pinned to that path's repository; `c`
   commits the index as-is when it is non-empty (no re-add), or opens the picker when
   it is empty. Against a comparison base the panel stays a single review list and
-  staging is refused — the index is always against HEAD.
+  staging is refused — the index is always against HEAD. The diff page follows the
+  row's `side` too: staged is `indexText`↔`refText(HEAD)`, unstaged is working
+  tree↔`indexText`, so a partially staged path has two distinct pages.
 - **Branch comparison replaces the panel rather than sitting beside it.** `app/comparison.ts`
   owns its own file, commit and commit-file cursors and its caches; uppercase `B` enters it
   or picks a new base, lowercase `b` stays branch switching. Its detail page is layered over

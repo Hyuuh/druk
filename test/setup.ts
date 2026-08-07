@@ -1,5 +1,5 @@
 import { afterAll, afterEach } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -31,6 +31,17 @@ process.env.XDG_DATA_HOME = mkdtempSync(join(tmpdir(), 'druk-test-data-'))
  * that day.
  */
 process.env.XDG_CACHE_HOME = mkdtempSync(join(tmpdir(), 'druk-test-cache-'))
+
+/**
+ * A developer with `commit.gpgsign=true` globally would otherwise fail every
+ * fixture commit — no test key is available. Point git at an empty global
+ * config (and skip the system one) so the suite does not inherit that setting.
+ */
+const gitConfigHome = mkdtempSync(join(tmpdir(), 'druk-test-gitconfig-'))
+const gitConfigGlobal = join(gitConfigHome, 'config')
+writeFileSync(gitConfigGlobal, '[commit]\n\tgpgsign = false\n')
+process.env.GIT_CONFIG_GLOBAL = gitConfigGlobal
+process.env.GIT_CONFIG_NOSYSTEM = '1'
 
 /**
  * Register the extensions druk ships inside the binary — its languages, and so the

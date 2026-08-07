@@ -10,6 +10,7 @@ import {
   fetchRemote,
   lastCommitSubject,
   pull,
+  indexText,
   push,
   PUSH_REJECTED,
   refText,
@@ -84,29 +85,49 @@ export function createCommands(ctx: AppContext) {
     base: string | null
     buffer: string | undefined
     status: FileStatus
+    side: 'staged' | 'unstaged' | undefined
     file: DiffFile | null
   }
   const diffFileCache = new Map<string, DiffFileSlot>()
   const DIFF_FILE_CACHE_LIMIT = 4
+  const diffCacheKey = (path: string, side?: 'staged' | 'unstaged') =>
+    side ? `${path}\0${side}` : path
+
+  const readWorkingTree = (path: string, buffer: string | undefined): string | null => {
+    if (buffer !== undefined) return buffer
+    try {
+      return readFile(path)
+    } catch {
+      return null
+    }
+  }
 
   /**
-   * Both texts of one file's diff. The new side prefers the open buffer over the
-   * disk, so unsaved edits show — that is the diff the user is looking at. Null
-   * for a file that cannot be read (binary), which the callers skip.
+   * Both texts of one file's diff. With a panel `side`, staged is index↔HEAD and
+   * unstaged is working tree↔index — a partially staged path has two pages. Without
+   * a side (compare-base review, or a single list) it stays working tree↔base.
+   * The working-tree side prefers the open buffer over the disk, so unsaved edits
+   * show. Null for a file that cannot be read (binary), which the callers skip.
    */
-  const diffFileFor = (path: string, fileStatus: FileStatus): DiffFile | null => {
+  const diffFileFor = (
+    path: string,
+    fileStatus: FileStatus,
+    side?: 'staged' | 'unstaged',
+  ): DiffFile | null => {
     const revision = git.revision()
     const reloadKey = editor.reloadKey()
     const base = git.diffBase()
     const buffer = workspace.buffers[path]?.content
-    const hit = diffFileCache.get(path)
+    const key = diffCacheKey(path, side)
+    const hit = diffFileCache.get(key)
     if (
       hit &&
       hit.revision === revision &&
       hit.reloadKey === reloadKey &&
       hit.base === base &&
       hit.buffer === buffer &&
-      hit.status === fileStatus
+      hit.status === fileStatus &&
+      hit.side === side
     ) {
       return hit.file
     }
@@ -116,25 +137,44 @@ export function createCommands(ctx: AppContext) {
     // several repositories open those are not the same string.
     const repo = git.repoFor(path)
     const rel = relative(rootDir, path)
-    const oldText =
-      fileStatus === 'untracked' || repo === null
-        ? ''
-        : (refText(repo, relative(repo, path), base ?? 'HEAD') ?? '')
+    const repoRel = repo ? relative(repo, path) : rel
+
+    let oldText = ''
     let newText = ''
-    if (fileStatus !== 'deleted') {
-      if (buffer !== undefined) {
-        newText = buffer
+    // Index sides only make sense against HEAD. A comparison base is a review of
+    // that branch, and staging into that list would be a lie.
+    if (side && repo && base === null) {
+      if (side === 'staged') {
+        oldText =
+          fileStatus === 'untracked' || fileStatus === 'added'
+            ? ''
+            : (refText(repo, repoRel, 'HEAD') ?? '')
+        if (fileStatus !== 'deleted') {
+          newText = indexText(repo, repoRel) ?? ''
+        }
       } else {
-        try {
-          newText = readFile(path)
-        } catch {
-          return null
+        oldText = fileStatus === 'untracked' ? '' : (indexText(repo, repoRel) ?? '')
+        if (fileStatus !== 'deleted') {
+          const text = readWorkingTree(path, buffer)
+          if (text === null) return null
+          newText = text
         }
       }
+    } else {
+      oldText =
+        fileStatus === 'untracked' || repo === null
+          ? ''
+          : (refText(repo, repoRel, base ?? 'HEAD') ?? '')
+      if (fileStatus !== 'deleted') {
+        const text = readWorkingTree(path, buffer)
+        if (text === null) return null
+        newText = text
+      }
     }
-    const file: DiffFile = { path, rel, status: fileStatus, oldText, newText }
-    diffFileCache.delete(path)
-    diffFileCache.set(path, { revision, reloadKey, base, buffer, status: fileStatus, file })
+
+    const file: DiffFile = { path, rel, status: fileStatus, oldText, newText, side }
+    diffFileCache.delete(key)
+    diffFileCache.set(key, { revision, reloadKey, base, buffer, status: fileStatus, side, file })
     // Oldest out first — the texts are the whole file twice over, so the cap is
     // what bounds a walk across many huge changes.
     while (diffFileCache.size > DIFF_FILE_CACHE_LIMIT) {
@@ -149,11 +189,12 @@ export function createCommands(ctx: AppContext) {
    * a diff moves that cursor first and calls this second — a page the arrows
    * cannot move from is a dead end.
    */
-  const showDiff = (path: string) => {
+  const showDiff = (path: string, side?: 'staged' | 'unstaged', status?: FileStatus) => {
     // The panel only lists changed files, but its list is a frame behind a fresh
     // edit — 'modified' is the fallback for a path git has not caught up with,
     // and diffing it against the base is right either way.
-    const file = diffFileFor(path, git.gitStatus().get(path) ?? 'modified')
+    const fileStatus = status ?? git.gitStatus().get(path) ?? 'modified'
+    const file = diffFileFor(path, fileStatus, side)
     if (!file) return say('Cannot diff this file', 'warn')
     ctx.workspace.setPage(null)
     ctx.workspace.setDiff(file)
@@ -171,7 +212,9 @@ export function createCommands(ctx: AppContext) {
     const target = rows[at]
     if (!target) return
     panes.setGitCursor(at)
-    if (target.kind === 'file') showDiff(target.change.path)
+    if (target.kind === 'file') {
+      showDiff(target.change.path, target.change.side, target.change.status)
+    }
   }
 
   /**
@@ -199,6 +242,7 @@ export function createCommands(ctx: AppContext) {
       return say('Open the Git panel and select a changed file', 'warn')
     }
     const row = git.rows()[panes.gitCursor()]
+    if (row?.kind === 'dir') return say('Select a changed file, not a folder', 'warn')
     if (row?.kind !== 'file') return say('Select a changed file in the Git panel', 'warn')
     const path = row.change.path
     const repo = git.repoFor(path)
@@ -557,10 +601,19 @@ export function createCommands(ctx: AppContext) {
       // A folded folder would leave the cursor pointing at a row that is not on
       // screen — the file's own row has to exist before it can be landed on.
       git.revealChange(change.rel)
-      panes.setGitCursor(
-        git.rows().findIndex(row => row.kind === 'file' && row.change.path === path),
+      // Prefer the unstaged row when both exist — that is the working-tree edit
+      // the open buffer is about; staged is the index already armed for commit.
+      const rows = git.rows()
+      let at = rows.findIndex(
+        row => row.kind === 'file' && row.change.path === path && row.change.side === 'unstaged',
       )
-      showDiff(path)
+      if (at < 0) {
+        at = rows.findIndex(row => row.kind === 'file' && row.change.path === path)
+      }
+      panes.setGitCursor(at)
+      const row = rows[at]
+      if (row?.kind === 'file') showDiff(path, row.change.side, row.change.status)
+      else showDiff(path)
     },
     /**
      * Rebuild the open diff from the repository as it is now. The page is a
@@ -569,13 +622,20 @@ export function createCommands(ctx: AppContext) {
      * palette command: `App` runs it whenever git or a buffer moves.
      */
     refreshDiff: () => {
-      const shown = workspace.diff()?.path
+      const shown = workspace.diff()
       if (!shown) return
       // The page belongs to a row in the panel: once the change is committed,
       // stashed or reverted the row is gone, and so is the page it opened.
-      const fileStatus = git.gitStatus().get(shown)
+      if (shown.side) {
+        const entry = git.indexSides()?.get(shown.path)
+        const status = entry?.[shown.side]
+        if (!status) return ctx.workspace.setDiff(null)
+        ctx.workspace.setDiff(diffFileFor(shown.path, status, shown.side))
+        return
+      }
+      const fileStatus = git.gitStatus().get(shown.path)
       if (!fileStatus) return ctx.workspace.setDiff(null)
-      ctx.workspace.setDiff(diffFileFor(shown, fileStatus))
+      ctx.workspace.setDiff(diffFileFor(shown.path, fileStatus))
     },
     /**
      * Point everything at another branch: the tree marks, the gutter, the

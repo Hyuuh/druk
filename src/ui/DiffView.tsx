@@ -29,6 +29,11 @@ export interface DiffFile {
   status: DiffFileStatus
   oldText: string
   newText: string
+  /**
+   * Which index side this page is. Staged is index↔HEAD; unstaged is WT↔index.
+   * Omitted for a single-list review (compare-base) or a collapsed WT↔HEAD page.
+   */
+  side?: 'staged' | 'unstaged'
 }
 
 export interface DiffViewProps {

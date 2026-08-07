@@ -14,6 +14,7 @@ function repo() {
   git('init', '-q', '-b', 'main')
   git('config', 'user.email', 't@e.com')
   git('config', 'user.name', 'T')
+  git('config', 'commit.gpgsign', 'false')
   writeFileSync(join(dir, 'a.ts'), 'const alpha = 1\n')
   git('add', '.')
   git('commit', '-qm', 'init')
