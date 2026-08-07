@@ -96,6 +96,7 @@ export const BINDABLE: Bindable[] = [
     defaults: [`Ctrl+${ALT}+M`],
   },
   { id: 'view.wrap', label: 'Toggle word wrap', defaults: [] },
+  { id: 'view.sidebarPosition', label: 'Toggle sidebar position', defaults: [] },
   // No default chord: the key for this is Space in the tree, which the global
   // keymap cannot hold — a bare key here would be typing the editor never sees.
   { id: 'view.preview', label: 'Preview file (no tab)', defaults: [] },

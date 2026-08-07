@@ -68,6 +68,9 @@ export function sidebarColumns(width: number | 'auto', terminalWidth: number): n
 export const CURSOR_STYLES = ['block', 'line', 'underline'] as const
 export type CursorStyle = (typeof CURSOR_STYLES)[number]
 
+export const SIDEBAR_POSITIONS = ['left', 'right'] as const
+export type SidebarPosition = (typeof SIDEBAR_POSITIONS)[number]
+
 export interface Config {
   /** Color scheme id — see src/themes. */
   theme: ThemeName
@@ -120,6 +123,8 @@ export interface Config {
    * Resizing with `[` / `]` or by dragging the divider pins an explicit number.
    */
   sidebarWidth: number | 'auto'
+  /** Which side of the editor the sidebar (Files / Git / Extensions) sits on. */
+  sidebarPosition: SidebarPosition
   /** Version whose update notice was dismissed; suppresses the banner for it. */
   skipUpdate: string
   /** On save: strip trailing spaces and end the file with one newline. */
@@ -237,6 +242,7 @@ export const DEFAULTS: Config = {
   wrap: true,
   tabSize: 2,
   sidebarWidth: 'auto',
+  sidebarPosition: 'left',
   skipUpdate: '',
   trimOnSave: false,
   formatOnSave: false,
@@ -322,6 +328,7 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
       ? Math.floor(raw)
       : undefined
   },
+  sidebarPosition: among(...SIDEBAR_POSITIONS),
   skipUpdate: text,
   trimOnSave: bool,
   formatOnSave: bool,

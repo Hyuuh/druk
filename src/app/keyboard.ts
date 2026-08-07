@@ -91,6 +91,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'view.collapse': actions.collapseSidebar,
     'view.markdown': workspace.toggleRendered,
     'view.wrap': actions.toggleWrap,
+    'view.sidebarPosition': actions.toggleSidebarPosition,
     'view.preview': actions.togglePreview,
     'view.focus': actions.toggleFocus,
     'git.diffFile': actions.gitDiffFile,

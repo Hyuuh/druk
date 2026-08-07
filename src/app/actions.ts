@@ -548,6 +548,7 @@ export function createCommands(ctx: AppContext) {
     previewIcons: settings.previewIcons,
     restoreIcons: settings.restoreIcons,
     toggleWrap: settings.toggleWrap,
+    toggleSidebarPosition: settings.toggleSidebarPosition,
     lineOp: editor.requestLineOp,
     foldOp: editor.requestFoldOp,
     triggerCompletion: editor.requestCompletion,

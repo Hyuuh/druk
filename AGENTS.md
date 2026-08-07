@@ -11,7 +11,9 @@ reconciler on a native Zig core). Shipped as a standalone binary — npm, Homebr
 installer — and run as a CLI.
 
 Features: file tree with bulk file operations and opt-in hiding of dotfiles and
-git-ignored files, a `▴` in the sidebar header that shuts every folder at once
+git-ignored files, the sidebar (Files / Git / Extensions) on the left or the right
+(`sidebarPosition`, settings → Files → Sidebar position, or palette → View →
+Toggle sidebar position), a `▴` in the sidebar header that shuts every folder at once
 (palette → View → Collapse folders in sidebar, which folds whichever of the two
 sidebar views is up, and the button is drawn only while there is something to fold),
 copy the path of a file to the system clipboard (`Ctrl+Opt+C`, palette → File → Copy
