@@ -59,7 +59,9 @@ import { createStatus, READY } from './status'
 import { createTree, hiddenNodes } from './tree'
 import { CLASH_CHANGED, CLASH_DELETED, createWorkspace, restoreWorkspace } from './workspace'
 
-/** The divider draws its own left edge; a box border is how it spans the height. */
+/** The divider draws its own left edge; a box border is how it spans the height.
+    One side only, and the grip is one column wide, so the border lands on that
+    column whichever side names it — there is no right-hand variant to add. */
 const BORDER_LEFT: BorderSides[] = ['left']
 
 /** Bounds on the drawn part of the divider: shorter reads as dirt, longer as chrome. */
@@ -296,9 +298,17 @@ export function App(props: {
   const gripHeight = () =>
     Math.max(GRIP_MIN, Math.min(GRIP_MAX, Math.round((dimensions().height - 2) / 5)))
 
+  /**
+   * On the left the sidebar starts at column 0, so the pointer's x is the width
+   * (the divider sits at that column). On the right the divider is at x and the
+   * sidebar fills what follows, so the width is everything after the divider.
+   */
+  const sidebarWidthFromPointer = (x: number) =>
+    config.sidebarPosition === 'right' ? dimensions().width - x - 1 : x
+
   const startResize = (event: MouseEvent) => {
     setResizing(true)
-    settings.resizeSidebar(event.x)
+    settings.resizeSidebar(sidebarWidthFromPointer(event.x))
   }
 
   /** Worst problem per line of the active file: the gutter dot and inline text. */
@@ -551,12 +561,13 @@ export function App(props: {
       />
       {/* Drag capture lives on the row, not the divider: the pointer leaves a
           one-column target immediately, and each drag event is delivered to
-          whatever sits under it. */}
+          whatever sits under it. `row-reverse` puts the same children on the
+          right without duplicating the sidebar tree. */}
       <box
-        flexDirection="row"
+        flexDirection={config.sidebarPosition === 'right' ? 'row-reverse' : 'row'}
         flexGrow={1}
         onMouseDrag={(event: MouseEvent) => {
-          if (resizing()) settings.resizeSidebar(event.x)
+          if (resizing()) settings.resizeSidebar(sidebarWidthFromPointer(event.x))
         }}
         onMouseDragEnd={() => setResizing(false)}
         onMouseUp={() => setResizing(false)}
@@ -689,9 +700,8 @@ export function App(props: {
               rule the whole way down is a second vertical line beside the
               editor's gutter and reads as chrome rather than as a hint. The
               accent while dragging says the grab took. Painted in `bg`, not
-              `panelBg` — the sidebar's right edge is found by where panel colour
-              stops, and the resize tests measure exactly that. The sidebar
-              starts at column 0, so the pointer's x is the width asked for. */}
+              `panelBg` — on the left the sidebar's right edge is found by where
+              panel colour stops, and the resize tests measure exactly that. */}
           <box
             width={1}
             flexShrink={0}

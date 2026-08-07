@@ -232,6 +232,24 @@ test(
 )
 
 test(
+  'sidebar position flips between left and right from the page',
+  async () => {
+    const t = await launch(fixture(PROJECT))
+    await runCommand(t, 'Settings')
+    await gotoRow(t, 'Sidebar position')
+    expect(t.captureCharFrame()).toMatch(/Sidebar position\s+left/)
+
+    await press(t, i => i.pressArrow('right'))
+    expect(saved().sidebarPosition).toBe('right')
+    expect(t.captureCharFrame()).toMatch(/Sidebar position\s+right/)
+
+    await press(t, i => i.pressArrow('right'))
+    expect(saved().sidebarPosition).toBe('left')
+  },
+  LATE_ROW,
+)
+
+test(
   'a server command is overridden and restored from the page',
   async () => {
     const t = await launch(fixture(PROJECT))

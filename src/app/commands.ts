@@ -68,6 +68,7 @@ export interface CommandActions {
   togglePreview: () => void
   toggleMarkdown: () => void
   toggleWrap: () => void
+  toggleSidebarPosition: () => void
   setTheme: (name: ThemeName) => void
   previewTheme: (name: ThemeName) => void
   restoreTheme: () => void
@@ -377,6 +378,11 @@ export function buildCommands(actions: CommandActions, ctx: CommandContext): Com
           id: 'view.wrap',
           label: 'Toggle word wrap',
           run: actions.toggleWrap,
+        },
+        {
+          id: 'view.sidebarPosition',
+          label: 'Toggle sidebar position',
+          run: actions.toggleSidebarPosition,
         },
         {
           id: 'view.focus',
