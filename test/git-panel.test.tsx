@@ -167,7 +167,7 @@ test('c commits the change from the panel, p reports on push', async () => {
   await press(t, i => i.pressEnter())
   expect(frame(t)).toContain('Commit message')
   await press(t, i => void i.typeText('panel commit'))
-  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter({ meta: true }))
   await settle(t, 200)
 
   expect(frame(t)).toContain('no changes')

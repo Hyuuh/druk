@@ -78,7 +78,8 @@ appear in both when only some of its edits are staged; an empty side is omitted;
 against a comparison base the list stays a single review and staging is refused),
 commit of the index
 as it stands when something is staged (`c` / palette → Commit… — no re-add from
-the working tree) or the file picker when the index is empty, file-level discard
+the working tree; the message is a textarea, Ctrl+Enter to confirm so Enter can
+open a body line) or the file picker when the index is empty, file-level discard
 from a changed row (`d` or palette → Git → Discard changes, all confirmed and
 scoped to that row's repository), plus palette commands for
 undo/stash/push/fetch/pull — a push origin

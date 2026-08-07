@@ -47,8 +47,9 @@ test('commit picker shows every change and commits them all on Enter', async () 
 
   await press(t, i => i.pressEnter())
   expect(t.captureCharFrame()).toContain('Commit message')
+  expect(t.captureCharFrame()).toContain('Ctrl+Enter to confirm')
   await press(t, i => void i.typeText('add things'))
-  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter({ meta: true }))
 
   await until(t, () => subject(dir) === 'add things')
   expect(porcelain(dir)).toBe('')
@@ -68,7 +69,7 @@ test('a file unchecked in the picker stays out of the commit', async () => {
 
   await press(t, i => i.pressEnter())
   await press(t, i => void i.typeText('only a'))
-  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter({ meta: true }))
 
   await until(t, () => subject(dir) === 'only a')
   const status = porcelain(dir)
@@ -115,6 +116,28 @@ test('Stage all / Unstage all move every visible change through the index', asyn
   )
 }, 20000)
 
+test('commit message keeps a body: Enter is a newline, Ctrl+Enter submits', async () => {
+  const dir = repo('one\n')
+  writeFileSync(join(dir, 'a.ts'), 'two\n')
+  execFileSync('git', ['add', 'a.ts'], { cwd: dir })
+
+  const t = await launch(dir)
+  await runCommand(t, 'Commit')
+  expect(t.captureCharFrame()).toContain('Ctrl+Enter to confirm')
+  await press(t, i => void i.typeText('subject'))
+  await press(t, i => i.pressEnter())
+  // Still open — Enter alone must not confirm a multiline prompt.
+  expect(t.captureCharFrame()).toContain('Commit message')
+  // Blank line between subject and body: without it git folds both into %s.
+  await press(t, i => i.pressEnter())
+  await press(t, i => void i.typeText('body line'))
+  await press(t, i => i.pressEnter({ meta: true }))
+
+  await until(t, () => subject(dir) === 'subject')
+  const body = execFileSync('git', ['log', '-1', '--format=%b'], { cwd: dir }).toString()
+  expect(body).toContain('body line')
+}, 20000)
+
 test('a non-empty index skips the picker and commits the index as-is', async () => {
   const dir = repo('one\n')
   writeFileSync(join(dir, 'a.ts'), 'two\n')
@@ -129,7 +152,7 @@ test('a non-empty index skips the picker and commits the index as-is', async () 
   expect(t.captureCharFrame()).not.toContain('of 2 files')
 
   await press(t, i => void i.typeText('staged only'))
-  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter({ meta: true }))
 
   await until(t, () => subject(dir) === 'staged only')
   expect(execFileSync('git', ['show', 'HEAD:a.ts'], { cwd: dir }).toString()).toBe('two\n')

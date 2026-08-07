@@ -117,7 +117,7 @@ test('a commit acts on the repository the file being edited is in', async () => 
 
   await press(t, i => i.pressEnter())
   await press(t, i => void i.typeText('beta moves'))
-  await press(t, i => i.pressEnter())
+  await press(t, i => i.pressEnter({ meta: true }))
 
   await until(t, () => subject(join(dir, 'nested/beta')) === 'beta moves')
   // The other repository is untouched — its change is still there to commit.
