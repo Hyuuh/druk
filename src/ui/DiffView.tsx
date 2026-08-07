@@ -1,6 +1,6 @@
 import type { DiffRenderable, KeyEvent, TreeSitterClient } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from 'solid-js'
 
 import { unifiedDiff } from '../core/diff'
 import type { UnifiedDiff } from '../core/diff'
@@ -235,6 +235,16 @@ export function DiffView(props: DiffViewProps) {
   onMount(() => void highlightClient().then(c => setClient(c)))
 
   let pane: DiffRenderable | undefined
+  // A deferred attach must not touch panes after the page (or its `<diff>`) is
+  // gone: refreshDiff / setDiff(null) destroy the TextBufferView, and assigning
+  // onHighlight or reading scroll metrics then throws "TextBufferView is destroyed"
+  // (issue #70). Clear the timer on cleanup and skip when the host is already dead.
+  let diffAlive = true
+  let attachTimer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => {
+    diffAlive = false
+    if (attachTimer !== undefined) clearTimeout(attachTimer)
+  })
 
   const sides = () => {
     const host = pane as unknown as DiffSides | undefined
@@ -242,6 +252,9 @@ export function DiffView(props: DiffViewProps) {
       (side): side is CodePane => side != null,
     )
   }
+
+  const paneDestroyed = (code: CodePane | null | undefined) =>
+    !!(code as { isDestroyed?: boolean } | null | undefined)?.isDestroyed
 
   /**
    * Everything derived from one change: its patch, and the highlight pass each
@@ -435,7 +448,7 @@ export function DiffView(props: DiffViewProps) {
       ['left', host.leftCodeRenderable],
       ['right', host.rightCodeRenderable],
     ] as const) {
-      if (!code) continue
+      if (!code || paneDestroyed(code)) continue
       // Before the first layout the pane has no width yet; half the pane's own
       // columns overshoots by the gutter, which `wrapMode="none"` clips away.
       const bar = HATCH.repeat(Math.max(1, code.width || Math.ceil(props.width / 2)))
@@ -463,25 +476,26 @@ export function DiffView(props: DiffViewProps) {
     on([current, mode, client, () => props.width, () => ui.dim, () => ui.solidBg], () => {
       const highlighter = current().highlighter
       const view = mode() === 'split' ? 'split' : 'unified'
-      setTimeout(() => {
-        const host = pane as unknown as DiffSides | undefined
-        if (!host) return
+      if (attachTimer !== undefined) clearTimeout(attachTimer)
+      attachTimer = setTimeout(() => {
+        attachTimer = undefined
+        const host = pane as unknown as (DiffSides & { isDestroyed?: boolean }) | undefined
+        const left = host?.leftCodeRenderable
+        const right = host?.rightCodeRenderable
+        if (!diffAlive || !host || host.isDestroyed) return
+        if (paneDestroyed(left) || paneDestroyed(right)) return
         if (plain()) {
           // The prop already keeps the filetype off the renderable, but a pane
           // reused from the previous change keeps the one it had (see
           // NO_HIGHLIGHTS) — clearing it here is what stops the parse itself.
-          for (const code of [host.leftCodeRenderable, host.rightCodeRenderable]) {
+          for (const code of [left, right]) {
             if (!code) continue
             code.filetype = undefined
             code.onHighlight = NO_HIGHLIGHTS
           }
         } else {
-          if (host.leftCodeRenderable) {
-            host.leftCodeRenderable.onHighlight = highlighter('left', view)
-          }
-          if (host.rightCodeRenderable) {
-            host.rightCodeRenderable.onHighlight = highlighter('right', view)
-          }
+          if (left) left.onHighlight = highlighter('left', view)
+          if (right) right.onHighlight = highlighter('right', view)
         }
         paintHatch(host, view)
       }, 0)
@@ -489,11 +503,15 @@ export function DiffView(props: DiffViewProps) {
   )
   const scroll = (delta: number) => {
     for (const side of sides()) {
+      if (paneDestroyed(side)) continue
       side.scrollY = Math.max(0, Math.min(side.maxScrollY, side.scrollY + delta))
     }
   }
   const scrollTo = (row: number) => {
-    for (const side of sides()) side.scrollY = Math.max(0, Math.min(side.maxScrollY, row))
+    for (const side of sides()) {
+      if (paneDestroyed(side)) continue
+      side.scrollY = Math.max(0, Math.min(side.maxScrollY, row))
+    }
   }
 
   // Keyed on the path, not the file: a refresh rebuilds the same change on every

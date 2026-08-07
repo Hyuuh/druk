@@ -9,6 +9,7 @@ import {
   press,
   pressEscape,
   runCommand,
+  settle,
   untilFrame,
   untilGone,
 } from './helpers'
@@ -91,4 +92,39 @@ test('the diff closes itself once nothing is left to show', async () => {
   run(dir, 'add', '.')
   run(dir, 'commit', '-qm', 'all of it')
   await untilGone(t, 'alpha changed')
+})
+
+test('a commit under an open diff does not throw TextBufferView is destroyed', async () => {
+  // Issue #70: DiffView's deferred pane attach raced refreshDiff tearing the
+  // <diff> down when an external commit removed the change. Trap the throw —
+  // the page already closes in the tests above; this is the crash itself.
+  const errors: Error[] = []
+  const onUncaught = (err: Error) => {
+    errors.push(err)
+  }
+  const onRejection = (reason: unknown) => {
+    errors.push(reason instanceof Error ? reason : new Error(String(reason)))
+  }
+  process.on('uncaughtException', onUncaught)
+  process.on('unhandledRejection', onRejection)
+  try {
+    const dir = repo()
+    const t = await launch(dir)
+    await openDiff(t)
+    await untilFrame(t, 'alpha changed')
+
+    for (let i = 0; i < 5; i++) {
+      writeFileSync(join(dir, 'a.ts'), `alpha changed ${i}\n`)
+      await settle(t, 30)
+    }
+    run(dir, 'add', 'a.ts')
+    run(dir, 'commit', '-qm', 'agent commit')
+    await untilGone(t, 'alpha changed', 3000)
+    await settle(t, 200)
+
+    expect(errors.filter(e => /TextBufferView is destroyed/i.test(e.message))).toEqual([])
+  } finally {
+    process.off('uncaughtException', onUncaught)
+    process.off('unhandledRejection', onRejection)
+  }
 })
