@@ -92,3 +92,66 @@ test('the diff closes itself once nothing is left to show', async () => {
   run(dir, 'commit', '-qm', 'all of it')
   await untilGone(t, 'alpha changed')
 })
+
+/**
+ * b.ts is an ordinary change. The other three are listed but have nothing to
+ * show — a.ts because its change is staged and the working copy was put back,
+ * c.ts and d.ts because they are untracked and empty — so their pages are the
+ * "No changes in this file" fallback, which takes the `<diff>` renderable away.
+ */
+function emptyPageRepo() {
+  const dir = fixture({ 'a.ts': 'alpha\n', 'b.ts': 'beta\n' })
+  run(dir, 'init', '-q')
+  run(dir, 'config', 'user.email', 'druk@test')
+  run(dir, 'config', 'user.name', 'druk')
+  run(dir, 'config', 'commit.gpgsign', 'false')
+  run(dir, 'add', '.')
+  run(dir, 'commit', '-qm', 'init')
+  writeFileSync(join(dir, 'a.ts'), 'alpha changed\n')
+  run(dir, 'add', 'a.ts')
+  writeFileSync(join(dir, 'a.ts'), 'alpha\n')
+  writeFileSync(join(dir, 'b.ts'), 'beta changed\n')
+  writeFileSync(join(dir, 'c.ts'), '')
+  writeFileSync(join(dir, 'd.ts'), '')
+  return dir
+}
+
+/**
+ * What the app writes when a key handler throws — nothing may reach it. The
+ * throw cannot be trapped as an uncaughtException: OpenTUI's key dispatch wraps
+ * every listener in a try/catch and reports the error through console.error.
+ */
+function watchErrors() {
+  const original = console.error
+  const seen: string[] = []
+  console.error = (...args: unknown[]) => {
+    seen.push(args.map(arg => (arg instanceof Error ? arg.message : String(arg))).join(' '))
+  }
+  return { seen, stop: () => void (console.error = original) }
+}
+
+test('paging between changes with nothing to show keeps drawing them', async () => {
+  // Issue #70: the ref is never called back when the `<diff>` goes away, so
+  // DiffView kept using a destroyed renderable — "TextBufferView is destroyed".
+  const t = await launch(emptyPageRepo())
+  const errors = watchErrors()
+  try {
+    await openDiff(t, 1)
+    await untilFrame(t, 'beta changed')
+
+    // b.ts → c.ts drops the `<diff>` renderable, which the reconciler destroys a
+    // tick later; d.ts's page is the fallback too, so nothing replaces it.
+    await press(t, i => i.pressArrow('down'))
+    await untilFrame(t, 'No changes in this file')
+    await press(t, i => i.pressArrow('down'))
+    await untilFrame(t, 'd.ts')
+
+    // …and back onto a real change, which the destroyed pane must not have cost.
+    await press(t, i => i.pressArrow('up'))
+    await press(t, i => i.pressArrow('up'))
+    await untilFrame(t, 'beta changed')
+  } finally {
+    errors.stop()
+  }
+  expect(errors.seen.join('\n')).not.toContain('TextBufferView is destroyed')
+})

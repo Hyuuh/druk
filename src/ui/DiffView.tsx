@@ -1,6 +1,6 @@
 import type { DiffRenderable, KeyEvent, TreeSitterClient } from '@opentui/core'
 import { useTerminalDimensions } from '@opentui/solid'
-import { createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from 'solid-js'
 
 import { unifiedDiff } from '../core/diff'
 import type { UnifiedDiff } from '../core/diff'
@@ -141,6 +141,8 @@ type OnHighlight = (
 interface CodePane {
   scrollY: number
   maxScrollY: number
+  /** Every accessor below throws once this is true (see `livePane`). */
+  isDestroyed: boolean
   /** Columns the code itself owns — the side minus its gutter. */
   width: number
   content: string
@@ -236,10 +238,28 @@ export function DiffView(props: DiffViewProps) {
 
   let pane: DiffRenderable | undefined
 
+  /** Nothing may fire the deferred attach after the page is gone (issue #70). */
+  let attachTimer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => clearTimeout(attachTimer))
+
+  /**
+   * The `<diff>` on screen, or nothing.
+   *
+   * The ref is never called back when the element goes away, and the reconciler
+   * destroys a removed renderable a tick later — so a page that falls back to
+   * "No changes in this file" leaves `pane` pointing at a corpse whose every
+   * accessor throws "TextBufferView is destroyed". Paging from one such change
+   * to another is what reaches it: nothing has replaced the ref in between.
+   */
+  const livePane = () => {
+    if (pane?.isDestroyed) pane = undefined
+    return pane
+  }
+
   const sides = () => {
-    const host = pane as unknown as DiffSides | undefined
+    const host = livePane() as unknown as DiffSides | undefined
     return [host?.leftCodeRenderable, host?.rightCodeRenderable].filter(
-      (side): side is CodePane => side != null,
+      (side): side is CodePane => side != null && !side.isDestroyed,
     )
   }
 
@@ -435,7 +455,7 @@ export function DiffView(props: DiffViewProps) {
       ['left', host.leftCodeRenderable],
       ['right', host.rightCodeRenderable],
     ] as const) {
-      if (!code) continue
+      if (!code || code.isDestroyed) continue
       // Before the first layout the pane has no width yet; half the pane's own
       // columns overshoots by the gutter, which `wrapMode="none"` clips away.
       const bar = HATCH.repeat(Math.max(1, code.width || Math.ceil(props.width / 2)))
@@ -463,24 +483,28 @@ export function DiffView(props: DiffViewProps) {
     on([current, mode, client, () => props.width, () => ui.dim, () => ui.solidBg], () => {
       const highlighter = current().highlighter
       const view = mode() === 'split' ? 'split' : 'unified'
-      setTimeout(() => {
-        const host = pane as unknown as DiffSides | undefined
+      // Only the last of a burst has the state worth applying, and an earlier
+      // one would run against panes the rebuild has already replaced.
+      clearTimeout(attachTimer)
+      attachTimer = setTimeout(() => {
+        attachTimer = undefined
+        // A tick later, so the page may have fallen back to "No changes" and
+        // taken its panes with it (see `livePane`).
+        const host = livePane() as unknown as DiffSides | undefined
         if (!host) return
-        if (plain()) {
-          // The prop already keeps the filetype off the renderable, but a pane
-          // reused from the previous change keeps the one it had (see
-          // NO_HIGHLIGHTS) — clearing it here is what stops the parse itself.
-          for (const code of [host.leftCodeRenderable, host.rightCodeRenderable]) {
-            if (!code) continue
+        for (const [which, code] of [
+          ['left', host.leftCodeRenderable],
+          ['right', host.rightCodeRenderable],
+        ] as const) {
+          if (!code || code.isDestroyed) continue
+          if (plain()) {
+            // The prop already keeps the filetype off the renderable, but a pane
+            // reused from the previous change keeps the one it had (see
+            // NO_HIGHLIGHTS) — clearing it here is what stops the parse itself.
             code.filetype = undefined
             code.onHighlight = NO_HIGHLIGHTS
-          }
-        } else {
-          if (host.leftCodeRenderable) {
-            host.leftCodeRenderable.onHighlight = highlighter('left', view)
-          }
-          if (host.rightCodeRenderable) {
-            host.rightCodeRenderable.onHighlight = highlighter('right', view)
+          } else {
+            code.onHighlight = highlighter(which, view)
           }
         }
         paintHatch(host, view)
