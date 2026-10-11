@@ -13,6 +13,8 @@ import type { Accessor } from 'solid-js'
 
 import { ui } from '../themes'
 import { DiffBody } from './DiffBody'
+import { DiffHeadingView } from './DiffHeading'
+import type { DiffHeading, DiffKey, DiffStats } from './DiffHeading'
 import {
   DIFF_MAX_LINES,
   diffMark,
@@ -29,7 +31,7 @@ import {
   retryFrames,
   scrollbarOptions,
 } from './list'
-import { Page } from './PanelHeader'
+import { PageFrame } from './PanelHeader'
 import { cut } from './text'
 import { useKeys } from './useKeys'
 
@@ -63,20 +65,10 @@ export interface DiffSection {
   dels: number | null
 }
 
-export interface DiffMeta {
-  total: number
-  adds: number
-  dels: number
-}
-
-export interface DiffInfoLine {
-  text: string
-  tone: 'text' | 'dim' | 'faint'
-}
+export type DiffMeta = DiffStats
 
 export interface DiffPageProps {
-  title: string
-  info?: DiffInfoLine[]
+  heading: DiffHeading
   sections: DiffSection[]
   meta: DiffMeta
   focusKey: string | null
@@ -88,8 +80,8 @@ export interface DiffPageProps {
   blocked: boolean
   empty: string
   escLabel?: string
-  // Page-specific keys for the header, ahead of the shared ones.
-  hints?: string[]
+  // Page-specific keys for the header, between the shared ones.
+  keys?: { key: string; label: string }[]
   onFocus: () => void
   onToggleMode: () => void
   onClose: () => void
@@ -97,10 +89,6 @@ export interface DiffPageProps {
   onOpen?: (key: string, line: number | null) => void
   onAction?: (key: string) => void
   onKey?: (k: string, key: KeyEvent) => boolean
-}
-
-export function diffSummary(title: string, meta: DiffMeta): string {
-  return `${title} · ${meta.total} ${meta.total === 1 ? 'file' : 'files'} · +${meta.adds} −${meta.dels}`
 }
 
 export interface StickyHeader {
@@ -421,22 +409,39 @@ export function DiffPage(props: DiffPageProps) {
     }
   }
 
-  const scroll = (delta: number) => {
+  // Set while druk moves the page itself, so the scroll listener can tell a reveal from the reader.
+  let steering = false
+  const steer = (host: ScrollBoxRenderable, top: number) => {
+    steering = true
+    try {
+      host.scrollTop = top
+    } finally {
+      steering = false
+    }
+  }
+
+  // The reader moving the page hands the selection back to whatever file it now shows.
+  const release = () => {
     cancelHold?.()
     drifted = true
-    if (box) {
-      box.scrollTop = Math.max(0, box.scrollTop + delta)
-    }
-    syncScroll()
+    setPickedKey(null)
+    setPickedLine(null)
   }
+
+  // A key that moved nothing keeps the pick: on a page that fits, ↓ after Tab is not a walk.
   const scrollTo = (row: number) => {
-    cancelHold?.()
-    drifted = true
-    if (box) {
-      box.scrollTop = Math.max(0, row)
+    if (!box) {
+      return
+    }
+    const before = box.scrollTop
+    steer(box, Math.max(0, row))
+    if (box.scrollTop !== before) {
+      release()
     }
     syncScroll()
+    remeasure()
   }
+  const scroll = (delta: number) => scrollTo((box?.scrollTop ?? 0) + delta)
 
   const reveal = (key: string, into = 0) => {
     const host = box
@@ -444,8 +449,7 @@ export function DiffPage(props: DiffPageProps) {
     if (!host || !el) {
       return
     }
-    host.scrollTop =
-      el.y - host.y + host.scrollTop + Math.round(into * el.height)
+    steer(host, el.y - host.y + host.scrollTop + Math.round(into * el.height))
     drifted = into > 0
     syncScroll()
   }
@@ -607,6 +611,20 @@ export function DiffPage(props: DiffPageProps) {
 
   const page = () => Math.max(1, dimensions().height - 3)
 
+  // Only a page that already scrolls gets room past its end; one that fits stays put.
+  const tail = () => {
+    layout()
+    scrollTop()
+    const host = box
+    const last = anchors.get(keys().at(-1) ?? '')
+    if (!host || !last) {
+      return 0
+    }
+    const room = host.height
+    const end = last.y - host.y + host.scrollTop + last.height
+    return end > room ? Math.max(0, room - HEADER_ROWS) : 0
+  }
+
   useKeys((key: KeyEvent, k: string) => {
     if (props.blocked || !props.focused || key.defaultPrevented) {
       return
@@ -648,34 +666,19 @@ export function DiffPage(props: DiffPageProps) {
     key.preventDefault()
   })
 
-  const hints = () => {
-    const mode = props.mode === 'inline' ? 'inline' : 'side-by-side'
-    const layoutKey = props.focused ? 's' : 'S'
-    const own = props.hints ?? []
-    const open = props.onOpen ? ['Enter open'] : []
-    const esc = `Esc ${props.escLabel ?? 'close'}`
-    const variants = [
-      [mode, `${layoutKey} layout`, ...own, 'Tab file', ...open, '← fold', esc],
-      [mode, layoutKey, ...own, 'Tab', ...open, esc],
-      // A page's own keys are what it is for; the layout word is what goes first.
-      own.length > 0 ? [...own, 'Tab', esc] : [mode, 'Tab', esc],
-    ]
-    for (const parts of variants) {
-      const text = ` ${parts.join(' · ')} `
-      if (text.length + 28 <= props.width) {
-        return text
-      }
-    }
-    return ` ${mode} · Tab · Esc `
-  }
-
-  const title = () => {
-    const room = Math.max(8, props.width - hints().length - 1)
-    return ` ${cut(diffSummary(props.title, props.meta), room)}`
-  }
-
-  const infoColor = (tone: DiffInfoLine['tone']) =>
-    tone === 'text' ? ui.text : tone === 'dim' ? ui.dim : ui.faint
+  const keyRow = (): DiffKey[] => [
+    { key: 'Tab', label: 'next file', rank: 1 },
+    ...(props.onOpen ? [{ key: 'Enter', label: 'open', rank: 2 }] : []),
+    { key: '←→', label: 'fold', rank: 9 },
+    ...(props.keys ?? []).map((item, i) => ({ ...item, rank: 5 + i })),
+    {
+      key: props.focused ? 's' : 'S',
+      label: 'layout',
+      rank: 3,
+      value: props.mode === 'inline' ? 'inline' : 'side-by-side',
+    },
+    { key: 'Esc', label: props.escLabel ?? 'close', rank: 0 },
+  ]
 
   const headerFor = (section: DiffSection, part: 'full' | 'meta') => (
     <FileHeader
@@ -703,28 +706,13 @@ export function DiffPage(props: DiffPageProps) {
   )
 
   return (
-    <Page title={title()} hints={hints()} onFocus={props.onFocus}>
-      {/* Fixed rows: a wrapped line would push the stack under it out of the box. */}
-      <Show when={(props.info ?? []).length > 0}>
-        <box
-          height={(props.info ?? []).length}
-          flexShrink={0}
-          flexDirection="column"
-          backgroundColor={ui.solidBarBg}
-          paddingLeft={1}
-        >
-          <For each={props.info ?? []}>
-            {(line) => (
-              <text
-                wrapMode="none"
-                fg={infoColor(line.tone)}
-                bg={ui.solidBarBg}
-                content={cut(line.text, inner())}
-              />
-            )}
-          </For>
-        </box>
-      </Show>
+    <PageFrame onFocus={props.onFocus} onWheel={remeasure}>
+      <DiffHeadingView
+        heading={props.heading}
+        stats={props.meta}
+        keys={keyRow()}
+        width={props.width}
+      />
       <Show
         when={keys().length > 0}
         fallback={
@@ -741,6 +729,9 @@ export function DiffPage(props: DiffPageProps) {
                 if (top === scrollTop()) {
                   return
                 }
+                if (!steering) {
+                  release()
+                }
                 drifted = true
                 setScrollTop(top)
               })
@@ -749,7 +740,7 @@ export function DiffPage(props: DiffPageProps) {
                 drifted = true
                 onCleanup(
                   retryFrames(() => {
-                    el.scrollTop = top
+                    steer(el, top)
                     if (el.scrollTop !== top) {
                       return false
                     }
@@ -788,6 +779,8 @@ export function DiffPage(props: DiffPageProps) {
                           anchors.set(key, el)
                         }
                       }}
+                      // A diff landing its rows moves the page's end with no scroll to report it.
+                      onSizeChange={remeasure}
                       width="100%"
                       flexShrink={0}
                       flexDirection="column"
@@ -819,6 +812,9 @@ export function DiffPage(props: DiffPageProps) {
                 )
               }}
             </For>
+            {/* Room past the last file, or the files at the end could never reach the top,
+                where the selection is read from. */}
+            <box height={tail()} flexShrink={0} />
           </scrollbox>
           <Show when={sticky()}>
             <box
@@ -838,6 +834,6 @@ export function DiffPage(props: DiffPageProps) {
           </Show>
         </box>
       </Show>
-    </Page>
+    </PageFrame>
   )
 }

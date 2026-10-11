@@ -39,6 +39,7 @@ import { Breadcrumbs } from '../ui/Breadcrumbs'
 import { CallPeek } from '../ui/CallPeek'
 import { CommitGraphView } from '../ui/CommitGraphView'
 import { ComparePanel } from '../ui/ComparePanel'
+import type { DiffHeading } from '../ui/DiffHeading'
 import { DiffPage } from '../ui/DiffPage'
 import { EditorPane } from '../ui/EditorPane'
 import { ExtensionsPanel } from '../ui/ExtensionsPanel'
@@ -65,7 +66,7 @@ import { createBranches } from './branches'
 import { createBreadcrumbs } from './breadcrumbs'
 import { createCallHierarchy } from './callHierarchy'
 import { createCommitGraph } from './commitGraph'
-import { commitInfo, createCommitView } from './commitView'
+import { commitHeading, createCommitView } from './commitView'
 import { createComparison } from './comparison'
 import type { AppContext } from './context'
 import type { DiffDocument } from './diffDocument'
@@ -652,25 +653,23 @@ export function App(props: {
     },
   })
 
-  const commitInfoLines = () => {
+  const commitPageHeading = (): DiffHeading => {
     const detail = commitView.commit()
-    return detail ? commitInfo(detail) : []
+    return detail ? commitHeading(detail) : { title: 'Commit' }
   }
 
-  const comparisonTitle = () => {
+  const comparisonHeading = (): DiffHeading => {
     const detail = comparison.detail()
     if (detail?.kind === 'commit') {
-      return `Commit ${detail.commit.commit.shortOid}`
+      return commitHeading(detail.commit)
     }
     const result = comparison.result()
     return result
-      ? `${result.compare.name} against ${result.base.name}`
-      : 'Comparison'
-  }
-
-  const comparisonInfo = () => {
-    const detail = comparison.detail()
-    return detail?.kind === 'commit' ? commitInfo(detail.commit) : []
+      ? {
+          byline: `What ${result.compare.name} changes since it left ${result.base.name}`,
+          title: `${result.compare.name} against ${result.base.name}`,
+        }
+      : { title: 'Comparison' }
   }
 
   const comparisonFocus = () => {
@@ -1253,9 +1252,11 @@ export function App(props: {
               >
                 <DiffPage
                   {...diffPageProps(changes.doc, 'changes')}
-                  title={
-                    git.diffBase() ? `Against ${git.diffBase()}` : 'Uncommitted'
-                  }
+                  heading={{
+                    title: git.diffBase()
+                      ? `Changes against ${git.diffBase()}`
+                      : 'Uncommitted changes',
+                  }}
                   focusKey={rowSlotKey(git.cursorRow())}
                   empty="No file changes."
                   onAction={
@@ -1283,11 +1284,14 @@ export function App(props: {
               >
                 <DiffPage
                   {...diffPageProps(pullRequest.doc, 'pullRequest')}
-                  title={`Pull request #${pullRequest.pr()?.number ?? ''}`}
-                  info={pullRequest.info()}
+                  heading={pullRequest.heading()}
                   focusKey={null}
                   empty="This pull request changes no files."
-                  hints={['Space viewed', 'o web', 'r refresh']}
+                  keys={[
+                    { key: 'Space', label: 'viewed' },
+                    { key: 'o', label: 'web' },
+                    { key: 'r', label: 'refresh' },
+                  ]}
                   onAction={pullRequest.toggleViewed}
                   onOpen={actions.openPullRequestFile}
                   onKey={(k) => {
@@ -1341,8 +1345,7 @@ export function App(props: {
               >
                 <DiffPage
                   {...diffPageProps(comparison.doc, 'compare')}
-                  title={comparisonTitle()}
-                  info={comparisonInfo()}
+                  heading={comparisonHeading()}
                   focusKey={comparisonFocus()}
                   empty="No file changes in this commit."
                   escLabel="back"
@@ -1393,11 +1396,10 @@ export function App(props: {
               >
                 <DiffPage
                   {...diffPageProps(commitView.doc, 'commit')}
-                  title={`Commit ${commitView.commit()?.commit.shortOid ?? ''}`}
-                  info={commitInfoLines()}
+                  heading={commitPageHeading()}
                   focusKey={null}
                   empty="No file changes in this commit."
-                  hints={['o web']}
+                  keys={[{ key: 'o', label: 'web' }]}
                   escLabel="back"
                   onKey={(k) => {
                     if (k !== 'o') {

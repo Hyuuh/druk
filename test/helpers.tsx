@@ -186,12 +186,13 @@ export async function openDiff(t: Harness, row = 0) {
   }
 }
 
+// The topmost file header on the page; the page's own heading carries a `−` count too.
 function header(t: Harness): string {
   return (
     t
       .captureCharFrame()
       .split('\n')
-      .find((line) => line.includes('−')) ?? ''
+      .find((line) => /[▾▸] [ADMRU] /u.test(line)) ?? ''
   )
 }
 

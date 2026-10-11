@@ -85,11 +85,8 @@ export function CollapseAll(props: {
   )
 }
 
-/** An editor-slot page: the solid background, the title/hints bar, and the view under it. */
-export function Page(props: {
-  // Carries its own leading space, as the bar has no padding.
-  title: string
-  hints: string
+/** An editor-slot page's surface: the solid background and the view inside it. */
+export function PageFrame(props: {
   onFocus: () => void
   onWheel?: (event: MouseEvent) => void
   children: JSX.Element
@@ -103,6 +100,22 @@ export function Page(props: {
       onMouseDown={props.onFocus}
       onMouseScroll={props.onWheel}
     >
+      {props.children}
+    </box>
+  )
+}
+
+/** An editor-slot page: the solid background, the title/hints bar, and the view under it. */
+export function Page(props: {
+  // Carries its own leading space, as the bar has no padding.
+  title: string
+  hints: string
+  onFocus: () => void
+  onWheel?: (event: MouseEvent) => void
+  children: JSX.Element
+}) {
+  return (
+    <PageFrame onFocus={props.onFocus} onWheel={props.onWheel}>
       <box flexDirection="row" flexShrink={0} backgroundColor={ui.solidBarBg}>
         <text
           wrapMode="none"
@@ -121,6 +134,6 @@ export function Page(props: {
         />
       </box>
       {props.children}
-    </box>
+    </PageFrame>
   )
 }

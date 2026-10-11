@@ -73,7 +73,9 @@ test('the branch’s pull request opens as a diff page with GitHub’s viewed ma
   await untilFrame(t, '+ export const c = 3')
 
   const frame = t.captureCharFrame()
-  expect(frame).toContain('@octo · main ← feature · open · 1/2 viewed')
+  expect(frame).toContain('● open  #7 Add widgets')
+  expect(frame).toContain('@octo wants to merge feature into main')
+  expect(frame).toContain('1/2 viewed')
   expect(frame).toContain('▸ M a.ts')
   expect(frame).toContain('[✓] viewed')
   expect(frame).toContain('▾ A c.ts')

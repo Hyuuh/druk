@@ -29,6 +29,9 @@ const hex = (color?: { buffer: Uint8Array }) =>
     ? `#${Array.from(color.buffer.slice(0, 3), (v) => v.toString(16).padStart(2, '0')).join('')}`
     : ''
 
+// Under the tab strip and the page's two heading rows: its title and its keys.
+const FIRST_ROW = 3
+
 const rowBgs = (t: Harness, y: number) => {
   const frame = t.captureSpans() as unknown as Frame
   return frame.lines[y]?.spans.map((span) => hex(span.bg)) ?? []
@@ -375,9 +378,8 @@ test('the header sticks on a page whose later files have never been on screen', 
     await t.mockMouse.scroll(80, 12, 'down')
     await settle(t)
   }
-  // Row 1 is the page's own title; the stuck header is the first row under it.
   await until(t, () =>
-    /▾ M f0\d\.ts/u.test(t.captureCharFrame().split('\n')[2]!)
+    /▾ M f0\d\.ts/u.test(t.captureCharFrame().split('\n')[FIRST_ROW]!)
   )
 })
 
@@ -431,7 +433,7 @@ test('Tab walks the files and puts the one it lands on at the top', async () => 
   await press(t, (i) => i.pressTab())
   await press(t, (i) => i.pressTab())
   await untilFrame(t, '▾ M b.ts')
-  expect(rowOf(t, '▾ M b.ts')).toBe(2)
+  expect(rowOf(t, '▾ M b.ts')).toBe(FIRST_ROW)
 })
 
 test('Shift+S in the panel flips the page to side-by-side', async () => {
@@ -457,11 +459,11 @@ test('flipping the layout keeps the file being read at the top', async () => {
   await untilFrame(t, '▾ M a.ts')
   await press(t, (i) => i.pressArrow('down'))
   await untilFrame(t, '▾ M b.ts')
-  expect(rowOf(t, '▾ M b.ts')).toBe(2)
+  expect(rowOf(t, '▾ M b.ts')).toBe(FIRST_ROW)
 
   await press(t, (i) => i.pressKey('s', { shift: true }))
   await untilFrame(t, 'side-by-side')
-  expect(rowOf(t, '▾ M b.ts')).toBe(2)
+  expect(rowOf(t, '▾ M b.ts')).toBe(FIRST_ROW)
 })
 
 test('flipping the layout holds where the wheel left the page, not the panel cursor', async () => {
@@ -504,6 +506,49 @@ test('Space on the page stages the file its header names', async () => {
       .startsWith('M  a.ts')
   )
   await untilFrame(t, 'staged')
+})
+
+test('scrolling down into the next file moves the selection, and Space acts on it', async () => {
+  const dir = repo({ 'a.ts': many('old'), 'b.ts': 'beta\n' })
+  writeFileSync(join(dir, 'a.ts'), many('new'))
+  writeFileSync(join(dir, 'b.ts'), 'BETA\n')
+
+  const t = await launch(dir, {}, { height: 24 })
+  await runCommand(t, 'Show all changes')
+  await untilFrame(t, '▾ M a.ts')
+  await press(t, (i) => i.pressTab())
+  // a.ts is two header rows and eighty patch rows; this lands inside b.ts.
+  await pressTimes(t, 84, (i) => i.pressArrow('down'))
+  await settle(t, 50)
+  await press(t, (i) => i.typeText(' '))
+
+  const staged = () =>
+    execFileSync('git', ['status', '--porcelain'], { cwd: dir }).toString()
+  await until(t, () => staged().includes('M  b.ts'))
+  expect(staged()).toContain(' M a.ts')
+})
+
+test('the wheel hands the selection to the file it scrolled to', async () => {
+  const dir = repo({ 'a.ts': many('old'), 'b.ts': 'beta\n' })
+  writeFileSync(join(dir, 'a.ts'), many('new'))
+  writeFileSync(join(dir, 'b.ts'), 'BETA\n')
+
+  const t = await launch(dir, {}, { height: 24, width: 120 })
+  await runCommand(t, 'Show all changes')
+  await untilFrame(t, '▾ M a.ts')
+  await press(t, (i) => i.pressTab())
+  // A tick is a row here; a.ts is eighty-two of them.
+  for (let n = 0; n < 90; n += 1) {
+    await t.mockMouse.scroll(80, 12, 'down')
+  }
+  await settle(t, 50)
+  await untilFrame(t, '▾ M b.ts')
+  await press(t, (i) => i.typeText(' '))
+
+  const staged = () =>
+    execFileSync('git', ['status', '--porcelain'], { cwd: dir }).toString()
+  await until(t, () => staged().includes('M  b.ts'))
+  expect(staged()).toContain(' M a.ts')
 })
 
 test('the stage button on a header stages that file, not the row under the pointer', async () => {

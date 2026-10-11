@@ -139,7 +139,7 @@ scripts/
   ui/                presentational components, no app state
     EditorPane, FileTree, GitPanel, ComparePanel, CompareFilter,
     SidebarTabs, Tabs, PanelHeader, StatusBar, CommandPalette, FilePicker,
-    SearchPanel, DiffPage, DiffBody, ImageView, PreviewPane, ReviewPanel, SettingsView,
+    SearchPanel, DiffPage, DiffHeading, DiffBody, ImageView, PreviewPane, ReviewPanel, SettingsView,
     SettingEditor,
     SettingPicker, ExtensionsPanel, LspStatusView, UpdateBanner,
     Overlay, TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome

@@ -122,11 +122,11 @@ test('Enter opens the selected commit, and the cursor skips the connector rows',
   await press(t, (i) => i.pressArrow('down'))
   await press(t, (i) => i.pressArrow('down'))
   await press(t, (i) => i.pressEnter())
-  // The diff body lands a frame after the header, so wait for it rather than for `parent`.
+  // The diff body lands a frame after the header, so wait for it rather than for the heading.
   // `--topo-order`: main's own commit sits under the merge, ahead of the side branch it took in.
   await untilFrame(t, 'alpha changed')
 
-  expect(t.captureCharFrame()).toMatch(/1 files? ·/u)
+  expect(t.captureCharFrame()).toMatch(/1 files? {2}\+/u)
 })
 
 test('reading a commit and closing it leaves the graph where it was', async () => {
@@ -137,7 +137,7 @@ test('reading a commit and closing it leaves the graph where it was', async () =
   const scrolled = t.captureCharFrame()
 
   await press(t, (i) => i.pressEnter())
-  await untilFrame(t, 'parent')
+  await untilFrame(t, 'Esc back')
   // Ctrl+W closes the commit tab, which puts the graph back on the slot.
   await press(t, (i) => i.pressKeys([String.fromCodePoint(23)]))
   await untilFrame(t, 'Commit graph ·')

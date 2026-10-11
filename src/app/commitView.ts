@@ -3,25 +3,23 @@ import { createSignal } from 'solid-js'
 import { comparisonCommitDetail } from '../core/git'
 import type { ComparisonCommitDetail } from '../core/git'
 import { plural } from '../core/text'
-import type { DiffInfoLine } from '../ui/DiffPage'
+import type { DiffHeading } from '../ui/DiffHeading'
 import { createDiffDocument } from './diffDocument'
 import type { DiffContent, DiffEntry } from './diffDocument'
 import { comparisonSource } from './diffSources'
 import type { Status } from './status'
 
-export function commitInfo(detail: ComparisonCommitDetail): DiffInfoLine[] {
+export function commitHeading(detail: ComparisonCommitDetail): DiffHeading {
   const { commit } = detail
-  return [
-    { text: `${commit.shortOid} ${commit.subject}`, tone: 'text' },
-    {
-      text: `${commit.authorName} <${commit.authorEmail}> · ${commit.authoredAt}`,
-      tone: 'dim',
-    },
-    {
-      text: `${plural(detail.stats.files, 'file')} · ${plural(commit.parents.length, 'parent')}`,
-      tone: 'faint',
-    },
-  ]
+  return {
+    aside:
+      commit.parents.length > 1
+        ? `merge of ${plural(commit.parents.length, 'parent')}`
+        : undefined,
+    byline: `${commit.authorName} <${commit.authorEmail}> · ${commit.authoredAt}`,
+    ref: commit.shortOid,
+    title: commit.subject,
+  }
 }
 
 export function createCommitView(deps: { rootDir: string; status: Status }) {

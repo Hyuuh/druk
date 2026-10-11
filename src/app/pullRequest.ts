@@ -9,13 +9,19 @@ import {
 } from '../core/github'
 import type { PullRequest, ViewedState } from '../core/github'
 import { plural } from '../core/text'
-import type { DiffInfoLine } from '../ui/DiffPage'
+import type { DiffHeading, HeadingTone } from '../ui/DiffHeading'
 import { createDiffDocument } from './diffDocument'
 import type { DiffContent, DiffEntry } from './diffDocument'
 import { comparisonSource } from './diffSources'
 import { noRepository } from './git'
 import type { Git } from './git'
 import type { Status } from './status'
+
+const STATE_TONES: Record<string, HeadingTone> = {
+  closed: 'deleted',
+  merged: 'accent',
+  open: 'added',
+}
 
 const webRepo = (pr: PullRequest) => `https://${pr.host}/${pr.owner}/${pr.name}`
 
@@ -209,19 +215,20 @@ export function createPullRequest(deps: {
     setPr(null)
   }
 
-  const info = (): DiffInfoLine[] => {
+  const heading = (): DiffHeading => {
     const request = pr()
     if (!request) {
-      return []
+      return { title: loading() ? 'Loading pull request…' : 'Pull request' }
     }
     const state = request.draft ? 'draft' : request.state
-    return [
-      { text: `#${request.number} ${request.title}`, tone: 'text' },
-      {
-        text: `${request.author ? `@${request.author} · ` : ''}${request.base} ← ${request.head} · ${state} · ${viewedCount()}/${doc.entries().length} viewed`,
-        tone: 'dim',
-      },
-    ]
+    const who = request.author ? `@${request.author}` : 'Someone'
+    return {
+      aside: `${viewedCount()}/${doc.entries().length} viewed`,
+      byline: `${who} wants to merge ${request.head} into ${request.base}`,
+      ref: `#${request.number}`,
+      state: { text: state, tone: STATE_TONES[state] ?? 'dim' },
+      title: request.title,
+    }
   }
 
   const isOpen = () => pr() !== null
@@ -229,7 +236,7 @@ export function createPullRequest(deps: {
   return {
     close,
     doc,
-    info,
+    heading,
     isOpen,
     loading,
     open,
