@@ -110,7 +110,7 @@ test('controller changes base through the existing branch model', async () => {
   root.dispose()
 })
 
-test('controller lazily opens selected file content and closes detail first', async () => {
+test('controller opens the comparison on the selected file and closes detail first', async () => {
   const { dir } = repo()
   const root = createRoot((dispose) => {
     const git = createGit(dir, () => 'tree')
@@ -123,17 +123,19 @@ test('controller lazily opens selected file content and closes detail first', as
     return { comparison, dispose }
   })
 
+  const body = (key: string) =>
+    root.comparison.doc.sections().find((section) => section.key === key)?.body
+
   root.comparison.open()
   await until(() => root.comparison.state() === 'ready')
-  expect(root.comparison.selectedContent()).toBeNull()
+  expect(root.comparison.doc.sections()).toEqual([])
   root.comparison.openSelection()
-  await until(() => root.comparison.selectedContent() !== null)
-  expect(root.comparison.selectedContent()).toMatchObject({
-    binary: false,
-    newText: 'export const auth = true\n',
-  })
+  await until(() => body('auth.ts') !== undefined)
+  expect(body('auth.ts')?.newText).toBe('export const auth = true\n')
+  expect(root.comparison.detail()).toEqual({ focus: 'auth.ts', kind: 'files' })
   root.comparison.closeDetail()
-  expect(root.comparison.selectedFile()).toBeNull()
+  expect(root.comparison.detail()).toBeNull()
+  expect(root.comparison.doc.sections()).toEqual([])
   expect(root.comparison.active()).toBe(true)
   root.dispose()
 })
@@ -180,7 +182,7 @@ test('controller reports detached HEAD as an explicit comparison error', async (
   root.dispose()
 })
 
-test('controller opens commit metadata and its first file diff lazily', async () => {
+test('controller opens a commit with every file it changed', async () => {
   const { dir } = repo()
   const root = createRoot((dispose) => {
     const git = createGit(dir, () => 'tree')
@@ -193,33 +195,26 @@ test('controller opens commit metadata and its first file diff lazily', async ()
     return { comparison, dispose }
   })
 
+  const body = (key: string) =>
+    root.comparison.doc.sections().find((section) => section.key === key)?.body
+
   root.comparison.open()
   await until(() => root.comparison.state() === 'ready')
   root.comparison.toggleMode()
   root.comparison.openSelection()
   await until(
-    () =>
-      root.comparison.selectedCommit() !== null &&
-      root.comparison.selectedContent() !== null
+    () => body('auth.ts') !== undefined && body('other.ts') !== undefined
   )
 
-  expect(root.comparison.selectedCommit()?.commit.subject).toBe(
+  const detail = root.comparison.detail()
+  expect(detail?.kind === 'commit' && detail.commit.commit.subject).toBe(
     'add authentication'
   )
-  expect(root.comparison.selectedFile()?.path).toBe('auth.ts')
-  root.comparison.moveDetail(1)
-  await until(() => {
-    const content = root.comparison.selectedContent()
-    return (
-      root.comparison.selectedFile()?.path === 'other.ts' &&
-      content?.binary === false &&
-      content.newText === 'export const other = true\n'
-    )
-  })
-  expect(root.comparison.selectedContent()).toMatchObject({
-    binary: false,
-    newText: 'export const other = true\n',
-  })
+  expect(root.comparison.doc.sections().map((section) => section.key)).toEqual([
+    'auth.ts',
+    'other.ts',
+  ])
+  expect(body('other.ts')?.newText).toBe('export const other = true\n')
   root.dispose()
 })
 

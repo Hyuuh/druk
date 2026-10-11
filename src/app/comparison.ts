@@ -2,7 +2,6 @@ import { createMemo, createSignal } from 'solid-js'
 
 import {
   comparisonCommitDetail,
-  comparisonFileContent,
   currentBranch,
   defaultBranch,
   listBranches,
@@ -13,10 +12,11 @@ import type {
   Branch,
   BranchComparison,
   ComparisonCommitDetail,
-  ComparisonContent,
-  ComparisonFile,
 } from '../core/git'
 import { fuzzyScore } from '../core/search'
+import { createDiffDocument } from './diffDocument'
+import type { DiffContent, DiffEntry } from './diffDocument'
+import { comparisonSource } from './diffSources'
 import { noRepository } from './git'
 import type { Git } from './git'
 import type { Status } from './status'
@@ -36,8 +36,10 @@ function remember<K, V>(cache: Map<K, V>, key: K, value: V, limit: number) {
   }
 }
 
-const contentKey = (file: ComparisonFile) =>
-  `${file.oldOid ?? ''}:${file.newOid ?? ''}`
+// What the detail page over the editor is showing: the whole comparison, or one of its commits.
+export type ComparisonDetail =
+  | { kind: 'files'; focus: string }
+  | { kind: 'commit'; commit: ComparisonCommitDetail }
 
 export function createComparison(deps: {
   rootDir: string
@@ -56,23 +58,21 @@ export function createComparison(deps: {
   const [commitCursor, setCommitCursor] = createSignal(0)
   const [basePick, setBasePick] = createSignal<Branch[] | null>(null)
   const [chosenBase, setChosenBase] = createSignal<string | null>(null)
-  const [selectedFile, setSelectedFile] = createSignal<ComparisonFile | null>(
-    null
-  )
-  const [selectedCommit, setSelectedCommit] =
-    createSignal<ComparisonCommitDetail | null>(null)
-  const [selectedContent, setSelectedContent] =
-    createSignal<ComparisonContent | null>(null)
-  const [detailFileCursor, setDetailFileCursor] = createSignal(0)
+  const [shown, setDetail] = createSignal<ComparisonDetail | null>(null)
 
   // Pinned when the comparison opens: the active repository can move under it.
   let repoDir = rootDir
 
   const comparisons = new Map<string, BranchComparison>()
   const commits = new Map<string, ComparisonCommitDetail>()
-  const contents = new Map<string, ComparisonContent>()
   let requestGeneration = 0
   let detailGeneration = 0
+  let shownFiles: ReturnType<typeof comparisonSource> | null = null
+
+  const doc = createDiffDocument(
+    (entry: DiffEntry): DiffContent | Promise<DiffContent> =>
+      shownFiles?.load(entry) ?? { detail: 'Nothing is open', kind: 'error' }
+  )
 
   const filteredFiles = createMemo(() => {
     const query = filter().trim()
@@ -232,39 +232,22 @@ export function createComparison(deps: {
     }
   }
 
-  const loadContent = async (file: ComparisonFile, generation: number) => {
-    const key = contentKey(file)
-    const cached = contents.get(key)
-    if (cached) {
-      if (generation === detailGeneration) {
-        setSelectedContent(cached)
-      }
-      return
-    }
-    const loaded = await comparisonFileContent(repoDir, file)
-    if (generation !== detailGeneration) {
-      return
-    }
-    if (!loaded.ok) {
-      return fail(loaded.detail)
-    }
-    remember(contents, key, loaded.value, 64)
-    setSelectedContent(loaded.value)
+  const showFiles = (files: BranchComparison['files'], focus: string) => {
+    shownFiles = comparisonSource(repoDir, rootDir, files)
+    doc.reset(shownFiles.entries)
+    doc.setPin(focus)
   }
 
   const openSelection = () => {
     detailGeneration += 1
     const generation = detailGeneration
-    setSelectedContent(null)
     if (mode() === 'files') {
       const file = filteredFiles()[fileCursor()]
       if (!file) {
         return
       }
-      setSelectedCommit(null)
-      setDetailFileCursor(0)
-      setSelectedFile(file)
-      void loadContent(file, generation)
+      showFiles(filteredFiles(), file.path)
+      setDetail({ focus: file.path, kind: 'files' })
       return
     }
 
@@ -272,7 +255,6 @@ export function createComparison(deps: {
     if (!commit) {
       return
     }
-    setSelectedFile(null)
     const cached = commits.get(commit.oid)
     const loadCommit = cached
       ? Promise.resolve({ ok: true as const, value: cached })
@@ -286,47 +268,16 @@ export function createComparison(deps: {
         return fail(loaded.detail)
       }
       remember(commits, commit.oid, loaded.value, 32)
-      setSelectedCommit(loaded.value)
-      setDetailFileCursor(0)
-      const [file] = loaded.value.files
-      if (!file) {
-        return
-      }
-      setSelectedFile(file)
-      void loadContent(file, generation)
+      showFiles(loaded.value.files, loaded.value.files[0]?.path ?? '')
+      setDetail({ commit: loaded.value, kind: 'commit' })
     })()
   }
 
   function closeDetail() {
     detailGeneration += 1
-    setSelectedFile(null)
-    setSelectedCommit(null)
-    setSelectedContent(null)
-    setDetailFileCursor(0)
-  }
-
-  const moveDetail = (delta: number) => {
-    const detail = selectedCommit()
-    if (!detail) {
-      return
-    }
-    const next = Math.max(
-      0,
-      Math.min(detail.files.length - 1, detailFileCursor() + delta)
-    )
-    if (next === detailFileCursor()) {
-      return
-    }
-    const file = detail.files[next]
-    if (!file) {
-      return
-    }
-    detailGeneration += 1
-    const generation = detailGeneration
-    setDetailFileCursor(next)
-    setSelectedFile(file)
-    setSelectedContent(null)
-    void loadContent(file, generation)
+    shownFiles = null
+    doc.reset()
+    setDetail(null)
   }
 
   const refresh = () => {
@@ -356,7 +307,7 @@ export function createComparison(deps: {
   }
 
   // A commit with an empty diff has no file and still owns the editor slot and Esc.
-  const detailOpen = () => selectedFile() !== null || selectedCommit() !== null
+  const detailOpen = () => shown() !== null
 
   return {
     active,
@@ -372,8 +323,9 @@ export function createComparison(deps: {
       }
     },
     commitCursor,
-    detailFileCursor,
+    detail: shown,
     detailOpen,
+    doc,
     error,
     fileCursor,
     filter,
@@ -382,16 +334,12 @@ export function createComparison(deps: {
     filteredFiles,
     mode,
     move,
-    moveDetail,
     open,
     openBasePicker,
     openFilter: () => setFilterOpen(true),
     openSelection,
     refresh,
     result,
-    selectedCommit,
-    selectedContent,
-    selectedFile,
     setFilter,
     state,
     toggleMode,

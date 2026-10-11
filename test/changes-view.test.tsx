@@ -358,6 +358,29 @@ test('a scrolled file keeps its header at the top of the page', async () => {
   expect(t.captureCharFrame()).toContain('▾ M a.ts')
 })
 
+test('the header sticks on a page whose later files have never been on screen', async () => {
+  const names = Array.from(
+    { length: 40 },
+    (_, n) => `f${String(n).padStart(2, '0')}.ts`
+  )
+  const dir = repo(Object.fromEntries(names.map((name) => [name, many('old')])))
+  for (const name of names) {
+    writeFileSync(join(dir, name), many('new'))
+  }
+
+  const t = await launch(dir, {}, { height: 24, width: 120 })
+  await runCommand(t, 'Show all changes')
+  await untilFrame(t, '▾ M f00.ts')
+  for (let n = 0; n < 12; n += 1) {
+    await t.mockMouse.scroll(80, 12, 'down')
+    await settle(t)
+  }
+  // Row 1 is the page's own title; the stuck header is the first row under it.
+  await until(t, () =>
+    /▾ M f0\d\.ts/u.test(t.captureCharFrame().split('\n')[2]!)
+  )
+})
+
 test('folding the stuck file does not leave its header drawn twice', async () => {
   const dir = repo({ 'a.ts': many('old'), 'b.ts': 'beta\n' })
   writeFileSync(join(dir, 'a.ts'), many('new'))

@@ -12,7 +12,7 @@ ships them (see AGENTS.md § "Keep this file current").
 | Area | Problem |
 | --- | --- |
 | `ui/EditorPane.tsx` (3105 lines) | The one grab bag left: highlighting, scrollbar and tracks, folds, the problem card, the completion menu, selection and the OpenTUI overrides all live here. Split along those lines, not by line count |
-| `core/git.ts` (1924 lines) | Queries, mutations, remote/forge URLs, the graph and the error table in one module. The error table and `forgeCommitUrl` are the easy lifts |
+| `core/git.ts` (1996 lines) | Queries, mutations, remote/forge URLs, the graph and the error table in one module. The error table and `forgeCommitUrl` are the easy lifts |
 | Git queries are still `spawnSync` | Four of them, on the render loop. Fine on this repository, felt on a large monorepo |
 | Project search walks synchronously | `searchProject` / `planProjectReplace` traverse and read every file inside a memo. Bounded by `DEFAULT_LIMIT` and a 140 ms debounce, so it has not bitten — a background walk with progressive results is the fix when it does |
 | Windows is shipped but unexercised | No Windows job in CI beyond the release build, and path separators are easy to get wrong (`sep`, not `/`) |

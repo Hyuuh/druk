@@ -97,7 +97,7 @@ test('/ filters comparison files without another Git selection', async () => {
   expect(frame).not.toContain('auth.ts')
 })
 
-test('Enter opens a lazy file diff and d switches its layout', async () => {
+test('Enter opens the comparison as one page, and d switches its layout', async () => {
   const { dir } = repo()
   const t = await launch(dir)
   await openComparison(t)
@@ -225,6 +225,10 @@ test('binary, deleted and renamed rows retain their comparison status', async ()
   expect(frame).toContain('R ')
 
   await press(t, (input) => input.pressEnter())
-  await untilFrame(t, 'Binary file')
-  expect(t.captureCharFrame()).toContain('textual diff is not available')
+  await untilFrame(t, '- remove me')
+  const page = t.captureCharFrame()
+  expect(page).toContain('▾ A binary.bin')
+  expect(page).toContain('▾ D deleted.txt')
+  expect(page).toContain('▾ R old-name.txt → new-name.txt')
+  expect(page).toContain('1 + ONE')
 })

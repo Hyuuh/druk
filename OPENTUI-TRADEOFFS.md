@@ -230,8 +230,8 @@ next keystroke — needs an upstream way to detach the two. Re-check on a bump.
 | `src/ui/tooltip.ts` + `tooltipLayout.ts` + `hover.ts` (454) | every tooltip, the Ctrl-peek, and every hover tint — a terminal has no hover layer |
 | `src/ui/completionLayout.ts` (200) | the completion popup's size, placement and detail panel |
 | `src/core/fs.ts` encoding (`decodeText`) | CRLF and BOM files open clean — the Zig core drops the `\r` and the decoder eats the BOM, so without it every such file opens dirty and a save rewrites every line |
-| `DiffView` hatch (`src/ui/DiffView.tsx:105`) | the padded side of a split diff reads as blank editor — a terminal has no fill patterns |
-| `DiffView` `livePane` / `isDestroyed` guards | paging between changes throws `TextBufferView is destroyed`: the ref is never called back on removal |
+| `DiffBody` hatch (`paintHatch` in `src/ui/DiffBody.tsx`) | the padded side of a split diff reads as blank editor — a terminal has no fill patterns |
+| `DiffBody` `livePanes` / `isDestroyed` guards | paging between changes throws `TextBufferView is destroyed`: the ref is never called back on removal |
 
 ## C. Already taken
 
@@ -250,11 +250,11 @@ over the image — is that same prop put to `blocks`, since kitty draws over the
 than under it.
 
 `followScroll` (`src/ui/list.ts`) was two copies of a patch on the scrollbox's protected
-`onMouseEvent`, the second in `ChangesView`. `ScrollBoxRenderable.scrollTop` *is*
+`onMouseEvent`, the second in the changes page. `ScrollBoxRenderable.scrollTop` *is*
 `verticalScrollBar.scrollPosition`, whose setter drives the slider, which emits
 `change` — so a wheel notch, a bar drag, a key and a programmatic scroll all reach one
 native listener. Replaced by `el.verticalScrollBar.on('change', …)`, no degradation, and
-`ChangesView` now imports the one helper.
+`DiffPage` now imports the one helper.
 
 ## Two rewrites, not removals
 

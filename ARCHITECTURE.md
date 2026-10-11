@@ -42,6 +42,13 @@ scripts/
     git.ts           git signals, the serialised mutation runner, refresh effects
     branches.ts      branch picker state + the switch/create/merge/rename/delete runs
     comparison.ts    branch-comparison state and its OID-keyed caches
+    diffDocument.ts  what a diff page holds: entries, loaded text, folds, the row
+                     budget — every diff page is one of these over a source
+    diffSources.ts   a git range (a commit, a comparison) as entries and a loader
+    workingChanges.ts the working tree and index as a diff source, blob cache included
+    commitView.ts    the commit a row or the graph opened, as a diff source
+    pullRequest.ts   the branch's GitHub pull request: its files, their viewed marks,
+                     and marking one
     prompts.ts       prompt/confirm state machine (and quit, which may prompt)
     panes.ts         focus, sidebar visibility, which view it shows (files/git/extensions)
     preview.ts       quick look: whether the tree is previewing, and what row it is on
@@ -67,6 +74,8 @@ scripts/
                      dialects, graph.ts lays out anything that is boxes and edges,
                      sequence.ts and pie.ts render their own, canvas.ts is the cell grid
     git.ts           queries, mutations, and async branch-comparison metadata/blob reads
+    github.ts        pull requests through the gh CLI: the branch's PR, its files'
+                     viewed state, and marking a file viewed
     repos.ts         which repositories the opened folder holds, and which one a path
                      is in — filesystem-only, so the tree may ask per row
     messageHistory.ts one ↑/↓ step through past entries in a one-line field, draft
@@ -128,9 +137,9 @@ scripts/
     columns.ts       character columns -> drawn cells, since a tab is two of them
     typing.ts        auto-closing pairs and indentation on Enter
   ui/                presentational components, no app state
-    EditorPane, FileTree, GitPanel, ComparePanel, ComparisonView, CompareFilter,
+    EditorPane, FileTree, GitPanel, ComparePanel, CompareFilter,
     SidebarTabs, Tabs, PanelHeader, StatusBar, CommandPalette, FilePicker,
-    SearchPanel, DiffView, ChangesView, ImageView, PreviewPane, ReviewPanel, SettingsView,
+    SearchPanel, DiffPage, DiffBody, ImageView, PreviewPane, ReviewPanel, SettingsView,
     SettingEditor,
     SettingPicker, ExtensionsPanel, LspStatusView, UpdateBanner,
     Overlay, TextInput, PromptModal, ConfirmModal, ChoiceModal, HelpOverlay, Welcome

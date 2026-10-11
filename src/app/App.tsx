@@ -37,10 +37,9 @@ import { resolveServers, servers as serverSpecs } from '../lsp/servers'
 import { ui } from '../themes'
 import { Breadcrumbs } from '../ui/Breadcrumbs'
 import { CallPeek } from '../ui/CallPeek'
-import { ChangesView } from '../ui/ChangesView'
 import { CommitGraphView } from '../ui/CommitGraphView'
 import { ComparePanel } from '../ui/ComparePanel'
-import { ComparisonView } from '../ui/ComparisonView'
+import { DiffPage } from '../ui/DiffPage'
 import { EditorPane } from '../ui/EditorPane'
 import { ExtensionsPanel } from '../ui/ExtensionsPanel'
 import { FileTree } from '../ui/FileTree'
@@ -65,11 +64,11 @@ import { createCommands } from './actions'
 import { createBranches } from './branches'
 import { createBreadcrumbs } from './breadcrumbs'
 import { createCallHierarchy } from './callHierarchy'
-import { rowSlotKey } from './changeSections'
 import { createCommitGraph } from './commitGraph'
-import { createCommitView } from './commitView'
+import { commitInfo, createCommitView } from './commitView'
 import { createComparison } from './comparison'
 import type { AppContext } from './context'
+import type { DiffDocument } from './diffDocument'
 import { createEditorBridge } from './editor'
 import { createExtensionsPanel } from './extensionsPanel'
 import { createFileOps } from './fileOps'
@@ -84,10 +83,12 @@ import { createPanes } from './panes'
 import { createPreview } from './preview'
 import type { PreviewTarget } from './preview'
 import { createPromptHandlers, createPromptState } from './prompts'
+import { createPullRequest } from './pullRequest'
 import { createReview } from './review'
 import { createSettings } from './settings'
 import { createStatus, READY } from './status'
 import { createTree, hiddenNodes } from './tree'
+import { createWorkingChanges, rowSlotKey } from './workingChanges'
 import {
   CLASH_CHANGED,
   CLASH_DELETED,
@@ -204,7 +205,20 @@ export function App(props: {
     workspace,
   })
   const branches = createBranches({ git, gitOp, prompts: promptState, status })
-  const commitView = createCommitView({ status })
+  const commitView = createCommitView({ rootDir, status })
+  const changes = createWorkingChanges({
+    buffer: (path) => workspace.buffers[path]?.content,
+    canStage: () => git.staging() && !comparison.active(),
+    git,
+    reloadKey: editor.reloadKey,
+    rootDir,
+  })
+  const pullRequest = createPullRequest({
+    copyLink: fileOps.copyLink,
+    git,
+    rootDir,
+    status,
+  })
   const commitGraph = createCommitGraph()
   const callHierarchy = createCallHierarchy({ calls: lsp.calls })
   const crumbs = createBreadcrumbs({
@@ -218,6 +232,14 @@ export function App(props: {
   workspace.onPageClose('commit', commitView.close)
   workspace.onPageClose('graph', commitGraph.close)
   workspace.onPageClose('compare', comparison.closeDetail)
+  workspace.onPageClose('pullRequest', pullRequest.close)
+  createEffect(
+    on(pullRequest.isOpen, (open) =>
+      open
+        ? workspace.openPage('pullRequest')
+        : workspace.closePage('pullRequest')
+    )
+  )
   createEffect(
     on(commitView.isOpen, (open) =>
       open ? workspace.openPage('commit') : workspace.closePage('commit')
@@ -280,6 +302,7 @@ export function App(props: {
   const ctx: AppContext = {
     branches,
     callHierarchy,
+    changes,
     commitGraph,
     commitView,
     comparison,
@@ -297,6 +320,7 @@ export function App(props: {
     panes,
     preview,
     prompts: { ...promptState, ...promptHandlers },
+    pullRequest,
     review,
     rootDir,
     settings,
@@ -478,13 +502,17 @@ export function App(props: {
   // The changes page's own header is at the top of the editor slot: a reader in the sidebar
   // never looks there, and Tab is how they get in at all.
   const changesHints = (): Hint[] => {
-    if (workspace.page() !== 'allChanges') {
+    const page = workspace.page()
+    if (page !== 'allChanges' && page !== 'pullRequest') {
       return []
     }
     if (panes.focus() !== 'editor') {
       return [{ key: 'Tab', label: 'file', rank: 4 }]
     }
+    const viewed: Hint[] =
+      page === 'pullRequest' ? [{ key: 'Space', label: 'viewed', rank: 3 }] : []
     return [
+      ...viewed,
       { key: 'Tab', label: 'file', rank: 4 },
       { key: 'Enter', label: 'open', rank: 5 },
       { key: 'Esc', label: panes.sidebar() ? 'sidebar' : 'close', rank: 6 },
@@ -593,6 +621,61 @@ export function App(props: {
       return null
     }
     return { rendered: view === workspace.renderedPath() }
+  }
+
+  // What every diff page shares; the page-specific props are spelled at each use.
+  const diffPageProps = (doc: DiffDocument, scrollKey: string) => ({
+    get blocked() {
+      return overlays.overlay()
+    },
+    get escLabel() {
+      return panes.sidebar() ? 'sidebar' : 'close'
+    },
+    get focused() {
+      return panes.focus() === 'editor'
+    },
+    get meta() {
+      return doc.meta()
+    },
+    get mode() {
+      return config.diffView
+    },
+    onFocus: () => panes.setFocus('editor'),
+    onFold: doc.setFolded,
+    onToggleMode: settings.toggleDiffView,
+    scrollKey,
+    get sections() {
+      return doc.sections()
+    },
+    get width() {
+      return slotWidth()
+    },
+  })
+
+  const commitInfoLines = () => {
+    const detail = commitView.commit()
+    return detail ? commitInfo(detail) : []
+  }
+
+  const comparisonTitle = () => {
+    const detail = comparison.detail()
+    if (detail?.kind === 'commit') {
+      return `Commit ${detail.commit.commit.shortOid}`
+    }
+    const result = comparison.result()
+    return result
+      ? `${result.compare.name} against ${result.base.name}`
+      : 'Comparison'
+  }
+
+  const comparisonInfo = () => {
+    const detail = comparison.detail()
+    return detail?.kind === 'commit' ? commitInfo(detail.commit) : []
+  }
+
+  const comparisonFocus = () => {
+    const detail = comparison.detail()
+    return detail?.kind === 'files' ? detail.focus : null
   }
 
   const closeComparisonDetail = () => {
@@ -1168,23 +1251,55 @@ export function App(props: {
                 height="100%"
                 zIndex={60}
               >
-                <ChangesView
-                  sections={actions.allChanges()}
-                  meta={actions.allChangesMeta()}
-                  focusKey={rowSlotKey(git.cursorRow())}
+                <DiffPage
+                  {...diffPageProps(changes.doc, 'changes')}
                   title={
                     git.diffBase() ? `Against ${git.diffBase()}` : 'Uncommitted'
                   }
-                  mode={config.diffView}
-                  width={slotWidth()}
-                  focused={panes.focus() === 'editor'}
-                  blocked={overlays.overlay()}
-                  onFocus={() => panes.setFocus('editor')}
-                  onToggleMode={settings.toggleDiffView}
-                  staging={git.staging() && !comparison.active()}
-                  onToggleStage={actions.gitToggleStageKey}
+                  focusKey={rowSlotKey(git.cursorRow())}
+                  empty="No file changes."
+                  onAction={
+                    git.staging() && !comparison.active()
+                      ? actions.gitToggleStageKey
+                      : undefined
+                  }
                   onOpen={actions.openChangeKey}
-                  escLabel={panes.sidebar() ? 'sidebar' : 'close'}
+                  onClose={() =>
+                    panes.sidebar()
+                      ? panes.showView('git')
+                      : workspace.closePage()
+                  }
+                />
+              </box>
+            </Show>
+            <Show when={workspace.page() === 'pullRequest'}>
+              <box
+                position="absolute"
+                top={0}
+                left={0}
+                width="100%"
+                height="100%"
+                zIndex={60}
+              >
+                <DiffPage
+                  {...diffPageProps(pullRequest.doc, 'pullRequest')}
+                  title={`Pull request #${pullRequest.pr()?.number ?? ''}`}
+                  info={pullRequest.info()}
+                  focusKey={null}
+                  empty="This pull request changes no files."
+                  hints={['Space viewed', 'o web', 'r refresh']}
+                  onAction={pullRequest.toggleViewed}
+                  onOpen={actions.openPullRequestFile}
+                  onKey={(k) => {
+                    if (k === 'o') {
+                      pullRequest.openWeb()
+                    } else if (k === 'r') {
+                      pullRequest.refresh()
+                    } else {
+                      return false
+                    }
+                    return true
+                  }}
                   onClose={() =>
                     panes.sidebar()
                       ? panes.showView('git')
@@ -1224,17 +1339,13 @@ export function App(props: {
                 height="100%"
                 zIndex={55}
               >
-                <ComparisonView
-                  file={comparison.selectedFile()}
-                  content={comparison.selectedContent()}
-                  commit={comparison.selectedCommit()}
-                  mode={config.diffView}
-                  width={slotWidth()}
-                  focused={panes.focus() === 'editor'}
-                  blocked={overlays.overlay()}
-                  onFocus={() => panes.setFocus('editor')}
-                  onMoveFile={comparison.moveDetail}
-                  onToggleMode={settings.toggleDiffView}
+                <DiffPage
+                  {...diffPageProps(comparison.doc, 'compare')}
+                  title={comparisonTitle()}
+                  info={comparisonInfo()}
+                  focusKey={comparisonFocus()}
+                  empty="No file changes in this commit."
+                  escLabel="back"
                   onClose={closeComparisonDetail}
                 />
               </box>
@@ -1280,17 +1391,21 @@ export function App(props: {
                 height="100%"
                 zIndex={55}
               >
-                <ComparisonView
-                  file={commitView.file()}
-                  content={commitView.content()}
-                  commit={commitView.commit()}
-                  mode={config.diffView}
-                  width={slotWidth()}
-                  focused={panes.focus() === 'editor'}
-                  blocked={overlays.overlay()}
-                  onFocus={() => panes.setFocus('editor')}
-                  onMoveFile={commitView.moveFile}
-                  onToggleMode={settings.toggleDiffView}
+                <DiffPage
+                  {...diffPageProps(commitView.doc, 'commit')}
+                  title={`Commit ${commitView.commit()?.commit.shortOid ?? ''}`}
+                  info={commitInfoLines()}
+                  focusKey={null}
+                  empty="No file changes in this commit."
+                  hints={['o web']}
+                  escLabel="back"
+                  onKey={(k) => {
+                    if (k !== 'o') {
+                      return false
+                    }
+                    actions.openCommitOnWeb()
+                    return true
+                  }}
                   onClose={commitView.close}
                 />
               </box>

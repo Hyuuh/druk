@@ -5,7 +5,6 @@ import type { FoldOp } from '../editor/folds'
 import { iconThemeLabel, iconThemeNames, iconThemeNeedsFont } from '../icons'
 import { themeLabel, themeNames } from '../themes'
 import type { ThemeName } from '../themes'
-import type { ChangeSection, ChangesMeta } from '../ui/ChangesView'
 import type { Command } from '../ui/CommandPalette'
 import { ALT, rebound } from '../ui/keys'
 
@@ -93,12 +92,13 @@ export interface CommandActions {
   gitDiffFile: () => void
   gitDiffAll: () => void
   toggleDiffLayout: () => void
-  allChanges: () => ChangeSection[]
-  allChangesMeta: () => ChangesMeta
   gitCompareBranches: () => void
   gitCommitGraph: () => void
   openCommitOnWeb: () => void
   openGraphCommit: () => void
+  gitPullRequest: () => void
+  openPullRequestOnWeb: () => void
+  openPullRequestFile: (key: string, line: number | null) => void
   gitDiffBase: () => void
   gitDiffBaseReset: () => void
   gitMoveTo: (row: number) => void
@@ -369,6 +369,18 @@ export function buildCommands(
           id: 'git.graph',
           label: 'Commit graph',
           run: actions.gitCommitGraph,
+        },
+        {
+          hint: 'P in source control',
+          id: 'git.pullRequest',
+          label: 'Open pull request for this branch',
+          run: actions.gitPullRequest,
+        },
+        {
+          hint: 'o in the pull request',
+          id: 'git.pullRequestWeb',
+          label: 'Open pull request on remote',
+          run: actions.openPullRequestOnWeb,
         },
         {
           hint: 'o in the commit graph',

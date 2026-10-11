@@ -7,7 +7,7 @@ import type {
   ComparisonFile,
 } from '../core/git'
 import { ui } from '../themes'
-import { diffMark, diffStatusColor } from './DiffView'
+import { diffMark, diffStatusColor } from './diffRows'
 import { useHover } from './hover'
 import { createScrollList, rowBg } from './list'
 import { Panel } from './PanelHeader'

@@ -164,6 +164,7 @@ export const BINDABLE: Bindable[] = [
   { defaults: [], id: 'git.compare', label: 'Compare branches' },
   { defaults: [], id: 'git.graph', label: 'Commit graph' },
   { defaults: [], id: 'git.openCommitWeb', label: 'Open commit on remote' },
+  { defaults: [], id: 'git.pullRequest', label: 'Open pull request' },
   {
     defaults: [`Ctrl+${ALT}+U`],
     id: 'git.conflictResolve',

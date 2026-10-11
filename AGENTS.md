@@ -194,9 +194,9 @@ a branch origin has never seen — one press pulls what origin has and pushes, `
 same). Under the change list sit VS Code's sync sections — `Incoming` and `Outgoing`,
 the commits the branch is behind and ahead of its upstream by (capped at fifty rows a
 side; the header's counts stay true), each folding like a heading, `↓`/`↑` where a
-file wears its icon, and Enter opening the commit over the editor slot — the branch
-comparison's detail page (`ComparisonView`) reused without a comparison, files paged
-with ←/→ (`createCommitView` in `src/app/commitView.ts`). An empty heading is not
+file wears its icon, and Enter opening the commit over the editor slot — the same
+diff page every other diff is drawn on, with the commit's subject, author and counts
+above its files (`createCommitView` in `src/app/commitView.ts`). An empty heading is not
 drawn, and
 none of it exists against a comparison base, where there is no index to speak of),
 a commit graph over the editor slot (`g` in the panel, palette → Git → Commit graph) —
@@ -261,7 +261,22 @@ naming the two commands and stopping — and for branches
 uncommitted changes would be overwritten offers to take them along instead of naming
 stash and stopping, which is `git checkout -m`: the changes land on the target branch
 and where the two sides disagree the file is left with conflict markers, which druk's
-own conflict resolver reads (git keeps a stash of them behind either way) — a diff view (inline or
+own conflict resolver reads (git keeps a stash of them behind either way) — one diff
+page for every diff druk shows (`DiffPage` in `src/ui/DiffPage.tsx`, one `DiffBody` per
+file in `src/ui/DiffBody.tsx`): the working tree, a commit, a branch comparison and a pull
+request are each a *source* — a list of `DiffEntry`s and a loader for their text — handed
+to `createDiffDocument` (`src/app/diffDocument.ts`), which is the one place that decides
+what loads, what is folded and what each header says, and a page kind of its own over the
+editor slot. The document loads in page order and spends a row budget
+(`DIFF_MAX_LINES`) on the files at the top; a file past it is drawn as its header,
+folded and named `not loaded · → shows it`, and → (or the panel's cursor landing on it,
+which `setPin`s it) is what reads it. A file the source marks viewed starts folded the
+same way, and a reload that reads back the same text keeps the same object, so a refresh
+re-renders nothing it did not change — the page lists its sections by *key* for the same
+reason, a refresh building new section objects for every file. The document stores
+nothing about the view: `folds` there are the reader's, `forgetFold` hands a file back to
+its source's default (marking it viewed folds it again), and the scroll is the page's.
+The diff itself is drawn (inline or
 side-by-side — an added or deleted file is inline whatever `diffView` says, having no
 second side to put beside it, the rows split view pads a side with are hatched
 rather than left reading as blank editor — a terminal has no fill patterns, so the
@@ -287,7 +302,7 @@ its own on the cursor's row alone, and its handler stops the row's, a press on `
 not being a press on the header that folds it), Enter opens the selected file in the
 editor — at the line clicked in its diff, else at the file's first change, a diff being
 read in order to go and edit it, and a click inside a diff is what selects that file's
-header as well as remembering the line (`onPickLine` in `DiffView`, which maps the click's
+header as well as remembering the line (`onPickLine` on `DiffBody`, which maps the click's
 row through the same `paneLines` table the highlighter uses, split's two panes being
 row-aligned so the new side answers a click on either) — and landing on a file — with the panel's cursor or with Tab
 inside the page — puts that file at the *top*, always, even when it was already on
@@ -308,10 +323,9 @@ layout pass later than the offset it set. That re-anchor is re-applied over the 
 frames rather than once: the scrollbox clamps an offset against the height it still has
 and the new heights arrive a layout pass later, so a single shot lands short and the
 page visibly jumps and comes back. A wheel or a key inside that window cancels the hold,
-the reader outranking it. The stacked-row cap is spent *from* the file under the panel's
-cursor when the walk could not reach it — a page that ended on the file being read is a
-page that will not scroll past it — so the files after it are what fills the budget, and
-the header says how many were left out; the page goes when the last change
+the reader outranking it. The file under the panel's cursor is loaded however far past
+the row budget it sits — a page that could not show the file being read is a page that
+will not scroll to it; the page goes when the last change
 does, and Esc hands the keyboard back to the source-control panel, whose own Esc then
 closes the page — two steps, since a reader leaving a diff is usually going back to the
 list rather than throwing it away; with no sidebar there is nothing to go back to and
@@ -319,7 +333,25 @@ Esc closes it outright, which is what the header's `Esc sidebar`/`Esc close` say
 page's keys are in the status bar as well (`extraHints` on `StatusBar`, built in
 `App.tsx`): the page's own hints are at the top of the editor slot, where a reader
 working the panel never looks, so the footer carries `Tab file` from the panel and
-`Tab file · Enter open · Esc sidebar` once the page has the keyboard — a
+`Tab file · Enter open · Esc sidebar` once the page has the keyboard —
+the open pull request for the checked-out branch on the same page (`P` in the panel,
+palette → Git → Open pull request for this branch), with GitHub's own *viewed* marks:
+each header carries `[✓] viewed` / `[ ] viewed`, a viewed file starts folded as it does
+on github.com, and Space (or a click on the mark) sets it on GitHub itself — optimistic,
+put back with GitHub's reason when the mutation is refused; `changed since viewed` is
+GitHub's `DISMISSED`. `o` opens the pull request's files on the web and `r` reads it again.
+The forge is reached through the GitHub CLI and nothing else (`src/core/github.ts`:
+`gh pr view` for the branch's pull request, `gh api graphql` for the file list's
+`viewerViewedState` and `markFileAsViewed`/`unmarkFileAsViewed`), so druk holds no token
+and a user signed in with `gh auth login` is all the setup there is; no `gh`, or no pull
+request for the branch, is a status-bar message rather than a page. The *text* is local:
+the diff is git's, `merge-base(base, head)..head` (`rangeChanges` in `src/core/git.ts`),
+which is what GitHub shows, and a head or base commit that is not in the repository yet
+(someone else's push, a fork, a base not fetched since) is fetched first — from the remote
+whose URL names the pull request's repository (`remoteFor`), as `refs/pull/<n>/head` and
+`refs/heads/<base>`, into no local ref. `DRUK_GH` names the `gh` to run, which is how the
+tests drive a fake one (`test/fakeGh.ts`), and `test/setup.ts` points it nowhere so no
+test reaches GitHub as whoever is running the suite — a
 comparison base that points marks, gutter, panel and diff at another branch instead of
 HEAD (palette → Git → Compare against branch…), branch comparison against the
 repository's default branch or any selected base (palette → Git → Compare branches, or
@@ -371,7 +403,7 @@ buffer holds, which is the split that keeps a gap from being remembered or recon
 one. The trailing text is suppressed on the line the card is under so nothing is said
 twice. Nothing in the review touches a network — a review is what the reader and the
 agent sharing `review.json` have said to each other, and there is no forge, no token
-and no fetch. An empty panel is where that is explained: it spells out the chord that
+and no fetch (a GitHub pull request is the diff page's, above, not the review's). An empty panel is where that is explained: it spells out the chord that
 notes a line (asked of the keymap with `chordFor`, so a rebind renames it), the keys the
 panel answers to, and where the notes are kept, since that is the half an agent has to
 be told,
@@ -1072,10 +1104,10 @@ dependency rule, and recipes for the extension points:
 | extension contribution kind | a list on the manifest (`src/extensions/manifest.ts`) parsed into `Extension` (`src/extensions/types.ts`), registered in `loadExtensions` (`src/extensions/index.ts`), and a `register…`/`clearExtension…` pair on whichever registry owns it — the registry has to be read through a function everywhere, since extensions load after the modules that list its contents are evaluated |
 | tooltip on a chrome button | `useTooltip('<command id>')` on the element (`src/ui/tooltip.ts`), plus `ref` on its box — `TooltipLayer` draws every registered target, so nothing else has to change. A chord in force is what makes a tooltip exist at all: an unbound command draws nothing, the chord being the only thing a tooltip ever says |
 | filterable modal list | `FilterList` (`src/ui/FilterList.tsx`) — the query field, the fixed-height window of rows and the footer. Matching and keys stay with the caller: the command palette filters on a submenu trail and walks into it, which no shared predicate spells. A caller passes its already-filtered items, the selected index and a row renderer; `windowAround` does the scrolling |
-| scroll that must survive a layout pass | `retryFrames` (`src/ui/list.ts`) — a scrollbox clamps an offset against the height it still has, and the layout pass writes the new one later than any macrotask, so one shot lands short. The callback reports whether it landed; `defer` waits a macrotask first, for a reveal that grows the list. A sidebar view is unmounted whenever another takes the slot, so `createScrollList` takes a key and keeps that view's offset in `kept`, restoring it on the next mount unless a reveal has already moved the list — which is what stops a walk between the tree and the git panel from re-scrolling both every time. `forgetScroll` drops the offsets where a fresh look is wanted instead: closing the sidebar (`toggleSidebar`) and the workspace remount, both of which then centre the cursor again. `keptScroll`/`keepScroll` are the same store for a page that is a tab and so unmounts behind every other one — `ChangesView` restores its offset on mount and re-measures once it lands, the sticky header being read off renderables, and skips the reveal for the file it already served, or coming back to the tab would throw the reader at that file's first change |
+| scroll that must survive a layout pass | `retryFrames` (`src/ui/list.ts`) — a scrollbox clamps an offset against the height it still has, and the layout pass writes the new one later than any macrotask, so one shot lands short. The callback reports whether it landed; `defer` waits a macrotask first, for a reveal that grows the list. A sidebar view is unmounted whenever another takes the slot, so `createScrollList` takes a key and keeps that view's offset in `kept`, restoring it on the next mount unless a reveal has already moved the list — which is what stops a walk between the tree and the git panel from re-scrolling both every time. `forgetScroll` drops the offsets where a fresh look is wanted instead: closing the sidebar (`toggleSidebar`) and the workspace remount, both of which then centre the cursor again. `keptScroll`/`keepScroll` are the same store for a page that is a tab and so unmounts behind every other one — `DiffPage` (keyed by its `scrollKey`, one per page kind) restores its offset on mount and re-measures once it lands, the sticky header being read off renderables, and skips the reveal for the file it already served, or coming back to the tab would throw the reader at that file's first change |
 | previewable value | `preview` + `restore` on the palette `Command` (`src/app/commands.ts`) or on a row's `select` (`src/ui/SettingsView.tsx`) — `preview` paints while the selection sits on the value, `restore` runs when the list is torn down, so it must put back what the config says rather than remember what it replaced |
 | setting | `src/core/config.ts` (`Config`, `DEFAULTS`, `VALIDATORS` — one validator per key, since the project file is read key by key) + a row in `src/app/settings.ts` (`specs`, with the `key` it edits — `boolRow(section, key, label)` is the whole of an on/off one, message included, and takes a `notice` where that message is not `<label> on/off`) so the settings page shows it — the page windows its rows to the terminal height, so a test that asserts on a late row needs a tall terminal or arrow keys to reach it (the wheel moves that window too, leaving the selection where the keyboard left it — a test wheeling it needs a flush per tick, OpenTUI's scroll acceleration dropping events sent faster than its minimum interval) |
-| editor-slot page | `Page` (`src/ui/PanelHeader.tsx`) is the shell — the solid background and the title/hints bar every one of them draws — then a `PageKind` in `src/app/workspace.ts`, a `Show` in `App.tsx` over the editor column (zIndex 60) keyed on `workspace.page()`, and a view that takes `width` / `focused` / `blocked` / `onClose` — Settings, LSP status, all-changes (`ChangesView`, whose `ChangeSection` the controller imports), and the commit and comparison detail pages. A page is a **tab**: its id is `druk://<kind>` (`pageId`/`pageKindOf`), it sits in `views()` beside the file paths, and one kind is one tab — `openPage` lands on the one already open, `closePage` closes it. `page()` is the kind the *active* tab names; `pageOpen(kind)` whether its tab exists at all, which is what a refresh asks — a page keeps its state while another tab is read. A page owning state outside the workspace registers `workspace.onPageClose(kind, …)` so closing the tab tears it down, and `App.tsx` mirrors the other way with an effect, so a view that closes itself takes its tab with it. `activePath()` deliberately keeps naming the file *under* the page, so landing on a page tab leaves the editor's buffer, cursor, vim mode and undo stack alone |
+| editor-slot page | `Page` (`src/ui/PanelHeader.tsx`) is the shell — the solid background and the title/hints bar every one of them draws — then a `PageKind` in `src/app/workspace.ts`, a `Show` in `App.tsx` over the editor column (zIndex 60) keyed on `workspace.page()`, and a view that takes `width` / `focused` / `blocked` / `onClose` — Settings, LSP status, and the four diff pages (`DiffPage`, whose `DiffSection` the document controller imports). A new *diff* is not a new page component: it is a source — entries and a loader — on a `createDiffDocument`, and `diffPageProps` in `App.tsx` is what every diff page shares. A page is a **tab**: its id is `druk://<kind>` (`pageId`/`pageKindOf`), it sits in `views()` beside the file paths, and one kind is one tab — `openPage` lands on the one already open, `closePage` closes it. `page()` is the kind the *active* tab names; `pageOpen(kind)` whether its tab exists at all, which is what a refresh asks — a page keeps its state while another tab is read. A page owning state outside the workspace registers `workspace.onPageClose(kind, …)` so closing the tab tears it down, and `App.tsx` mirrors the other way with an effect, so a view that closes itself takes its tab with it. `activePath()` deliberately keeps naming the file *under* the page, so landing on a page tab leaves the editor's buffer, cursor, vim mode and undo stack alone |
 | command | `src/app/commands.ts` + bind it in `src/app/actions.ts`; the implementation goes in the controller that owns the state (`workspace.ts`, `fileOps.ts`, `git.ts`, …). `withKeymap` (`commands.ts`) lays the keymap over the built tree: a rebound command's palette `hint` is replaced by the user's own chord, and every leaf run from the palette names its key in the status bar (`keyTip` in `src/ui/keys.ts`) — so a hand-written `hint` only has to be right for the defaults |
 | keybinding | a row in `BINDABLE` (`src/app/keymap.ts`) plus a handler under the same id in `src/app/keyboard.ts` — or, for an editor-only key, `src/ui/EditorPane.tsx` — advertised in `src/ui/keys.ts` (feeds the footer hints, help overlay, Ctrl+K peek and the welcome screen), with the row's `ids` naming the commands it spells out |
 | footer hint | `hint` on the key's row in `src/ui/keys.ts`, scoped to any `KeyScope` — or, for a panel letter the help table lists as one combined row, an entry in `PANEL_HINTS` there. Ranked, and the footer cuts from the tail, so a hint's rank is its survival on a narrow terminal. The status bar reads `panes.keyPane()`, so a panel's hints replace the tree's while it shows. One that depends on where the caret is goes through `hintsFor`'s `extra` argument instead, built in `StatusBar` from `chordFor` so a rebind renames it: `goto.file` is offered only while `hasPathAt` (`src/core/imports.ts`) says the cursor is on a path or a module specifier — a syntactic check, since a bare `'bun'` resolves through the language server and nothing on disk can be asked about it per keystroke, and `goto.definition` while some extension declares a server for the open file's filetype (`resolveServers`, the specs rather than a running client — spawning one to answer a hint is a side effect a memo may not have, and an uninstalled server is an offer druk already makes), `goto.calls` on the same test |
@@ -1085,7 +1117,8 @@ dependency rule, and recipes for the extension points:
 | market extension | a folder under `extensions/` holding `extension.json`, then `bun run extensions` to regenerate `extensions/index.json` — `test/extensions-repo.test.ts` fails when the committed index is stale, and bumping the manifest `version` is what makes installed copies see an update |
 | row in the extensions panel | `src/app/extensionsPanel.ts` (the cursor, the fold state and what Enter does); `src/ui/ExtensionsPanel.tsx` owns the `ExtensionRow` type, draws whatever `rows()` returns and reports clicks, and the keys live in `src/app/keyboard.ts` beside the tree's and the git panel's. Row/view-model types live in the ui component and the controller imports them — the `SettingRow` arrangement, enforced by `test/boundaries.test.ts` |
 | sidebar view | `SidebarView` in `src/ui/SidebarTabs.tsx` — the view itself is `Panel` + `PanelHeader` + `PanelList`, all in `src/ui/PanelHeader.tsx` bar the last: `Panel` is the outer column (its `flexBasis={0}` is load-bearing), `PanelHeader` the title row, which draws the view's name uppercase as VS Code does and takes that view's own buttons as children (`CollapseAll` is the `▴` two of them share), and `PanelList` (`src/ui/PanelList.tsx`) the windowed scrollbox — it takes `createScrollList`'s handle and the *whole* row list, renders the window and keeps the spacers that hold the scrollable extent honest, so a panel writes only its own row. (add a `short` initial — the strip falls back to those in a narrow sidebar), a branch in `App.tsx`'s sidebar, one in `keyboard.ts`'s pane switch, a `KeyScope` in `src/ui/keys.ts` with a `SCOPE_LABELS` entry in `KeyPeek.tsx`, nothing on `src/app/panes.ts` (`toggleView` takes the view's name), and its place in the Shift+Tab cycle, which is spelt out as one `showView` per pane block in `keyboard.ts` rather than held as a list |
-| branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel` and the detail page in `ComparisonView` |
+| branch-comparison behaviour | git queries and models in `src/core/git.ts`, state and caches in `src/app/comparison.ts`, rows in `ComparePanel`; the detail is the diff page over a `comparisonSource` (`src/app/diffSources.ts`) |
+| diff source | entries and a loader on `createDiffDocument` (`src/app/diffDocument.ts`) — `comparisonSource` in `src/app/diffSources.ts` already reads any two-sided git range, and `createWorkingChanges` (`src/app/workingChanges.ts`) is the one with an index and a working tree — then a `PageKind` and a `DiffPage` in `App.tsx`. A per-file action (stage, viewed) is `stage`/`viewed` on the entry plus `onAction`; page keys of its own go through `onKey` and are named in `hints` |
 | review row or key | `src/app/review.ts` (the notes, their replies, the fetched comments, the rows and what Enter does); `ui/ReviewPanel.tsx` draws `rows()` and reports clicks, the keys sit in `keyboard.ts` beside the git panel's, and the note's shape and where it is persisted are `src/core/review.ts`. A reply is a note carrying `parent`, so anything that lists remarks reads `threadStarts()` rather than `notes()` — a thread is one mark, one heading count and one card |
 | source-control row kind | `ChangeRow` in `src/core/changeTree.ts` — `changeRows` builds the headings and `rowArea`/`rowRel`/`foldKey` are how a row's fold state is addressed, the area being part of the key because one path can sit under both headings at once. `changesFor` answers what a row *stands for*, and reads the change list rather than the rows: a folded folder's files are not in `rows` and staging one still has to reach them |
 | git command | run it in `git.activeRepo()`, never in `rootDir` — the opened folder may hold several repositories and be none itself. A mutation goes through `gitOp`, which refuses when no repository is picked and *hands the chosen one to the callback*; an operation offered for a particular row pins `options.repo` so a later refresh cannot redirect it. A query asks `git.repoFor(path)` for the repository of the path it is about. A path passed after `--` is a *pathspec*, so it goes through `literal()` (`src/core/git.ts`) — `[`, `*` and `?` are glob metacharacters there, and `git clean -f -- '[id].tsx'` deletes `i.tsx` as well. Which repositories exist is `discoverRepos` (`src/core/repos.ts`), refreshed in `wireGitEffects`. Every read goes through `git()`/`gitAsync()`, which carry `--no-optional-locks`: a plain `git status` or `git diff` rewrites `.git/index` to refresh its stat cache, and `watchGitRefs` (`src/core/fs.ts`) watches that directory — a read spawned outside those two wakes the watcher that asked for it, and the refresh loops. That watch is what notices staging, resetting or committing done in another terminal; it resolves the `.git` *file* a linked worktree has (`gitDirs`), whose refs live in the common dir |

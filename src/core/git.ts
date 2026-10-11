@@ -661,6 +661,36 @@ export async function comparisonFileContent(
   }
 }
 
+export interface RangeChanges {
+  mergeBase: string
+  files: ComparisonFile[]
+  stats: ComparisonStats
+}
+
+// What a pull request shows: the head against where it left the base, not against the base's tip.
+export async function rangeChanges(
+  cwd: string,
+  base: string,
+  head: string
+): Promise<ComparisonResult<RangeChanges>> {
+  const mergeBase = await gitAsync(cwd, ['merge-base', base, head])
+  if (mergeBase.status !== 0) {
+    return mergeBase.status === 1
+      ? comparisonFailure('noMergeBase', 'The two sides share no history')
+      : asyncFailure(mergeBase, 'Could not find the merge base')
+  }
+  const oid = mergeBase.stdout.trim()
+  const changed = await changedFiles(cwd, oid, head)
+  return changed.ok
+    ? { ok: true, value: { mergeBase: oid, ...changed.value } }
+    : changed
+}
+
+export async function hasCommit(cwd: string, oid: string): Promise<boolean> {
+  const run = await gitAsync(cwd, ['cat-file', '-e', `${oid}^{commit}`])
+  return run.status === 0
+}
+
 export async function comparisonCommitDetail(
   cwd: string,
   oid: string
@@ -1740,6 +1770,18 @@ function webRoot(remote: string): URL | null {
   )
 }
 
+// The remote that names this web repository, so a fetch goes through credentials it already has.
+export function remoteFor(cwd: string, web: string): string | null {
+  const want = webRoot(web)?.toString().toLowerCase()
+  if (!want) {
+    return null
+  }
+  const match = listRemotes(cwd).find(
+    (remote) => webRoot(remote.url)?.toString().toLowerCase() === want
+  )
+  return match?.name ?? null
+}
+
 export function forgeCommitUrl(remote: string, oid: string): string | null {
   const root = webRoot(remote)
   if (!root || root.pathname === '/') {
@@ -1881,6 +1923,14 @@ export async function pullAndPush(
 
 export function fetchRemote(cwd: string): Promise<GitResult> {
   return mutate(cwd, ['fetch'])
+}
+
+export function fetchRefs(
+  cwd: string,
+  remote: string,
+  refspecs: string[]
+): Promise<GitResult> {
+  return mutate(cwd, ['fetch', '--no-tags', '--quiet', remote, ...refspecs])
 }
 
 export function pull(cwd: string): Promise<GitResult> {

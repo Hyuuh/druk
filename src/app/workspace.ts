@@ -41,6 +41,7 @@ export type PageKind =
   | 'commit'
   | 'compare'
   | 'graph'
+  | 'pullRequest'
 
 // A scheme no path can carry is what keeps page ids apart from file paths.
 const PAGE_PREFIX = 'druk://'
@@ -56,6 +57,7 @@ export const PAGE_TITLES: Record<PageKind, string> = {
   compare: 'Comparison',
   graph: 'Commit graph',
   lspStatus: 'Language servers',
+  pullRequest: 'Pull request',
   settings: 'Settings',
 }
 

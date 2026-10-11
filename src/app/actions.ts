@@ -1,6 +1,7 @@
-import { basename, dirname, join, relative } from 'node:path'
+import { existsSync } from 'node:fs'
+import { basename, dirname, relative } from 'node:path'
 
-import { createMemo, createSignal } from 'solid-js'
+import { createMemo } from 'solid-js'
 
 import { openInBrowser } from '../core/browser'
 import { ancestorDirs, changesFor, rowArea, rowRel } from '../core/changeTree'
@@ -10,7 +11,6 @@ import type { ConflictSide } from '../core/conflicts'
 import { readFile } from '../core/fs'
 import type { TreeNode } from '../core/fs'
 import {
-  blobTexts,
   commitUrl,
   discardTarget,
   fetchRemote,
@@ -30,23 +30,20 @@ import {
   statusMap,
   unstagePaths,
 } from '../core/git'
-import type { ChangeArea, DiscardTarget, FileStatus } from '../core/git'
+import type { ChangeArea, DiscardTarget } from '../core/git'
 import { pathTokenAt, resolveImportPath } from '../core/imports'
 import { NOTE_LABELS } from '../core/review'
 import type { NoteKind } from '../core/review'
 import type { LocationHit, LocationMethod, Target } from '../lsp/locations'
 import { symbolHits } from '../lsp/symbols'
-import type { ChangeSection, ChangesMeta } from '../ui/ChangesView'
-import { firstChangedLine } from '../ui/DiffView'
-import type { DiffFile } from '../ui/DiffView'
 import { keyTip } from '../ui/keys'
-import { rowSlotKey, slotKey, takeChangeSections } from './changeSections'
 import { buildCommands, withKeymap } from './commands'
 import type { Command } from './commands'
 import type { AppContext } from './context'
 import { noRepository, runCommit } from './git'
 import type { CommitVariant } from './git'
 import { problemFrom, problemsOn } from './lsp'
+import { slotKey } from './workingChanges'
 
 export function createCommands(ctx: AppContext) {
   const {
@@ -87,215 +84,10 @@ export function createCommands(ctx: AppContext) {
     }
   }
 
-  // A hit returns the *same object*: the page downstream skips its recomputation on identity.
-  interface DiffFileSlot {
-    revision: number
-    reloadKey: number
-    base: string | null
-    buffer: string | undefined
-    status: FileStatus
-    area: ChangeArea
-    file: DiffFile | null
-  }
-  const diffFileCache = new Map<string, DiffFileSlot>()
-  const DIFF_FILE_CACHE_LIMIT = 4
-
-  // Keyed `<repo>\0<spec>`; the whole map goes when git moves — a blob is whatever `revision` says.
-  const blobs = new Map<string, string | null>()
-  let blobRevision = -1
-  /** ponytail: FIFO cap on whole file texts; a byte budget if a repo needs one. */
-  const BLOB_CACHE_LIMIT = 256
-  const blobKey = (repo: string, spec: string) => `${repo}\0${spec}`
-  const freshBlobs = () => {
-    const revision = git.revision()
-    if (revision === blobRevision) {
-      return
-    }
-    blobs.clear()
-    blobRevision = revision
-  }
-  const rememberBlobs = (repo: string, texts: Map<string, string | null>) => {
-    for (const [spec, text] of texts) {
-      blobs.set(blobKey(repo, spec), text)
-    }
-    while (blobs.size > BLOB_CACHE_LIMIT) {
-      blobs.delete(blobs.keys().next().value!)
-    }
-  }
-  const blobText = (repo: string, spec: string): string | null => {
-    freshBlobs()
-    const key = blobKey(repo, spec)
-    const hit = blobs.get(key)
-    if (hit !== undefined) {
-      return hit
-    }
-    rememberBlobs(repo, blobTexts(repo, [spec]))
-    return blobs.get(key) ?? null
-  }
-
-  // The specs mirror `diffFileFor`'s below; drift costs a batched read, never an answer.
-  const prefetchBlobs = (changes: Change[]) => {
-    freshBlobs()
-    const ref = git.diffBase() ?? 'HEAD'
-    const wanted = new Map<string, Set<string>>()
-    for (const change of changes) {
-      if (change.status === 'untracked') {
-        continue
-      }
-      const repo = git.repoFor(change.path)
-      if (repo === null) {
-        continue
-      }
-      const rel = relative(repo, change.path)
-      const entry = git.statusEntries().get(change.path)
-      const staged = entry?.staged !== null && entry?.staged !== undefined
-      // A rename's committed side is under its old name; `HEAD:./<new>` is simply missing.
-      const committedRel = entry?.source ?? rel
-      const specs = wanted.get(repo) ?? new Set<string>()
-      if (staged) {
-        specs.add(`:./${rel}`)
-      }
-      if (change.area === 'staged' || !staged) {
-        specs.add(`${ref}:./${committedRel}`)
-      }
-      wanted.set(repo, specs)
-    }
-    for (const [repo, specs] of wanted) {
-      const missing = [...specs].filter(
-        (spec) => !blobs.has(blobKey(repo, spec))
-      )
-      if (missing.length > 0) {
-        rememberBlobs(repo, blobTexts(repo, missing))
-      }
-    }
-  }
-
-  // Null for a file that cannot be read; `area` is what the diff is between (staged: HEAD vs index).
-  const diffFileFor = (
-    path: string,
-    fileStatus: FileStatus,
-    area: ChangeArea = 'unstaged'
-  ): DiffFile | null => {
-    const revision = git.revision()
-    const reloadKey = editor.reloadKey()
-    const base = git.diffBase()
-    const buffer = workspace.buffers[path]?.content
-    const key = slotKey(path, area)
-    const hit = diffFileCache.get(key)
-    if (
-      hit &&
-      hit.revision === revision &&
-      hit.reloadKey === reloadKey &&
-      hit.base === base &&
-      hit.buffer === buffer &&
-      hit.status === fileStatus &&
-      hit.area === area
-    ) {
-      return hit.file
-    }
-
-    // `rel` is from the opened folder, `repoRel` from the repository: with several repos they differ.
-    const repo = git.repoFor(path)
-    const rel = relative(rootDir, path)
-    const repoRel = repo === null ? null : relative(repo, path)
-    const entry = git.statusEntries().get(path)
-    const staged =
-      repo === null || repoRel === null || !entry?.staged
-        ? null
-        : blobText(repo, `:./${repoRel}`)
-    // As `git diff` measures it: the index when something is staged, else HEAD — and for a
-    // rename, HEAD holds the file under its old name, so `HEAD:./<new>` reads as a new file.
-    const committedRel = entry?.source ?? repoRel
-    const committed = () =>
-      blobText(repo!, `${base ?? 'HEAD'}:./${committedRel!}`) ?? ''
-    const oldText =
-      fileStatus === 'untracked' || repo === null || repoRel === null
-        ? ''
-        : area === 'staged'
-          ? committed()
-          : (staged ?? committed())
-    let newText = ''
-    if (fileStatus !== 'deleted') {
-      if (area === 'staged') {
-        newText = staged ?? ''
-      } else if (buffer === undefined) {
-        try {
-          newText = readFile(path)
-        } catch {
-          return null
-        }
-      } else {
-        newText = buffer
-      }
-    }
-    const file: DiffFile = {
-      newText,
-      // The header says `old → new` from this: `source` is repository-relative, `rel` is not.
-      oldPath:
-        entry?.source && repo !== null
-          ? relative(rootDir, join(repo, entry.source))
-          : null,
-      oldText,
-      path,
-      rel,
-      status: fileStatus,
-    }
-    diffFileCache.delete(key)
-    diffFileCache.set(key, {
-      area,
-      base,
-      buffer,
-      file,
-      reloadKey,
-      revision,
-      status: fileStatus,
-    })
-    // The all-changes page *is* that walk, and `rebuildAllChanges` prunes it instead.
-    while (
-      diffFileCache.size > DIFF_FILE_CACHE_LIMIT &&
-      !workspace.pageOpen('allChanges')
-    ) {
-      diffFileCache.delete(diffFileCache.keys().next().value!)
-    }
-    return file
-  }
-
-  const [allChanges, setAllChanges] = createSignal<ChangeSection[]>([])
-  const [allChangesMeta, setAllChangesMeta] = createSignal<ChangesMeta>({
-    adds: 0,
-    dels: 0,
-    total: 0,
-  })
-
-  // The file under the panel cursor is kept past the cap, or arrows land on an omitted row.
-  const rebuildAllChanges = () => {
-    const changes = git.changes()
-    const prev = new Map(allChanges().map((section) => [section.key, section]))
-    // Panel order, but every file: a folded folder's files are not in `rows`.
-    const ordered = (['merge', 'staged', 'unstaged'] as const).flatMap((area) =>
-      changes.filter((entry) => entry.area === area)
-    )
-    prefetchBlobs(ordered)
-    const { sections, adds, dels, keep } = takeChangeSections(
-      ordered,
-      (change) => diffFileFor(change.path, change.status, change.area),
-      prev,
-      rowSlotKey(git.cursorRow())
-    )
-    setAllChanges(sections)
-    setAllChangesMeta({ adds, dels, total: changes.length })
-    for (const cached of diffFileCache.keys()) {
-      if (!keep.has(cached)) {
-        diffFileCache.delete(cached)
-      }
-    }
-  }
-
   // Every caller moves the panel's cursor first and calls this second, or the arrows have nowhere to go.
   const showChanges = () => {
-    // Page first, so `diffFileFor` keeps the batch instead of pruning to four.
     ctx.workspace.openPage('allChanges')
-    rebuildAllChanges()
+    ctx.changes.rebuild()
   }
 
   // Rebuilds when the file was past the row cap, so the page and the cursor cannot disagree.
@@ -313,10 +105,7 @@ export function createCommands(ctx: AppContext) {
     if (workspace.page() !== 'allChanges') {
       return showChanges()
     }
-    const key = slotKey(target.change.path, target.change.area)
-    if (!allChanges().some((section) => section.key === key)) {
-      rebuildAllChanges()
-    }
+    ctx.changes.doc.setPin(slotKey(target.change.path, target.change.area))
   }
 
   // Not `gitMoveTo`: that would throw a diff up for a fold.
@@ -620,15 +409,29 @@ export function createCommands(ctx: AppContext) {
 
   // The changes page names a section (`${area}:${path}`), not a row: a folded folder has no row.
   const openChangeKey = (key: string, line: number | null) => {
-    const section = allChanges().find((entry) => entry.key === key)
-    if (!section) {
+    const change = ctx.changes.change(key)
+    if (!change) {
       return
     }
-    if (section.status === 'deleted') {
+    if (change.status === 'deleted') {
       return say('File was deleted', 'warn')
     }
-    const path = key.slice(key.indexOf(':') + 1)
-    openAt(path, line ?? (section.file ? firstChangedLine(section.file) : 0), 0)
+    openAt(change.path, line ?? ctx.changes.doc.firstLine(key), 0)
+  }
+
+  // The PR's text is its head commit's; the file opened is the checkout's, which may differ.
+  const openPullRequestFile = (key: string, line: number | null) => {
+    const entry = ctx.pullRequest.doc.entry(key)
+    if (!entry) {
+      return
+    }
+    if (entry.status === 'deleted') {
+      return say('File was deleted', 'warn')
+    }
+    if (!existsSync(entry.path)) {
+      return say(`${entry.rel} is not in this checkout`, 'warn')
+    }
+    openAt(entry.path, line ?? ctx.pullRequest.doc.firstLine(key), 0)
   }
 
   const cursorLine = (path: string): string => {
@@ -702,8 +505,6 @@ export function createCommands(ctx: AppContext) {
   }
 
   const actions = {
-    allChanges,
-    allChangesMeta,
     callsMoveTo: ctx.callHierarchy.moveTo,
     callsOpen: () => {
       const node = ctx.callHierarchy.selected()
@@ -959,6 +760,17 @@ export function createCommands(ctx: AppContext) {
     gitOpenRow,
     gitPull: () =>
       gitOp('Pulling', (repo) => pull(repo), { touchesTree: { kind: 'sync' } }),
+    gitPullRequest: () => {
+      if (!git.inRepo()) {
+        return say('Not a git repository', 'warn')
+      }
+      if (ctx.pullRequest.isOpen()) {
+        workspace.openPage('pullRequest')
+        panes.setFocus('editor')
+        return ctx.pullRequest.refresh()
+      }
+      ctx.pullRequest.open()
+    },
     gitPush: () => {
       if (git.activeRepo() === null) {
         return say(noRepository(git), 'warn')
@@ -1170,6 +982,13 @@ export function createCommands(ctx: AppContext) {
       ctx.workspace.openPage('settings')
       panes.setFocus('editor')
     },
+    openPullRequestFile,
+    openPullRequestOnWeb: () => {
+      if (!ctx.pullRequest.isOpen()) {
+        return say('Open the pull request first', 'warn')
+      }
+      ctx.pullRequest.openWeb()
+    },
     openReview: () => panes.toggleView('review'),
     openSettings: () => {
       settings.setScope('user')
@@ -1207,8 +1026,8 @@ export function createCommands(ctx: AppContext) {
         return
       }
       // Only close a page that had changes: an empty one opened from the palette explains itself.
-      const had = allChangesMeta().total > 0
-      rebuildAllChanges()
+      const had = ctx.changes.doc.entries().length > 0
+      ctx.changes.rebuild()
       if (had && git.changes().length === 0) {
         workspace.closePage('allChanges')
       }

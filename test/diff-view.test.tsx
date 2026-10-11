@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { HATCH } from '../src/ui/DiffView'
+import { HATCH } from '../src/ui/diffRows'
 import {
   launch,
   openDiff,

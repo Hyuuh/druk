@@ -16,6 +16,9 @@ process.env.DRUK_CLIPBOARD = 'off'
 // No test may hand a URL to the desktop: a fixture's commit is a 404 in a real browser tab.
 process.env.DRUK_BROWSER = 'off'
 
+// Nor may one reach GitHub as the person running it: a test that wants gh brings its own.
+process.env.DRUK_GH = '/nonexistent/druk-test-gh'
+
 process.env.XDG_DATA_HOME = tempDir('druk-test-data-')
 
 process.env.XDG_CACHE_HOME = tempDir('druk-test-cache-')

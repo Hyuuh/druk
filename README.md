@@ -138,6 +138,11 @@ opens the diff beside it, `a` stacks every file in one scrollable page, `c` comm
 Pull, fetch, stash, undo-commit, branch comparison, worktrees and conflict resolution are
 in the palette.
 
+`P` opens the branch's GitHub pull request on the same diff page, with GitHub's own
+*viewed* checkboxes: `Space` on a file marks it viewed on github.com and folds it, as the
+web does, and `o` opens the pull request in the browser. It goes through the
+[GitHub CLI](https://cli.github.com) — `gh auth login` once and there is nothing to configure.
+
 ## Review
 
 `Ctrl+Opt+A` notes the line or selection under the cursor as an **issue**, **suggestion**,

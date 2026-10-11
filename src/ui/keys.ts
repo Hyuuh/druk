@@ -328,8 +328,8 @@ export const KEYS: KeyInfo[] = [
     where: 'git',
   },
   {
-    key: 'Space a c d p s b B Esc',
-    label: 'Stage/commit/discard/push/sync/branch/compare/back',
+    key: 'Space a c d p s b B P Esc',
+    label: 'Stage/commit/discard/push/sync/branch/compare/PR/back',
     section: 'Source control',
     where: 'git',
   },
@@ -516,6 +516,7 @@ const PANEL_HINTS: (Hint & { pane: KeyScope })[] = [
   { key: 's', label: 'sync', pane: 'git', rank: 6 },
   { key: 'B', label: 'compare', pane: 'git', rank: 7 },
   { key: 'g', label: 'graph', pane: 'git', rank: 8 },
+  { key: 'P', label: 'pull request', pane: 'git', rank: 9 },
   { key: 'r', label: 'reply', pane: 'review', rank: 2 },
   { key: 'Bksp', label: 'drop', pane: 'review', rank: 3 },
   { key: '/', label: 'find', pane: 'extensions', rank: 2 },

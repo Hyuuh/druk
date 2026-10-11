@@ -71,6 +71,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
     'git.discard': actions.gitDiscard,
     'git.graph': actions.gitCommitGraph,
     'git.openCommitWeb': actions.openCommitOnWeb,
+    'git.pullRequest': actions.gitPullRequest,
     'git.push': actions.gitPush,
     'git.stage': actions.gitToggleStage,
     goto: () => prompts.setPrompt({ kind: 'gotoLine' }),
@@ -438,6 +439,10 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
         actions.toggleDiffLayout()
         return
       }
+      if (key.shift && k === 'p') {
+        actions.gitPullRequest()
+        return
+      }
 
       const rows = git.rows()
       const at = Math.max(0, Math.min(git.gitCursor(), rows.length - 1))
@@ -535,6 +540,7 @@ export function installKeyboard(ctx: AppContext, actions: CommandActions) {
           if (
             workspace.page() === 'commit' ||
             workspace.page() === 'allChanges' ||
+            workspace.page() === 'pullRequest' ||
             workspace.page() === 'graph'
           ) {
             workspace.closePage()

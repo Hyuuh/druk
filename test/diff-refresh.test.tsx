@@ -172,5 +172,7 @@ test('a git refresh leaves a scrolled changes page where it was', async () => {
     await settle(t, 250)
   }
 
-  expect(frame(t)).toBe(scrolled)
+  // The text is the new one; where the reader was is not.
+  await untilFrame(t, 'again 10')
+  expect(frame(t).replaceAll('again', 'after')).toBe(scrolled)
 }, 30_000)

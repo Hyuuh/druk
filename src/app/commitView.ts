@@ -1,39 +1,42 @@
 import { createSignal } from 'solid-js'
 
-import { comparisonCommitDetail, comparisonFileContent } from '../core/git'
-import type {
-  ComparisonCommitDetail,
-  ComparisonContent,
-  ComparisonFile,
-} from '../core/git'
+import { comparisonCommitDetail } from '../core/git'
+import type { ComparisonCommitDetail } from '../core/git'
+import { plural } from '../core/text'
+import type { DiffInfoLine } from '../ui/DiffPage'
+import { createDiffDocument } from './diffDocument'
+import type { DiffContent, DiffEntry } from './diffDocument'
+import { comparisonSource } from './diffSources'
 import type { Status } from './status'
 
-export function createCommitView(deps: { status: Status }) {
+export function commitInfo(detail: ComparisonCommitDetail): DiffInfoLine[] {
+  const { commit } = detail
+  return [
+    { text: `${commit.shortOid} ${commit.subject}`, tone: 'text' },
+    {
+      text: `${commit.authorName} <${commit.authorEmail}> · ${commit.authoredAt}`,
+      tone: 'dim',
+    },
+    {
+      text: `${plural(detail.stats.files, 'file')} · ${plural(commit.parents.length, 'parent')}`,
+      tone: 'faint',
+    },
+  ]
+}
+
+export function createCommitView(deps: { rootDir: string; status: Status }) {
   const [commit, setCommit] = createSignal<ComparisonCommitDetail | null>(null)
-  const [file, setFile] = createSignal<ComparisonFile | null>(null)
-  const [content, setContent] = createSignal<ComparisonContent | null>(null)
-  const [fileCursor, setFileCursor] = createSignal(0)
-  let repoDir: string | null = null
+  let source: ReturnType<typeof comparisonSource> | null = null
   let generation = 0
 
-  const loadContent = async (target: ComparisonFile, run: number) => {
-    if (!repoDir) {
-      return
-    }
-    const loaded = await comparisonFileContent(repoDir, target)
-    if (run !== generation) {
-      return
-    }
-    if (!loaded.ok) {
-      return deps.status.say(loaded.detail, 'error')
-    }
-    setContent(loaded.value)
-  }
+  const doc = createDiffDocument(
+    (entry: DiffEntry): DiffContent | Promise<DiffContent> =>
+      source?.load(entry) ?? { detail: 'No commit is open', kind: 'error' }
+  )
 
   const open = (repo: string, oid: string) => {
     generation += 1
     const run = generation
-    repoDir = repo
     void (async () => {
       const loaded = await comparisonCommitDetail(repo, oid)
       if (run !== generation) {
@@ -42,52 +45,22 @@ export function createCommitView(deps: { status: Status }) {
       if (!loaded.ok) {
         return deps.status.say(loaded.detail, 'error')
       }
+      source = comparisonSource(repo, deps.rootDir, loaded.value.files)
+      doc.reset(source.entries)
       setCommit(loaded.value)
-      setFileCursor(0)
-      setContent(null)
-      const first = loaded.value.files[0] ?? null
-      setFile(first)
-      if (first) {
-        void loadContent(first, run)
-      }
     })()
-  }
-
-  const moveFile = (delta: number) => {
-    const detail = commit()
-    if (!detail) {
-      return
-    }
-    const next = Math.max(
-      0,
-      Math.min(detail.files.length - 1, fileCursor() + delta)
-    )
-    if (next === fileCursor()) {
-      return
-    }
-    const target = detail.files[next]
-    if (!target) {
-      return
-    }
-    generation += 1
-    const run = generation
-    setFileCursor(next)
-    setFile(target)
-    setContent(null)
-    void loadContent(target, run)
   }
 
   const close = () => {
     generation += 1
+    source = null
+    doc.reset()
     setCommit(null)
-    setFile(null)
-    setContent(null)
-    setFileCursor(0)
   }
 
   const isOpen = () => commit() !== null
 
-  return { close, commit, content, file, isOpen, moveFile, open }
+  return { close, commit, doc, isOpen, open }
 }
 
 export type CommitView = ReturnType<typeof createCommitView>
