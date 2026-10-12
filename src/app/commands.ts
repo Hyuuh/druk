@@ -56,6 +56,8 @@ export interface CommandActions {
   toggleFocus: () => void
   toggleSidebar: () => void
   collapseSidebar: () => void
+  treeOpenBelow: () => void
+  treeCloseBelow: () => void
   toggleGitView: () => void
   togglePreview: () => void
   toggleMarkdown: () => void
@@ -603,6 +605,18 @@ export function buildCommands(
           id: 'view.collapse',
           label: 'Collapse folders in sidebar',
           run: actions.collapseSidebar,
+        },
+        {
+          hint: `${ALT}+→ in tree`,
+          id: 'tree.openBelow',
+          label: 'Expand folder and its subfolders',
+          run: actions.treeOpenBelow,
+        },
+        {
+          hint: `${ALT}+← in tree`,
+          id: 'tree.closeBelow',
+          label: 'Collapse folder and its subfolders',
+          run: actions.treeCloseBelow,
         },
         {
           hint: 'Space in tree',
