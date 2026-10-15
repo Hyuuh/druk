@@ -38,6 +38,7 @@ import {
   themeNames,
 } from '../themes'
 import type { ThemeName } from '../themes'
+import { resolveDiffView } from '../ui/diffRows'
 import { ALT, setKeyOverrides } from '../ui/keys'
 import type { SettingEdit, SettingRow } from '../ui/SettingsView'
 import type { EditorBridge } from './editor'
@@ -535,9 +536,21 @@ export function createSettings(deps: {
     title: `Shortcut — ${spec.label}`,
   })
 
-  const toggleDiffView = () => {
-    patchConfig({ diffView: view().diffView === 'inline' ? 'split' : 'inline' })
+  // Not a signal: App binds it once to the editor column's width, a reactive accessor itself.
+  let diffWidth = () => Number.POSITIVE_INFINITY
+  const measureDiffWith = (width: () => number) => {
+    diffWidth = width
   }
+  const diffLayout = () => resolveDiffView(view().diffView, diffWidth())
+
+  // Flips what is on screen, so from `auto` it pins the other layout.
+  const toggleDiffView = () => {
+    patchConfig({ diffView: diffLayout() === 'inline' ? 'split' : 'inline' })
+  }
+
+  const DIFF_VIEWS = ['inline', 'split', 'auto'] as const
+  const diffViewLabel = (value: Config['diffView']) =>
+    value === 'split' ? 'side-by-side' : value === 'auto' ? 'auto' : 'inline'
 
   const toggleGitPanelView = () => {
     const next = view().gitPanelView === 'tree' ? 'list' : 'tree'
@@ -846,12 +859,18 @@ export function createSettings(deps: {
       value: view().sidebarPosition,
     },
     {
-      cycle: toggleDiffView,
+      cycle: (dir) =>
+        patchConfig({ diffView: step(DIFF_VIEWS, view().diffView, dir) }),
       key: 'diffView',
       label: 'Diff layout',
       section: 'Git',
-      value: view().diffView === 'inline' ? 'inline' : 'side-by-side',
+      select: {
+        options: DIFF_VIEWS.map(diffViewLabel),
+        pick: (at) => patchConfig({ diffView: DIFF_VIEWS[at]! }),
+      },
+      value: diffViewLabel(view().diffView),
     },
+    boolRow('Git', 'diffWrap', 'Wrap long lines in diffs'),
     {
       cycle: toggleGitPanelView,
       key: 'gitPanelView',
@@ -1013,7 +1032,9 @@ export function createSettings(deps: {
     applyVim,
     config,
     configFile,
+    diffLayout,
     keymap,
+    measureDiffWith,
     nudgeSidebar,
     patchConfig,
     patchUserConfig,
@@ -1030,6 +1051,7 @@ export function createSettings(deps: {
     setScope,
     setServerCommand,
     toggleDiffView,
+    toggleDiffWrap: () => cycleRow('diffWrap'),
     toggleExtension,
     toggleGitPanelView,
     toggleScope,

@@ -76,7 +76,8 @@ export interface Config {
   formatOnSave: boolean
   formatters: Record<string, string[]>
   autoSaveOnBlur: boolean
-  diffView: 'inline' | 'split'
+  diffView: 'inline' | 'split' | 'auto'
+  diffWrap: boolean
   gitPanelView: 'tree' | 'list'
   gitScanDepth: number
   showDotfiles: boolean
@@ -99,7 +100,8 @@ export const DEFAULTS: Config = {
   breadcrumbs: true,
   checkUpdates: true,
   cursorStyle: 'block',
-  diffView: 'inline',
+  diffView: 'auto',
+  diffWrap: false,
   disabledExtensions: [],
   extensionRegistry: MARKET_URL,
   extensionUpdates: true,
@@ -191,7 +193,8 @@ const VALIDATORS: { [K in keyof Config]: Validator<K> } = {
   breadcrumbs: bool,
   checkUpdates: bool,
   cursorStyle: among(...CURSOR_STYLES),
-  diffView: among('inline', 'split'),
+  diffView: among('inline', 'split', 'auto'),
+  diffWrap: bool,
   disabledExtensions: ids,
   extensionRegistry: (raw) =>
     typeof raw === 'string' && raw.startsWith('https://') ? raw : undefined,

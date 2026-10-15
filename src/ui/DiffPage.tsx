@@ -13,6 +13,7 @@ import type { Accessor } from 'solid-js'
 
 import { ui } from '../themes'
 import { DiffBody } from './DiffBody'
+import type { DiffHit, DiffLocator, GapState } from './DiffBody'
 import { DiffHeadingView } from './DiffHeading'
 import type { DiffHeading, DiffKey, DiffStats } from './DiffHeading'
 import {
@@ -33,6 +34,7 @@ import {
 } from './list'
 import { PageFrame } from './PanelHeader'
 import { cut } from './text'
+import { TextInput } from './TextInput'
 import { useKeys } from './useKeys'
 
 export type ViewedMark = 'viewed' | 'unviewed' | 'dismissed'
@@ -75,6 +77,7 @@ export interface DiffPageProps {
   // Where the page keeps its offset while another tab is up; one per page kind.
   scrollKey: string
   mode: DiffMode
+  wrap: boolean
   width: number
   focused: boolean
   blocked: boolean
@@ -84,6 +87,7 @@ export interface DiffPageProps {
   keys?: { key: string; label: string }[]
   onFocus: () => void
   onToggleMode: () => void
+  onToggleWrap: () => void
   onClose: () => void
   onFold: (key: string, folded: boolean) => void
   onOpen?: (key: string, line: number | null) => void
@@ -102,6 +106,11 @@ const HEADER_ROWS = 2
 const HEADER_MARK = 1
 
 const REVEAL_TRIES = 30
+
+// Rows kept above a search hit, so the line lands with what leads into it.
+const HIT_CONTEXT = 3
+
+const NO_GAPS: GapState = new Set<number>()
 
 // Frames a re-anchor keeps re-applying: the scrollbox clamps against the height it still has.
 const HOLD_FRAMES = 6
@@ -354,6 +363,15 @@ export function DiffPage(props: DiffPageProps) {
   const [pickedLine, setPickedLine] = createSignal<number | null>(null)
   // Bumped when the stack's geometry moved for a reason `scrollTop` cannot report.
   const [layout, bumpLayout] = createSignal(0, { equals: false })
+  // Keyed with the patch it was opened against: a refresh that moves the hunks renumbers the gaps.
+  const [gapStates, setGapStates] = createSignal(
+    new Map<string, { patch: string; state: GapState }>()
+  )
+  const [searchOpen, setSearchOpen] = createSignal(false)
+  const [query, setQuery] = createSignal('')
+  const [hitIndex, setHitIndex] = createSignal<number | null>(null)
+  const locators = new Map<string, DiffLocator>()
+  const [locatorsChanged, bumpLocators] = createSignal(0, { equals: false })
 
   // Keyed by file, not by section object: a refresh rebuilds every section and must not
   // tear down a diff whose text did not change.
@@ -548,7 +566,7 @@ export function DiffPage(props: DiffPageProps) {
 
   createEffect(
     on(
-      () => props.mode,
+      () => [props.mode, props.wrap],
       () => {
         const key = anchorKey()
         // Read before the flip lays out — the heights the reader's offset was measured against.
@@ -572,6 +590,176 @@ export function DiffPage(props: DiffPageProps) {
     // A walk outranks the reveal hold below.
     cancelReveal?.()
     reveal(next)
+  }
+
+  const gapsFor = (key: string, patch: string): GapState => {
+    const entry = gapStates().get(key)
+    return entry && entry.patch === patch ? entry.state : NO_GAPS
+  }
+
+  const setGaps = (key: string, patch: string, state: GapState) => {
+    setGapStates(new Map([...gapStates(), [key, { patch, state }]]))
+    remeasure()
+  }
+
+  const toggleGap = (key: string, gap: number) => {
+    const patch = byKey().get(key)?.body?.patch
+    if (patch === undefined) {
+      return
+    }
+    const state = gapsFor(key, patch)
+    if (state === 'all') {
+      return
+    }
+    const open = new Set(state)
+    if (open.has(gap)) {
+      open.delete(gap)
+    } else {
+      open.add(gap)
+    }
+    setGaps(key, patch, open)
+  }
+
+  const toggleAllGaps = (key: string) => {
+    const patch = byKey().get(key)?.body?.patch
+    if (patch === undefined) {
+      return
+    }
+    const state = gapsFor(key, patch)
+    const anyOpen = state === 'all' || state.size > 0
+    setGaps(key, patch, anyOpen ? NO_GAPS : 'all')
+  }
+
+  const register = (key: string, locator: DiffLocator | null) => {
+    if (locator) {
+      locators.set(key, locator)
+    } else {
+      locators.delete(key)
+    }
+    bumpLocators(0)
+  }
+
+  // Content-space row of a body's first row: the section's top plus its two-row header.
+  const bodyTop = (key: string): number | null => {
+    const host = box
+    const el = anchors.get(key)
+    if (!host || !el || el.height <= 0) {
+      return null
+    }
+    return el.y - host.y + host.scrollTop + HEADER_ROWS
+  }
+
+  // The row under the sticky header is the one the reader is on.
+  const readingRow = () => scrollTop() + HEADER_ROWS
+
+  const landAt = (key: string, row: number) => {
+    const host = box
+    if (!host) {
+      return
+    }
+    cancelReveal?.()
+    cancelHold?.()
+    setPickedKey(key)
+    setPickedLine(null)
+    steer(host, Math.max(0, row - HEADER_ROWS))
+    drifted = true
+    syncScroll()
+    remeasure()
+  }
+
+  const walkHunk = (delta: 1 | -1) => {
+    layout()
+    const stops: { key: string; row: number }[] = []
+    for (const key of keys()) {
+      const top = bodyTop(key)
+      const locator = locators.get(key)
+      if (top === null || !locator || byKey().get(key)?.folded) {
+        continue
+      }
+      for (const offset of locator.hunkOffsets()) {
+        stops.push({ key, row: top + offset })
+      }
+    }
+    const at = readingRow()
+    const next =
+      delta > 0
+        ? stops.find((stop) => stop.row > at)
+        : stops.findLast((stop) => stop.row < at)
+    if (next) {
+      landAt(next.key, next.row)
+    }
+  }
+
+  const caseSensitive = () => query() !== query().toLowerCase()
+  const diffQuery = createMemo(() =>
+    query() === '' ? null : { caseSensitive: caseSensitive(), text: query() }
+  )
+
+  const hits = createMemo(() => {
+    locatorsChanged()
+    layout()
+    diffQuery()
+    const out: { key: string; hit: DiffHit; row: number }[] = []
+    for (const key of keys()) {
+      const top = bodyTop(key)
+      const locator = locators.get(key)
+      if (top === null || !locator || byKey().get(key)?.folded) {
+        continue
+      }
+      for (const { hit, offset } of locator.hits()) {
+        out.push({ hit, key, row: top + offset })
+      }
+    }
+    return out
+  })
+
+  const currentHit = (key: string): DiffHit | null => {
+    const at = hitIndex()
+    const hit = at === null ? undefined : hits()[at]
+    return hit && hit.key === key ? hit.hit : null
+  }
+
+  const stepHit = (delta: 1 | -1) => {
+    const list = hits()
+    if (list.length === 0) {
+      return
+    }
+    const at = hitIndex()
+    let next: number
+    if (at === null || at >= list.length) {
+      const here = readingRow()
+      const after = list.findIndex((hit) => hit.row >= here)
+      next =
+        delta > 0
+          ? Math.max(0, after)
+          : (after === -1 ? list.length : after) - 1
+    } else {
+      next = at + delta
+    }
+    next = (next + list.length) % list.length
+    setHitIndex(next)
+    const hit = list[next]!
+    landAt(hit.key, Math.max(bodyTop(hit.key) ?? 0, hit.row - HIT_CONTEXT))
+  }
+
+  const closeSearch = (keep: boolean) => {
+    setSearchOpen(false)
+    if (!keep) {
+      setQuery('')
+      setHitIndex(null)
+    }
+  }
+
+  const searchSummary = () => {
+    const total = hits().length
+    if (query() === '') {
+      return ''
+    }
+    if (total === 0) {
+      return 'no matches'
+    }
+    const at = hitIndex()
+    return at === null ? `${total} matches` : `${at + 1}/${total}`
   }
 
   // A memo: `on` re-runs whenever a dependency notifies, and a refresh rebuilding the same
@@ -629,6 +817,25 @@ export function DiffPage(props: DiffPageProps) {
     if (props.blocked || !props.focused || key.defaultPrevented) {
       return
     }
+    // The field is a real input: everything but its two exits is typing.
+    if (searchOpen()) {
+      if (k === 'return' || k === 'enter') {
+        closeSearch(true)
+        setHitIndex(null)
+        stepHit(1)
+      } else if (k === 'escape') {
+        closeSearch(false)
+      } else {
+        return
+      }
+      key.preventDefault()
+      return
+    }
+    if (k === 'escape' && query() !== '') {
+      closeSearch(false)
+      key.preventDefault()
+      return
+    }
     if (props.onKey?.(k, key)) {
       key.preventDefault()
       return
@@ -654,6 +861,19 @@ export function DiffPage(props: DiffPageProps) {
       moveSelection(key.shift ? -1 : 1)
     } else if (k === 's' || k === 'd') {
       props.onToggleMode()
+    } else if (k === ']' || k === '[') {
+      walkHunk(k === ']' ? 1 : -1)
+    } else if (k === 'z' && selected) {
+      toggleAllGaps(selected)
+    } else if (k === 'w') {
+      props.onToggleWrap()
+    } else if (k === '/') {
+      setHitIndex(null)
+      setSearchOpen(true)
+    } else if (k === 'n' && !key.shift) {
+      stepHit(1)
+    } else if (k === 'n' || k === 'N') {
+      stepHit(-1)
     } else if (k === 'space' && selected && props.onAction) {
       props.onAction(selected)
     } else if ((k === 'return' || k === 'enter') && selected && props.onOpen) {
@@ -670,6 +890,10 @@ export function DiffPage(props: DiffPageProps) {
     { key: 'Tab', label: 'next file', rank: 1 },
     ...(props.onOpen ? [{ key: 'Enter', label: 'open', rank: 2 }] : []),
     { key: '←→', label: 'fold', rank: 9 },
+    { key: '][', label: 'hunk', rank: 4 },
+    { key: '/', label: 'find', rank: 10 },
+    { key: 'z', label: 'context', rank: 11 },
+    { key: 'w', label: 'wrap', rank: 12, value: props.wrap ? 'on' : 'off' },
     ...(props.keys ?? []).map((item, i) => ({ ...item, rank: 5 + i })),
     {
       key: props.focused ? 's' : 'S',
@@ -792,8 +1016,17 @@ export function DiffPage(props: DiffPageProps) {
                           oldText={body().oldText}
                           newText={body().newText}
                           patch={body().patch}
-                          lines={body().lines}
+                          truncated={body().truncated}
                           plain={body().plain}
+                          wrap={props.wrap}
+                          gaps={gapsFor(key, body().patch)}
+                          query={diffQuery()}
+                          current={currentHit(key)}
+                          onToggleGap={(gap) => {
+                            setPickedKey(key)
+                            toggleGap(key, gap)
+                          }}
+                          onLocator={(locator) => register(key, locator)}
                           mode={
                             body().oldText === '' || body().newText === ''
                               ? 'inline'
@@ -832,6 +1065,51 @@ export function DiffPage(props: DiffPageProps) {
               )}
             </box>
           </Show>
+        </box>
+      </Show>
+      <Show when={searchOpen() || query() !== ''}>
+        <box
+          height={1}
+          flexShrink={0}
+          flexDirection="row"
+          backgroundColor={ui.solidBarBg}
+        >
+          <text
+            wrapMode="none"
+            flexShrink={0}
+            fg={ui.accent}
+            bg={ui.solidBarBg}
+            content=" / "
+          />
+          <box flexGrow={1} height={1}>
+            <Show
+              when={searchOpen()}
+              fallback={
+                <text
+                  wrapMode="none"
+                  fg={ui.text}
+                  bg={ui.solidBarBg}
+                  content={cut(query(), Math.max(1, props.width - 24))}
+                />
+              }
+            >
+              <TextInput
+                value={query()}
+                placeholder="find in diff"
+                onInput={(value) => {
+                  setQuery(value)
+                  setHitIndex(null)
+                }}
+              />
+            </Show>
+          </box>
+          <text
+            wrapMode="none"
+            flexShrink={0}
+            fg={ui.dim}
+            bg={ui.solidBarBg}
+            content={` ${searchSummary()}  ${searchOpen() ? 'Enter find · Esc clear' : 'n/N step · Esc clear'} `}
+          />
         </box>
       </Show>
     </PageFrame>

@@ -49,7 +49,7 @@ function pushRow(body: string[], row: string, open: boolean) {
 
 const MAX_EDIT_DISTANCE = 2000
 
-interface Edit {
+export interface Edit {
   kind: 'same' | 'del' | 'add'
   oldIndex: number
   newIndex: number
@@ -177,6 +177,11 @@ function myers(
     edits.push({ kind: 'same', newIndex: newBase + y, oldIndex: oldBase + x })
   }
   return edits.toReversed()
+}
+
+// Whole sequences, no prefix trim; null past the edit-distance cap.
+export function editScript(a: string[], b: string[]): Edit[] | null {
+  return myers(a, b, 0, 0)
 }
 
 const CONTEXT = 3

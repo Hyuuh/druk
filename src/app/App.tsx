@@ -625,6 +625,8 @@ export function App(props: {
   }
 
   // What every diff page shares; the page-specific props are spelled at each use.
+  settings.measureDiffWith(slotWidth)
+
   const diffPageProps = (doc: DiffDocument, scrollKey: string) => ({
     get blocked() {
       return overlays.overlay()
@@ -639,17 +641,21 @@ export function App(props: {
       return doc.meta()
     },
     get mode() {
-      return config.diffView
+      return settings.diffLayout()
     },
     onFocus: () => panes.setFocus('editor'),
     onFold: doc.setFolded,
     onToggleMode: settings.toggleDiffView,
+    onToggleWrap: settings.toggleDiffWrap,
     scrollKey,
     get sections() {
       return doc.sections()
     },
     get width() {
       return slotWidth()
+    },
+    get wrap() {
+      return config.diffWrap
     },
   })
 

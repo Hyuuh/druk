@@ -90,7 +90,8 @@ test('the diff page stays painted — it is a layer over the editor', async () =
 
   const t = await launch(dir, { transparent: true })
   await openDiff(t)
-  expect(bgAlpha(t, 'alpha changed')).toBe(255)
+  // The word tint splits the row: ` changed` is a span of its own.
+  expect(bgAlpha(t, 'changed')).toBe(255)
 })
 
 test('a theme switch keeps transparency on', async () => {

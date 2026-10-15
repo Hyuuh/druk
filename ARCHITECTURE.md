@@ -83,6 +83,8 @@ scripts/
     review.ts        review notes and their replies: the model, and the store
                      beside the config
     diff.ts          Myers line diff between two texts, emitted as a unified patch
+    diffModel.ts     a patch as rows a diff page draws: hunks, folded gaps and the
+                     scope each sits in, word ranges, moved blocks, split padding
     imports.ts       the path token under the cursor, and where it resolves —
                      relative, project-root, or through tsconfig/jsconfig aliases
     bulk.ts          delete/copy/move in the background, reporting progress

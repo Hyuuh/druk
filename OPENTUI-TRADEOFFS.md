@@ -220,6 +220,20 @@ next keystroke — needs an upstream way to detach the two. Re-check on a bump.
   (Ctrl+ф does not save), Caps Lock without associated text types lowercase, and
   Option symbols and dead-key compositions can be lost or replaced by a space.
 
+### A19. Diff panes
+- **Custom**: `DiffBody` (`src/ui/DiffBody.tsx`) composes each pane from a public
+  `<line_number>` and a `<text>` whose `StyledText` it builds itself, over rows from
+  `layoutDiff` (`src/core/diffModel.ts`); split + wrap aligns the sides by reading both
+  texts' `lineInfo.lineSources`, the way `DiffRenderable.buildSplitView` does.
+- **Native**: `<diff>` (`DiffRenderable`) takes a unified patch and builds the same two
+  panes itself.
+- **Degrades**: its row list is the patch's lines and nothing else — no row between
+  hunks, so no folded-context row, no enclosing scope, no click to expand; no background
+  per span, so no word-level change tint, moved-block tint or search marks; and its panes
+  are private members, which is how druk used to reach them (`panesOf`, now gone) to hand
+  them highlights and repaint padding rows. Every diff page's `]`/`[`, `z`, `/` and `w`
+  stand on this.
+
 ## B. No native path at all — removal is deleting the feature
 
 | Custom | Feature lost |
@@ -230,8 +244,8 @@ next keystroke — needs an upstream way to detach the two. Re-check on a bump.
 | `src/ui/tooltip.ts` + `tooltipLayout.ts` + `hover.ts` (454) | every tooltip, the Ctrl-peek, and every hover tint — a terminal has no hover layer |
 | `src/ui/completionLayout.ts` (200) | the completion popup's size, placement and detail panel |
 | `src/core/fs.ts` encoding (`decodeText`) | CRLF and BOM files open clean — the Zig core drops the `\r` and the decoder eats the BOM, so without it every such file opens dirty and a save rewrites every line |
-| `DiffBody` hatch (`paintHatch` in `src/ui/DiffBody.tsx`) | the padded side of a split diff reads as blank editor — a terminal has no fill patterns |
-| `DiffBody` `livePanes` / `isDestroyed` guards | paging between changes throws `TextBufferView is destroyed`: the ref is never called back on removal |
+| `DiffBody` hatch (`paneData` in `src/ui/DiffBody.tsx`) | the padded side of a split diff reads as blank editor — a terminal has no fill patterns |
+| `wordRanges` / `movedLines` (`src/core/diffModel.ts`) | the word-level change tint and the moved-block tint — git's `--color-moved` and `--word-diff` are ANSI output, not data, and the page diffs its own texts |
 
 ## C. Already taken
 

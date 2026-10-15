@@ -27,8 +27,6 @@ export { mixColors } from '../themes'
 
 const INDENT_GUIDE = 'indent.guide'
 
-export const DIFF_FILLER = 'druk.diff.filler'
-
 let clientDead = false
 let initPromise: Promise<TreeSitterClient | null> | null = null
 
@@ -159,7 +157,6 @@ export function getSyntaxStyle(): SyntaxStyle {
       'druk.problem.info': { bg: mixColors(ui.solidBg, ui.dim, 0.1) },
       'druk.problem.unnecessary': { fg: mixColors(ui.solidBg, ui.text, 0.4) },
       'druk.problem.warning': { bg: mixColors(ui.solidBg, ui.dirty, 0.13) },
-      [DIFF_FILLER]: { fg: mixColors(ui.solidBg, ui.dim, 0.55) },
       [CONFLICT_GROUPS.ours]: {
         bg: mixColors(ui.solidBg, ui.gitDeleted, 0.14),
       },

@@ -288,15 +288,35 @@ re-renders nothing it did not change — the page lists its sections by *key* fo
 reason, a refresh building new section objects for every file. The document stores
 nothing about the view: `folds` there are the reader's, `forgetFold` hands a file back to
 its source's default (marking it viewed folds it again), and the scroll is the page's.
-The diff itself is drawn (inline or
+The diff itself is drawn by druk, not by OpenTUI's `<diff>`, whose row list is the
+patch and nothing else: `layoutDiff` (`src/core/diffModel.ts`) turns a patch into rows
+and `DiffBody` paints each pane as a `<line_number>` over a `<text>` it hands a
+`StyledText` (OPENTUI-TRADEOFFS.md A19). What that buys is hunk's review surface. The
+unchanged stretch before each hunk and after the last is one row — `⋯ 9 unchanged
+lines` and, beside it, the scope the hunk sits in (`enclosingScope`: the nearest less
+indented line above, the fold rule rather than a grammar, so it holds for every
+language) — and a click on it opens that stretch while `z` opens or shuts every one in
+the file (what is open is the page's, keyed with the patch, since a refresh that moves
+a hunk renumbers the gaps). A paired changed line tints the words that differ
+(`wordRanges`: a token diff, given up on lines that share too little to be the same
+line edited), and a block deleted in one place and added in another is tinted as moved
+(`movedLines`, git's zebra threshold of twenty alphanumerics). `]`/`[` walk the hunks
+of every unfolded file, landing each under the sticky header; `/` opens a find bar at
+the foot of the page — smart case, painting every hit, Enter landing on the first one
+past the reader and `n`/`N` stepping, Esc clearing it before Esc closes anything; and
+`w` (`diffWrap`, settings → Git) wraps long lines, split keeping its sides row-aligned
+by reading both texts' `lineInfo` and padding the side that wrapped less. `diffView`
+is `auto` by default, side by side once the editor column has 160 columns
+(`resolveDiffView`, hunk's threshold) and inline below, and `s` from there pins the
+other layout. The diff is drawn inline or
 side-by-side — an added or deleted file is inline whatever `diffView` says, having no
 second side to put beside it, the rows split view pads a side with are hatched
 rather than left reading as blank editor — a terminal has no fill patterns, so the
 strokes are written into the pane's own content — and a big change draws plain, the
-header saying so: the renderable applies syntax as one native edit per span, and a
-package-lock-sized document feeds it millions, minutes of frozen editor, so color
-stops past a megabyte of sides or a thousand patch rows, and past ten thousand rows
-the patch itself is cut with the header keeping the change's true counts) — one page
+header saying so: past a megabyte of sides or a thousand patch rows color stops, and
+past ten thousand rows
+the patch itself is cut with the header keeping the change's true counts (and no
+trailing unchanged row, since what follows a cut is not known to be unchanged) — one page
 holding *every* change, Cursor's Changes page: a summary header and one block per
 file, each under a two-row header (path, then +/− and whether it is
 new/deleted/renamed) that sticks to the top of the scroll until the next file's
@@ -315,7 +335,7 @@ not being a press on the header that folds it), Enter opens the selected file in
 editor — at the line clicked in its diff, else at the file's first change, a diff being
 read in order to go and edit it, and a click inside a diff is what selects that file's
 header as well as remembering the line (`onPickLine` on `DiffBody`, which maps the click's
-row through the same `paneLines` table the highlighter uses, split's two panes being
+row through the same rows the panes are painted from, split's two panes being
 row-aligned so the new side answers a click on either) — and landing on a file — with the panel's cursor or with Tab
 inside the page — puts that file at the *top*, always, even when it was already on
 screen: a move that scrolls nothing reads as a key that did nothing, and where a
