@@ -171,7 +171,7 @@ export const BINDABLE: Bindable[] = [
   { defaults: [], id: 'git.stage', label: 'Stage / unstage selection' },
   { defaults: [], id: 'git.discard', label: 'Discard changes' },
   { defaults: [], id: 'git.push', label: 'Push' },
-  { defaults: [], id: 'git.compare', label: 'Compare branches' },
+  { defaults: [], id: 'git.compare', label: 'Show branch diff' },
   { defaults: [], id: 'git.graph', label: 'Commit graph' },
   { defaults: [], id: 'git.openCommitWeb', label: 'Open commit on remote' },
   { defaults: [], id: 'git.pullRequest', label: 'Open pull request' },
