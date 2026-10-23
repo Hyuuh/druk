@@ -467,6 +467,30 @@ describe('commentFor', () => {
     expect(commentFor(php, 1, 3, 'php')).toEqual(['/*', '*/'])
   })
 
+  test('treats PHP 8 attributes as code, not hash comments', () => {
+    const php = [
+      '<?php',
+      "#[Route('/home')]",
+      'function home() {}',
+      '# real comment',
+      '# [bracketed comment]',
+    ].join('\n')
+    expect(commentFor(php, 1, 1, 'php')).toBe('//')
+    const commentedAttr = toggleComment(php, 1, 1, '//')
+    expect(commentedAttr.split('\n')[1]).toBe("// #[Route('/home')]")
+    expect(
+      toggleComment(
+        commentedAttr,
+        1,
+        1,
+        commentFor(commentedAttr, 1, 1, 'php')!
+      )
+    ).toBe(php)
+
+    expect(commentFor(php, 3, 3, 'php')).toBe('#')
+    expect(commentFor(php, 4, 4, 'php')).toBe('#')
+  })
+
   test('liquid schema blocks are data, and liquid tags inside html comments open nothing', () => {
     const liquid = [
       '{% schema %}',

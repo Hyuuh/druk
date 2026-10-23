@@ -772,7 +772,10 @@ function phpCommentStyle(
         i += 2
         continue
       }
-      if (line.startsWith('//', i) || line[i] === '#') {
+      if (
+        line.startsWith('//', i) ||
+        (line[i] === '#' && line[i + 1] !== '[')
+      ) {
         const close = line.indexOf('?>', i)
         if (close === -1) {
           break
@@ -795,9 +798,15 @@ function phpCommentStyle(
 
   if (startInPhp) {
     // `?>` inside `/* */` stays commented; inside `//` it still ends PHP, and `<!-- -->` is not PHP at all.
+    // `#[` starts a PHP 8 attribute, not a `#` comment.
+    const hashComments = active.every(
+      (line) => !line.trimStart().startsWith('#[')
+    )
     return (
-      existingComment(active, ['//', '#', CSS_COMMENT]) ??
-      (stayedInPhp ? '//' : CSS_COMMENT)
+      existingComment(
+        active,
+        hashComments ? ['//', '#', CSS_COMMENT] : ['//', CSS_COMMENT]
+      ) ?? (stayedInPhp ? '//' : CSS_COMMENT)
     )
   }
   const style = htmlRegionCommentStyle(lines, firstActive, lastActive)
