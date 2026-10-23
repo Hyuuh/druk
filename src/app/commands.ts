@@ -333,7 +333,9 @@ export function buildCommands(
         {
           hint: 'B in source control',
           id: 'git.compare',
-          label: 'Compare branches',
+          keywords:
+            'compare branches base pull request merge request pr mr changes review against',
+          label: 'Show branch diff',
           run: actions.gitCompareBranches,
         },
         { id: 'git.commit', label: 'Commit…', run: actions.gitCommit },

@@ -17,6 +17,8 @@ import { useKeys } from './useKeys'
 export interface Command {
   id: string
   label: string
+  // Extra search terms, matched by the palette filter but never shown.
+  keywords?: string
   hint?: string
   run?: () => void
   preview?: () => void
@@ -64,7 +66,10 @@ export function CommandPalette(props: CommandPaletteProps) {
       return level.map((command) => ({ command, trail: [] }))
     }
     return flattenCommands(props.commands).filter(({ command, trail: t }) =>
-      [...t, command.label].join(' ').toLowerCase().includes(q)
+      [...t, command.label, command.keywords ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(q)
     )
   })
 

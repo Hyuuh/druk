@@ -128,7 +128,7 @@ test('palette discard refuses comparison mode', async () => {
   const dir = repo()
   const t = await launch(dir)
 
-  await runCommand(t, 'Compare branches')
+  await runCommand(t, 'Show branch diff')
   await runCommand(t, 'Discard changes')
   expect(t.captureCharFrame()).toContain(
     'Discard is unavailable while comparing branches'

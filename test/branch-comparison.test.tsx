@@ -158,7 +158,17 @@ test('the command palette opens Source Control directly in comparison mode', asy
   const { dir } = repo()
   const t = await launch(dir)
 
-  await runCommand(t, 'Compare branches')
+  await runCommand(t, 'Show branch diff')
+  await untilFrame(t, 'base  trunk')
+
+  expect(t.captureCharFrame()).toContain('2 files')
+})
+
+test('the branch diff is found by provider-neutral search terms', async () => {
+  const { dir } = repo()
+  const t = await launch(dir)
+
+  await runCommand(t, 'merge request')
   await untilFrame(t, 'base  trunk')
 
   expect(t.captureCharFrame()).toContain('2 files')
