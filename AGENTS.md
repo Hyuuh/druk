@@ -146,8 +146,9 @@ from the region the selection sits in, not just the filetype (`commentFor` in
 `src/editor/lines.ts`) — `{/* */}` inside JSX children but `//` in the TypeScript
 around them and between a tag's attributes (a range that leaves the children gets
 `//`, since `{/* */}` around a tag it only half-covers breaks the parse), with
-embedded `/*`/`*/` escaped reversibly (a backslash on the opening delimiter marks
-that encoding), `//`
+embedded `/*`/`*/` — and `-->`/`--!>` inside `<!-- -->`, which a browser takes as the end
+of the comment — escaped reversibly (a backslash on the opening delimiter marks that
+encoding), `//`
 inside `<script>` and `/* */` inside `<style>` in vue/svelte/html — `lang` and
 `type` are read, so a `tsx` script gets JSX comments and `type="application/json"`
 gets markup ones, and a tag may span lines without the region behind it being lost —

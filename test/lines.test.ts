@@ -84,6 +84,57 @@ describe('toggleComment', () => {
     const wrapped = toggleComment(text, 0, 0, ['{/*', '*/}'])
     expect(toggleComment(wrapped, 0, 0, ['{/*', '*/}'])).toBe(text)
   })
+
+  const HTML: [string, string] = ['<!--', '-->']
+  // What a browser would read as the end of the comment: `-->` or the forgiven `--!>`.
+  const closers = (line: string) => [...line.matchAll(/--!?>/gu)].length
+
+  test.each([
+    ['a comment already on the line', '<p>a</p> <!-- n -->'],
+    ['two comments around the markup', '<!-- a --> <p>b</p> <!-- c -->'],
+    ['a stray closer', 'a --> b'],
+    ['the closer a parser forgives', '<p>a</p> --!> x'],
+    ['three hyphens before the bracket', 'a --->'],
+    ['a literal escape already in the text', 'x --\\> y'],
+  ])(
+    'wraps %s in <!-- --> without ending it early, and unwraps it back',
+    (_, line) => {
+      const text = `  ${line}\n`
+      const wrapped = toggleComment(text, 0, 0, HTML)
+      // Exactly one closer, and it is the wrapper's own at the very end.
+      expect(closers(wrapped.trim())).toBe(1)
+      expect(wrapped.trimEnd().endsWith('-->')).toBe(true)
+      expect(toggleComment(wrapped, 0, 0, HTML)).toBe(text)
+    }
+  )
+
+  test('wraps a range holding a commented line, and a whole multi-line comment', () => {
+    const range = '<p>a</p>\n<!-- b -->\n<p>c</p>\n'
+    const wrapped = toggleComment(range, 0, 2, HTML)
+    for (const line of wrapped.trim().split('\n')) {
+      expect(closers(line)).toBe(1)
+    }
+    expect(toggleComment(wrapped, 0, 2, HTML)).toBe(range)
+
+    const multi = '<!--\n<p>a</p>\n-->\n'
+    const folded = toggleComment(multi, 0, 2, HTML)
+    for (const line of folded.trim().split('\n')) {
+      expect(closers(line)).toBe(1)
+    }
+    expect(toggleComment(folded, 0, 2, HTML)).toBe(multi)
+  })
+
+  test('leaves a hand-written <!-- --> comment as it was written', () => {
+    expect(toggleComment('<!--x--\\>y-->\n', 0, 0, HTML)).toBe('x--\\>y\n')
+    expect(toggleComment('<!-- a -- b -->\n', 0, 0, HTML)).toBe('a -- b\n')
+  })
+
+  test('keeps a CRLF ending when it wraps a line holding a comment', () => {
+    const text = '<p>a</p> <!-- n -->\r\n'
+    const wrapped = toggleComment(text, 0, 0, HTML)
+    expect(wrapped.endsWith('-->\r\n')).toBe(true)
+    expect(toggleComment(wrapped, 0, 0, HTML)).toBe(text)
+  })
 })
 
 describe('commentFor', () => {

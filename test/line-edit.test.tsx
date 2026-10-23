@@ -64,6 +64,12 @@ test.each([
     text: '<div data-example="<script>">\n<p>hi</p>\n</div>\n',
   },
   {
+    expected: '<!--\\ <p>a</p> <!-- n --\\> -->',
+    name: 'a.html',
+    row: 0,
+    text: '<p>a</p> <!-- n -->\n',
+  },
+  {
     expected: '/* #hero { color: red; } */',
     name: 'a.vue',
     row: 3,

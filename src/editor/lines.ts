@@ -19,11 +19,43 @@ const isBlockCommented = (
   )
 }
 
-const escapeBlockDelimiters = (text: string, escaping: boolean): string =>
-  // Escape existing backslashes too so literal escapes survive the next toggle.
-  text.replace(
-    escaping ? /\/\\*(?=\*)|\*\\*(?=\/)/gu : /\/\\+(?=\*)|\*\\+(?=\/)/gu,
-    (delimiter) => (escaping ? `${delimiter}\\` : delimiter.slice(0, -1))
+// A delimiter inside the text would end the wrapper early, so it carries a backslash
+// after its first character(s), and the wrapper's opening is marked with one more.
+// Existing backslashes are escaped too so literal escapes survive the next toggle.
+interface Escaper {
+  escaping: RegExp
+  unescaping: RegExp
+}
+
+const C_ESCAPER: Escaper = {
+  escaping: /\/\\*(?=\*)|\*\\*(?=\/)/gu,
+  unescaping: /\/\\+(?=\*)|\*\\+(?=\/)/gu,
+}
+
+// `-->` ends an HTML comment, and so does `--!>`, which the parser takes as a
+// mistake it forgives; `<!--` inside one is harmless, so only the closers need it.
+const HTML_ESCAPER: Escaper = {
+  escaping: /--\\*(?=!?>)/gu,
+  unescaping: /--\\+(?=!?>)/gu,
+}
+
+const escaperFor = (open: string, close: string): Escaper | undefined => {
+  if (open.endsWith('/*') && close.startsWith('*/')) {
+    return C_ESCAPER
+  }
+  if (open.endsWith('<!--') && close === '-->') {
+    return HTML_ESCAPER
+  }
+  return undefined
+}
+
+const escapeBlockDelimiters = (
+  text: string,
+  escaping: boolean,
+  escaper: Escaper
+): string =>
+  text.replace(escaping ? escaper.escaping : escaper.unescaping, (delimiter) =>
+    escaping ? `${delimiter}\\` : delimiter.slice(0, -1)
   )
 
 export function toggleComment(
@@ -41,7 +73,7 @@ export function toggleComment(
 
   if (typeof style !== 'string') {
     const [open, close] = style
-    const cStyle = open.endsWith('/*') && close.startsWith('*/')
+    const escaper = escaperFor(open, close)
     const commented = active.every((line) =>
       isBlockCommented(line, open, close)
     )
@@ -55,7 +87,7 @@ export function toggleComment(
         const end = line.trimEnd().length
         let inner = line.slice(at + open.length, end - close.length)
         // Only marked wrappers use our escapes; hand-written comments keep theirs.
-        const escaped = cStyle && inner.startsWith('\\ ')
+        const escaped = escaper !== undefined && inner.startsWith('\\ ')
         if (escaped) {
           inner = inner.slice(1)
         }
@@ -66,7 +98,7 @@ export function toggleComment(
           inner = inner.slice(0, -1)
         }
         if (escaped) {
-          inner = escapeBlockDelimiters(inner, false)
+          inner = escapeBlockDelimiters(inner, false, escaper)
         }
         lines[row] = `${line.slice(0, at)}${inner}${line.slice(end)}`
       }
@@ -79,7 +111,9 @@ export function toggleComment(
         }
         const end = line.trimEnd().length
         const inner = line.slice(indent, end)
-        const escaped = cStyle ? escapeBlockDelimiters(inner, true) : inner
+        const escaped = escaper
+          ? escapeBlockDelimiters(inner, true, escaper)
+          : inner
         const marker = escaped === inner ? '' : '\\'
         lines[row] =
           `${line.slice(0, indent)}${open}${marker} ${escaped} ${close}${line.slice(end)}`
