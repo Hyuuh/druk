@@ -355,6 +355,29 @@ describe('commentFor', () => {
     expect(commentFor(html, 6, 6, 'html')).toEqual(['<!--', '-->'])
   })
 
+  test('an html comment closed by --!> ends the same as one closed by -->', () => {
+    const html = [
+      '<!-- <style> --!> <p>a</p>',
+      '<style>',
+      'a { color: red }',
+      '</style>',
+      '<!--',
+      '<style>',
+      '--!>',
+      '<style>',
+      'b { color: blue }',
+      '</style>',
+    ].join('\n')
+    for (const filetype of ['html', 'vue', 'svelte', 'liquid', 'php']) {
+      for (const row of [2, 8]) {
+        const style = commentFor(html, row, row, filetype)!
+        expect(style).toEqual(['/*', '*/'])
+        const wrapped = toggleComment(html, row, row, style)
+        expect(wrapped.split('\n')[row]).toBe(`/* ${html.split('\n')[row]} */`)
+      }
+    }
+  })
+
   test.each([
     '<div data-example="<script>">',
     '<div\n  data-example="<script>"\n>',

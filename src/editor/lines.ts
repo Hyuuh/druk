@@ -518,6 +518,17 @@ const styleMode = (attrs: string): RegionMode =>
 const SCRIPT_CLOSE = /<\/script\s*>/iu
 const STYLE_CLOSE = /<\/style\s*>/iu
 
+// `--!>` ends a comment for the parser the same as `-->` (see HTML_ESCAPER);
+// returns the index just past whichever closer comes first, or -1.
+const commentClose = (line: string, from: number): number => {
+  const plain = line.indexOf('-->', from)
+  const bang = line.indexOf('--!>', from)
+  if (bang !== -1 && (plain === -1 || bang < plain)) {
+    return bang + 4
+  }
+  return plain === -1 ? -1 : plain + 3
+}
+
 // A markup-side region the html tags do not cover — liquid's {% … %} blocks.
 interface ExtraRegion {
   close: RegExp
@@ -581,12 +592,12 @@ function scanMarkupRegions(
         continue
       }
       if (inComment) {
-        const end = line.indexOf('-->', i)
+        const end = commentClose(line, i)
         if (end === -1) {
           break
         }
         inComment = false
-        i = end + 3
+        i = end
         continue
       }
       if (pendingTag) {
@@ -630,12 +641,12 @@ function scanMarkupRegions(
       const at = Math.min(...candidates)
 
       if (at === commentAt) {
-        const end = line.indexOf('-->', at + 4)
+        const end = commentClose(line, at + 4)
         if (end === -1) {
           inComment = true
           break
         }
-        i = end + 3
+        i = end
         continue
       }
       if (at === extraAt) {
